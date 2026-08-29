@@ -34,7 +34,10 @@ function Sidebar({ term, setTerm }) {
     { to: "/trafic", icon: "fa-exchange-alt", label: "Flux Camions" },
     { to: "/livraison", icon: "fa-clock", label: "Délais" },
     { to: "/ia", icon: "fa-robot", label: "Assistant IA" },
-    { to: "/alertes", icon: "fa-bell", label: "Alertes" }
+    { to: "/alertes", icon: "fa-bell", label: "Alertes" },
+    { to: "/rtg", icon: "fa-users-gear", label: "RTG Planner" },
+    { to: "/rtg/planning", icon: "fa-calendar-alt", label: "RTG · Planning" },
+    { to: "/rtg/affectation", icon: "fa-clipboard-list", label: "RTG · Affectation" }
   ];
 
   const isActive = (p) => loc.pathname === p;
