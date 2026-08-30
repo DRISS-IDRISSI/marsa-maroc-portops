@@ -27,7 +27,7 @@ const ValidationEngine = {
           anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Shift 3 affecté un dimanche (devrait être OFF)", attendu: "OFF sans affectation", trouve: [a.shift, a.vacation, a.zone].filter(Boolean).join("/") });
         }
 
-        if (["CONGE", "MALADIE", "ABSENCE"].indexOf(a.status) !== -1 && (a.shift || a.vacation || a.zone)) {
+        if (["CONGE", "MALADIE", "ABSENCE", "FORMATION"].indexOf(a.status) !== -1 && (a.shift || a.vacation || a.zone)) {
           anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur affecté pendant un(e) " + a.status.toLowerCase(), attendu: "Aucune affectation", trouve: [a.shift, a.vacation, a.zone].filter(Boolean).join("/") });
         }
       });

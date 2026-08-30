@@ -31,7 +31,12 @@ function Sidebar() {
   const links = [
     { to: "/", icon: "fa-chart-line", label: "Accueil" },
     { to: "/planning", icon: "fa-calendar-alt", label: "Planning mensuel" },
-    { to: "/affectation", icon: "fa-clipboard-list", label: "Affectation du jour" }
+    { to: "/affectation", icon: "fa-clipboard-list", label: "Affectation du jour" },
+    { to: "/conducteurs", icon: "fa-users", label: "Conducteurs" },
+    { to: "/conges", icon: "fa-umbrella-beach", label: "Congés" },
+    { to: "/maladies", icon: "fa-briefcase-medical", label: "Maladies" },
+    { to: "/absences", icon: "fa-user-slash", label: "Absences" },
+    { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" }
   ];
 
   const isActive = (p) => loc.pathname === p;
