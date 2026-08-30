@@ -33,12 +33,20 @@ const ValidationEngine = {
       });
     });
 
-    state.drivers.filter(d => d.actif !== false).forEach(d => {
-      const c = reposCount[d.id] || 0;
-      if (c !== state.config.reposMensuel) {
-        anomalies.push({ date: "—", driverId: d.id, matricule: d.matricule, nom: d.nom, prenom: d.prenom, type: "Nombre de repos différent de " + state.config.reposMensuel, attendu: state.config.reposMensuel, trouve: c });
-      }
-    });
+    if (days.length > 0) {
+      const first = RTGDate.parseISO(days[0].iso);
+      const month = first.getUTCMonth() + 1;
+      const year = first.getUTCFullYear();
+      state.drivers.filter(d => d.actif !== false).forEach(d => {
+        const c = reposCount[d.id] || 0;
+        const congeDays = RestDayEngine.countCongeDaysInMonth(d, month, year, state);
+        const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
+        const attendu = Math.max(0, state.config.reposMensuel - reduction);
+        if (c !== attendu) {
+          anomalies.push({ date: "—", driverId: d.id, matricule: d.matricule, nom: d.nom, prenom: d.prenom, type: "Nombre de repos différent du quota attendu", attendu: attendu, trouve: c });
+        }
+      });
+    }
 
     return { valid: anomalies.length === 0, anomalies: anomalies, count: anomalies.length };
   }

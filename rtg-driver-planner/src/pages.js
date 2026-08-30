@@ -121,7 +121,7 @@ function Cell({ assignment, detailLevel }) {
   );
 }
 
-function PlanningGrid({ planning, drivers, detailLevel }) {
+function PlanningGrid({ planning, drivers, detailLevel, config }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="border-collapse text-xs w-full">
@@ -131,9 +131,14 @@ function PlanningGrid({ planning, drivers, detailLevel }) {
             <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[110px]">Nom</th>
             <th className="border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>
             <th className="border border-border/60 px-2 py-2 text-slate-300">Équipe</th>
-            {planning.days.map(day => (
-              <th key={day.iso} className="border border-border/60 px-1.5 py-2 text-slate-400 min-w-[34px]">{String(day.day).padStart(2,"0")}</th>
-            ))}
+            {planning.days.map(day => {
+              const holiday = HolidayEngine.getHoliday(day.iso, config);
+              return (
+                <th key={day.iso} className={`border border-border/60 px-1.5 py-2 min-w-[34px] ${holiday ? "bg-purple-500/20 text-purple-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
+                  {String(day.day).padStart(2, "0")}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -292,10 +297,14 @@ function PlanningMensuel() {
 
       <ValidationBanner validation={planning.validation} />
 
-      <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} />
+      <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} />
 
-      <div className="bg-card rounded-xl border border-border p-4">
+      <div className="bg-card rounded-xl border border-border p-4 space-y-2">
         <Legend />
+        <div className="flex items-center gap-2 text-[11px] text-purple-300">
+          <span className="w-3 h-3 rounded bg-purple-500/30 border border-purple-500/50 inline-block"></span>
+          Jour férié (Maroc) — affiché à titre indicatif, sans impact sur les repos ni les affectations
+        </div>
       </div>
     </div>
   );
@@ -321,6 +330,7 @@ function AffectationDuJour() {
   });
 
   const offRows = assignments.filter(a => a.status === "OFF");
+  const holiday = HolidayEngine.getHoliday(dateStr, state.config);
 
   return (
     <div className="space-y-4 fade-in">
@@ -328,6 +338,12 @@ function AffectationDuJour() {
         <h1 className="text-2xl font-bold text-white">Affectation du jour</h1>
         <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date pour voir l'affectation détaillée des 3 shifts</p>
       </div>
+
+      {holiday && (
+        <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 text-purple-300 rounded-xl px-4 py-3 text-sm">
+          <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} (affiché à titre indicatif, sans impact sur les affectations)
+        </div>
+      )}
 
       <div className="bg-card rounded-xl border border-border p-4 flex items-end gap-3">
         <div>

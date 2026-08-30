@@ -24,6 +24,9 @@ const RTG_CONFIG = {
   zones: ["A", "B", "C", "D", "E", "F", "G", "H"],
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
+  // Pour chaque tranche de 5 jours de CONGÉ dans le mois, le quota de repos du
+  // conducteur ce mois-là est réduit d'un jour (plancher 0).
+  reposReductionParJoursCongé: 5,
   offShift3Dimanche: true,
   exceptionDimancheLundi: true,
   shiftRotationCycleDefault: ["S1", "S3", "S2"],
@@ -32,7 +35,40 @@ const RTG_CONFIG = {
   referenceWeekStart: "2026-07-27",
   // Date à partir de laquelle les rotations de zone/vacation sont calculées ;
   // driver.initialZone / driver.initialVacation s'appliquent exactement à cette date.
-  rotationReferenceDate: "2026-08-01"
+  rotationReferenceDate: "2026-08-01",
+  // Charge de travail par shift/vacation (répartie sur 100%), utilisée pour fixer
+  // le ratio V1/V2 de conducteurs présents au sein de chaque shift : ex. pour S1,
+  // sur les conducteurs présents ce jour-là, ~1/3 sont placés en V1 et ~2/3 en V2
+  // (ratio 10:20). Le ratio est recalculé chaque jour selon le shift en cours pour
+  // l'équipe, avec une rotation équitable des conducteurs entre les deux groupes.
+  vacationRatioByShift: {
+    S1: { V1: 10, V2: 20 },
+    S2: { V1: 25, V2: 25 },
+    S3: { V1: 12, V2: 8 }
+  },
+  // Jours fériés marocains — affichage uniquement (aucun impact sur les repos ou
+  // les affectations). Les dates religieuses (Aïd, Moharram, Mawlid) sont
+  // approximatives : elles dépendent de l'observation du croissant lunaire et
+  // peuvent être confirmées/décalées d'un jour par les autorités marocaines.
+  holidays: [
+    { date: "2026-01-01", label: "Jour de l'An" },
+    { date: "2026-01-11", label: "Manifeste de l'Indépendance" },
+    { date: "2026-01-14", label: "Nouvel An Amazigh (Yennayer)" },
+    { date: "2026-03-20", label: "Aïd al-Fitr (1er jour)" },
+    { date: "2026-03-21", label: "Aïd al-Fitr (2e jour)" },
+    { date: "2026-05-01", label: "Fête du Travail" },
+    { date: "2026-05-27", label: "Aïd al-Adha (1er jour)" },
+    { date: "2026-05-28", label: "Aïd al-Adha (2e jour)" },
+    { date: "2026-06-17", label: "1er Moharram (Nouvel An Hégire)" },
+    { date: "2026-07-30", label: "Fête du Trône" },
+    { date: "2026-08-14", label: "Récupération d'Oued Ed-Dahab" },
+    { date: "2026-08-20", label: "Révolution du Roi et du Peuple" },
+    { date: "2026-08-21", label: "Fête de la Jeunesse" },
+    { date: "2026-08-26", label: "Aïd al-Mawlid" },
+    { date: "2026-10-31", label: "Fête de l'Unité" },
+    { date: "2026-11-06", label: "Anniversaire de la Marche Verte" },
+    { date: "2026-11-18", label: "Fête de l'Indépendance" }
+  ]
 };
 
 // Rotation des shifts par équipe : S1 → S3 → S2 → S1 ... (cycle de 3 semaines).
@@ -179,7 +215,7 @@ const RTG_SEED = {
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
   // ignorer d'anciennes données mises en cache (ex. un ancien roster de conducteurs)
   // plutôt que de les fusionner avec le nouveau seed.
-  dataVersion: 3,
+  dataVersion: 4,
   drivers: RTG_DRIVERS,
   teams: RTG_TEAMS,
   config: RTG_CONFIG,

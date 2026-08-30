@@ -5,6 +5,9 @@
 // ni un dimanche de shift 3 (OFF). La répartition est décalée par conducteur au
 // sein de son équipe pour éviter que tout le monde se repose le même jour et
 // vider une vacation/équipe. Résultat 100% modifiable manuellement (phase 2).
+//
+// Le quota de 6 repos est réduit d'un jour pour chaque tranche de
+// config.reposReductionParJoursCongé (5) jours de CONGÉ pris dans le mois.
 // ==========================================
 
 const RestDayEngine = {
@@ -12,6 +15,16 @@ const RestDayEngine = {
 
   clearCache() {
     this._cache = {};
+  },
+
+  countCongeDaysInMonth(driver, month, year, state) {
+    const dim = RTGDate.daysInMonth(month, year);
+    let count = 0;
+    for (let d = 1; d <= dim; d++) {
+      const iso = RTGDate.toISO(RTGDate.makeDate(year, month, d));
+      if (AbsenceEngine.findRecord(state.conges, driver.id, iso)) count++;
+    }
+    return count;
   },
 
   getRestDaysForMonth(driver, month, year, state, teams) {
@@ -33,7 +46,10 @@ const RestDayEngine = {
       candidates.push(d);
     }
 
-    const target = Math.min(state.config.reposMensuel, candidates.length);
+    const congeDays = this.countCongeDaysInMonth(driver, month, year, state);
+    const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
+    const quota = Math.max(0, state.config.reposMensuel - reduction);
+    const target = Math.min(quota, candidates.length);
     if (target <= 0) {
       this._cache[key] = [];
       return [];
