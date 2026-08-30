@@ -127,6 +127,17 @@ const RestDayEngine = {
 
     const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers);
 
+    // Comptabilise TOUTES les affectations obligatoires de l'équipe dans dayUsage
+    // avant de traiter le moindre conducteur : sans ça, les premiers conducteurs de
+    // la boucle voient le compteur encore à zéro pour un dimanche dont le repos
+    // obligatoire n'a été enregistré que pour des conducteurs plus loin dans la
+    // liste, et peuvent alors choisir ce même jour par préférence, faisant
+    // largement dépasser le plafond une fois tout le monde traité.
+    teamDrivers.forEach(driver => {
+      const mandatoryDays = mandatorySundayOff[driver.id] || new Set();
+      mandatoryDays.forEach(d => { dayUsage[d] = (dayUsage[d] || 0) + 1; });
+    });
+
     teamDrivers.forEach((driver, idxInTeam) => {
       const candidates = this.getCandidatesForDriver(driver, month, year, state, team);
       const congeDays = this.countCongeDaysInMonth(driver, month, year, state);
@@ -139,7 +150,6 @@ const RestDayEngine = {
       mandatoryDays.forEach(d => {
         chosen.push(d);
         used.add(d);
-        dayUsage[d] = (dayUsage[d] || 0) + 1;
       });
 
       const target = Math.max(0, Math.min(quota, candidates.length) - chosen.length);
