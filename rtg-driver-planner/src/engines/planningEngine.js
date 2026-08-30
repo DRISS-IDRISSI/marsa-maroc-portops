@@ -32,7 +32,9 @@ const PlanningEngine = {
     const date = RTGDate.parseISO(isoDate);
     const teams = state.teams;
 
-    return state.drivers.filter(d => d.actif !== false).map(driver => {
+    // Passe 1 : statut + shift/vacation/zone "naturels" (rotation individuelle),
+    // avant toute affectation manuelle.
+    const base = state.drivers.filter(d => d.actif !== false).map(driver => {
       const team = teams.find(t => t.id === driver.teamId);
       const status = this.getDailyStatus(driver, date, state, teams);
 
@@ -46,8 +48,27 @@ const PlanningEngine = {
         if (vacDef) { startTime = vacDef.start; endTime = vacDef.end; }
       }
 
+      return { driver: driver, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime };
+    });
+
+    // Passe 2 : correctif zone A non prioritaire — par créneau (shift + vacation),
+    // si plus de 8 présents, un seul reste en zone A, le surplus double B-H.
+    const groups = {};
+    base.forEach(b => {
+      if (b.status !== "PRESENT" || !b.shift || !b.vacation) return;
+      const key = b.shift + "_" + b.vacation;
+      (groups[key] = groups[key] || []).push(b);
+    });
+    Object.keys(groups).forEach(key => {
+      ZoneBalancingEngine.rebalance(groups[key], state.config.zones);
+    });
+
+    // Passe 3 : applique les affectations manuelles par-dessus le résultat auto.
+    return base.map(b => {
+      const driver = b.driver, team = b.team;
+      let shift = b.shift, vacation = b.vacation, zone = b.zone, startTime = b.startTime, endTime = b.endTime;
       let source = "AUTO";
-      let finalStatus = status;
+      let finalStatus = b.status;
       const override = state.manualOverrides[isoDate + "_" + driver.id];
       if (override) {
         if (override.shift !== undefined) shift = override.shift;
