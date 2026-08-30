@@ -57,7 +57,7 @@ const RTG_CONFIG = {
   vacationRatioByShift: {
     S1: { V1: 13.5, V2: 16.5 },
     S2: { V1: 25, V2: 25 },
-    S3: { V1: 12, V2: 8 }
+    S3: { V1: 11.5, V2: 8.5 }
   },
   // Jours fériés marocains — affichage uniquement (aucun impact sur les repos ou
   // les affectations). Les dates religieuses (Aïd, Moharram, Mawlid) sont
@@ -228,7 +228,7 @@ const RTG_SEED = {
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
   // ignorer d'anciennes données mises en cache (ex. un ancien roster de conducteurs)
   // plutôt que de les fusionner avec le nouveau seed.
-  dataVersion: 7,
+  dataVersion: 8,
   drivers: RTG_DRIVERS,
   teams: RTG_TEAMS,
   config: RTG_CONFIG,
