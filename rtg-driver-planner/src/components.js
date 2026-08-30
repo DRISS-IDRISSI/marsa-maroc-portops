@@ -1,4 +1,4 @@
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect } = React;
 const { useLocation, useNavigate } = ReactRouterDOM;
 
 // ==========================================
@@ -22,19 +22,16 @@ function KPICard({ icon, label, value, sub, color = "blue", highlight }) {
 // ==========================================
 // Sidebar
 // ==========================================
-function Sidebar({ term, setTerm }) {
+function Sidebar() {
   const loc = useLocation();
   const nav = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const links = [
-    { to: "/", icon: "fa-chart-line", label: "Dashboard" },
-    { to: "/navires", icon: "fa-ship", label: "Navires" },
-    { to: "/trafic", icon: "fa-exchange-alt", label: "Flux Camions" },
-    { to: "/livraison", icon: "fa-clock", label: "Délais" },
-    { to: "/ia", icon: "fa-robot", label: "Assistant IA" },
-    { to: "/alertes", icon: "fa-bell", label: "Alertes" }
+    { to: "/", icon: "fa-chart-line", label: "Accueil" },
+    { to: "/planning", icon: "fa-calendar-alt", label: "Planning mensuel" },
+    { to: "/affectation", icon: "fa-clipboard-list", label: "Affectation du jour" }
   ];
 
   const isActive = (p) => loc.pathname === p;
@@ -43,9 +40,9 @@ function Sidebar({ term, setTerm }) {
     <>
       <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
         <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white">
-          <i className="fas fa-anchor"></i>
+          <i className="fas fa-users-gear"></i>
         </div>
-        {!collapsed && <div><div className="font-bold text-white text-sm leading-tight">Marsa Maroc</div><div className="text-[10px] text-slate-500 uppercase tracking-wider">Port Casablanca</div></div>}
+        {!collapsed && <div><div className="font-bold text-white text-sm leading-tight">RTG Driver Planner</div><div className="text-[10px] text-slate-500 uppercase tracking-wider">Marsa Maroc — Terminal Conteneurs</div></div>}
       </div>
 
       <div className="p-3 space-y-1">
@@ -59,46 +56,30 @@ function Sidebar({ term, setTerm }) {
         ))}
       </div>
 
-      {!collapsed && (
-        <div className="mt-auto p-4 border-t border-border">
-          <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-2">Terminal</div>
-          <div className="flex gap-1">
-            {[["all","Tous"],["tce","TCE"],["tc3","TC3"]].map(([k,l]) => (
-              <button key={k} onClick={() => setTerm(k)}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${term === k ? 'bg-orange-500 text-white' : 'bg-marine-800 text-slate-400 hover:text-white'}`}>{l}</button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="p-4 border-t border-border">
+      <div className="mt-auto p-4 border-t border-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-marine-500 to-marine-700 flex items-center justify-center text-white text-xs"><i className="fas fa-user"></i></div>
-          {!collapsed && <div><div className="text-xs font-medium text-white">Admin</div><div className="text-[10px] text-slate-500">Directeur</div></div>}
+          {!collapsed && <div><div className="text-xs font-medium text-white">Responsable Exploitation</div><div className="text-[10px] text-slate-500">RTG</div></div>}
         </div>
       </div>
     </>
   );
 
   return (<>
-    {/* Mobile toggle */}
     <button onClick={() => setMobileOpen(!mobileOpen)} className="lg:hidden fixed top-4 left-4 z-50 w-10 h-10 bg-card border border-border rounded-lg flex items-center justify-center text-white">
       <i className={`fas ${mobileOpen ? 'fa-times' : 'fa-bars'}`}></i>
     </button>
 
-    {/* Mobile overlay */}
     {mobileOpen && <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileOpen(false)}></div>}
 
-    {/* Desktop */}
-    <aside className={`hidden lg:flex flex-col bg-card border-r border-border h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-16' : 'w-56'}`}>
+    <aside className={`hidden lg:flex flex-col bg-card border-r border-border h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'}`}>
       <button onClick={() => setCollapsed(!collapsed)} className="absolute -right-3 top-20 w-6 h-6 bg-card border border-border rounded-full flex items-center justify-center text-slate-400 hover:text-white z-10">
         <i className={`fas fa-chevron-${collapsed ? 'right' : 'left'} text-xs`}></i>
       </button>
       {sidebarContent}
     </aside>
 
-    {/* Mobile sidebar */}
-    <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 w-56 bg-card border-r border-border flex flex-col transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 w-60 bg-card border-r border-border flex flex-col transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       {sidebarContent}
     </aside>
   </>);
@@ -113,9 +94,9 @@ function Topbar() {
   return (
     <header className="h-14 bg-card/80 backdrop-blur border-b border-border flex items-center justify-between px-6 sticky top-0 z-30">
       <div className="flex items-center gap-4">
-        <h1 className="text-lg font-bold text-white ml-12 lg:ml-0">Marsa Maroc <span className="text-orange-400">PortOps</span></h1>
+        <h1 className="text-lg font-bold text-white ml-12 lg:ml-0">RTG <span className="text-orange-400">Driver Planner</span></h1>
         <span className="hidden sm:inline text-xs text-slate-600">|</span>
-        <span className="hidden sm:inline text-xs text-slate-400">TCE & TC3 — Port de Casablanca</span>
+        <span className="hidden sm:inline text-xs text-slate-400">Gestion des conducteurs RTG</span>
       </div>
       <div className="flex items-center gap-4 text-sm text-slate-400">
         <span className="hidden md:inline"><i className="far fa-calendar mr-1.5"></i>{time.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</span>
@@ -129,10 +110,10 @@ function Topbar() {
 // ==========================================
 // Layout
 // ==========================================
-function Layout({ children, term, setTerm }) {
+function Layout({ children }) {
   return (
     <div className="flex min-h-screen bg-port">
-      <Sidebar term={term} setTerm={setTerm} />
+      <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
@@ -141,26 +122,9 @@ function Layout({ children, term, setTerm }) {
           </div>
         </main>
         <footer className="bg-card border-t border-border px-6 py-3 text-center text-xs text-slate-600">
-          © 2026 Marsa Maroc — Port de Casablanca | TCE & TC3 | Données réelles 29-30/06/2026
+          © 2026 Marsa Maroc — RTG Driver Planner — Terminal à conteneurs
         </footer>
       </div>
     </div>
   );
-}
-
-// ==========================================
-// ChartCanvas wrapper
-// ==========================================
-function ChartCanvas({ type, data, options, height = 280 }) {
-  const canvasRef = React.useRef(null);
-  const chartRef = React.useRef(null);
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    if (chartRef.current) chartRef.current.destroy();
-    Chart.defaults.color = '#94A3B8';
-    Chart.defaults.borderColor = '#243555';
-    chartRef.current = new Chart(canvasRef.current, { type, data, options });
-    return () => { if (chartRef.current) chartRef.current.destroy(); };
-  }, [type, data, options]);
-  return <canvas ref={canvasRef} style={{ maxHeight: height }}></canvas>;
 }

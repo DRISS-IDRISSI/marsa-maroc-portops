@@ -13,9 +13,6 @@ function App() {
           <Route path="/livraison" element={<Livraison term={term} />} />
           <Route path="/ia" element={<IA term={term} />} />
           <Route path="/alertes" element={<Alertes term={term} />} />
-          <Route path="/rtg" element={<RtgHome />} />
-          <Route path="/rtg/planning" element={<PlanningMensuelRTG />} />
-          <Route path="/rtg/affectation" element={<AffectationDuJourRTG />} />
         </Routes>
       </Layout>
     </HashRouter>

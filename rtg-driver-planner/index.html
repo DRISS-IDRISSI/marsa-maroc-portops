@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marsa Maroc PortOps — TCE & TC3</title>
+    <title>RTG Driver Planner — Marsa Maroc</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <!-- react-router-dom@6's UMD bundle no longer bundles its own router core: it needs
-         @remix-run/router and react-router loaded as globals first, or the router throws
-         on mount. -->
+    <!-- react-router-dom@6's UMD bundle needs @remix-run/router and react-router loaded
+         as globals first, or the router throws on mount. -->
     <script src="https://unpkg.com/@remix-run/router@1/dist/router.umd.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-router@6/dist/umd/react-router.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-router-dom@6/dist/umd/react-router-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -39,6 +37,15 @@
 <body class="min-h-screen">
     <div id="root"></div>
     <script src="src/data.js"></script>
+    <script src="src/store.js"></script>
+    <script src="src/engines/dateUtils.js"></script>
+    <script src="src/engines/shiftRotationEngine.js"></script>
+    <script src="src/engines/absenceEngine.js"></script>
+    <script src="src/engines/restDayEngine.js"></script>
+    <script src="src/engines/vacationRotationEngine.js"></script>
+    <script src="src/engines/zoneRotationEngine.js"></script>
+    <script src="src/engines/planningEngine.js"></script>
+    <script src="src/engines/validationEngine.js"></script>
     <script src="src/components.js" type="text/babel"></script>
     <script src="src/pages.js" type="text/babel"></script>
     <script src="src/app.js" type="text/babel"></script>
