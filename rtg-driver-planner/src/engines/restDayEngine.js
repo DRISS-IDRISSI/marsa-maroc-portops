@@ -39,6 +39,7 @@ const RestDayEngine = {
       const date = RTGDate.makeDate(year, month, d);
       const iso = RTGDate.toISO(date);
       if (AbsenceEngine.getFixedStatus(driver, iso, state)) continue;
+      if (HolidayEngine.getHoliday(iso, state.config)) continue;
       if (team) {
         const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
         if (state.config.offShift3Dimanche && shift === "S3" && RTGDate.isSunday(date)) continue;

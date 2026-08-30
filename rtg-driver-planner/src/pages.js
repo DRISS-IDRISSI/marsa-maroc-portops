@@ -17,7 +17,8 @@ const RTG_STATUS_META = {
   MALADIE: { code: "M", label: "Maladie", className: "bg-purple-600/30 text-purple-300 border-purple-600/40" },
   ABSENCE: { code: "A", label: "Absence", className: "bg-red-600/30 text-red-300 border-red-600/40" },
   FORMATION: { code: "F", label: "Formation", className: "bg-blue-600/30 text-blue-300 border-blue-600/40" },
-  OFF: { code: "OFF", label: "Off (Shift 3 dimanche)", className: "bg-slate-950 text-slate-500 border-slate-800" }
+  OFF: { code: "OFF", label: "Off (Shift 3 dimanche)", className: "bg-slate-950 text-slate-500 border-slate-800" },
+  FERIE: { code: "FÉR", label: "Jour férié (chômé)", className: "bg-indigo-500/25 text-indigo-300 border-indigo-500/40" }
 };
 
 function Legend() {
@@ -134,7 +135,7 @@ function PlanningGrid({ planning, drivers, detailLevel, config }) {
             {planning.days.map(day => {
               const holiday = HolidayEngine.getHoliday(day.iso, config);
               return (
-                <th key={day.iso} className={`border border-border/60 px-1.5 py-2 min-w-[34px] ${holiday ? "bg-purple-500/20 text-purple-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
+                <th key={day.iso} className={`border border-border/60 px-1.5 py-2 min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
                   {String(day.day).padStart(2, "0")}
                 </th>
               );
@@ -299,12 +300,8 @@ function PlanningMensuel() {
 
       <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} />
 
-      <div className="bg-card rounded-xl border border-border p-4 space-y-2">
+      <div className="bg-card rounded-xl border border-border p-4">
         <Legend />
-        <div className="flex items-center gap-2 text-[11px] text-purple-300">
-          <span className="w-3 h-3 rounded bg-purple-500/30 border border-purple-500/50 inline-block"></span>
-          Jour férié (Maroc) — affiché à titre indicatif, sans impact sur les repos ni les affectations
-        </div>
       </div>
     </div>
   );
@@ -340,8 +337,8 @@ function AffectationDuJour() {
       </div>
 
       {holiday && (
-        <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 text-purple-300 rounded-xl px-4 py-3 text-sm">
-          <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} (affiché à titre indicatif, sans impact sur les affectations)
+        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 rounded-xl px-4 py-3 text-sm">
+          <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} — journée chômée, aucune affectation générée
         </div>
       )}
 

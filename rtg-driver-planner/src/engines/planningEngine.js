@@ -6,12 +6,15 @@
 
 const PlanningEngine = {
   // Statut d'un conducteur à une date donnée, AVANT toute modification manuelle.
-  // Ordre de priorité : congé/maladie/absence figés > OFF shift3 dimanche > repos généré > présent.
+  // Ordre de priorité : congé/maladie/absence/formation figés > jour férié (chômé
+  // pour tous) > OFF shift3 dimanche > repos généré > présent.
   getDailyStatus(driver, date, state, teams) {
     const iso = RTGDate.toISO(date);
 
     const fixed = AbsenceEngine.getFixedStatus(driver, iso, state);
     if (fixed) return fixed;
+
+    if (HolidayEngine.getHoliday(iso, state.config)) return "FERIE";
 
     const team = teams.find(t => t.id === driver.teamId);
     if (!team) return "ABSENCE";
