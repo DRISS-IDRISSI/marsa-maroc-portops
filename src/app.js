@@ -1,10 +1,10 @@
 const { useState } = React;
-const { BrowserRouter, Routes, Route } = ReactRouterDOM;
+const { HashRouter, Routes, Route } = ReactRouterDOM;
 
 function App() {
   const [term, setTerm] = useState('all');
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Layout term={term} setTerm={setTerm}>
         <Routes>
           <Route path="/" element={<Dashboard term={term} />} />
@@ -18,7 +18,7 @@ function App() {
           <Route path="/rtg/affectation" element={<AffectationDuJourRTG />} />
         </Routes>
       </Layout>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
