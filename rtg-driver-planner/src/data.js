@@ -51,12 +51,11 @@ const RTG_CONFIG = {
   // driver.initialZone / driver.initialVacation s'appliquent exactement à cette date.
   rotationReferenceDate: "2026-08-01",
   // Charge de travail par shift/vacation (répartie sur 100%), utilisée pour fixer
-  // le ratio V1/V2 de conducteurs présents au sein de chaque shift : ex. pour S1,
-  // sur les conducteurs présents ce jour-là, ~1/3 sont placés en V1 et ~2/3 en V2
-  // (ratio 10:20). Le ratio est recalculé chaque jour selon le shift en cours pour
-  // l'équipe, avec une rotation équitable des conducteurs entre les deux groupes.
+  // le ratio V1/V2 de conducteurs présents au sein de chaque shift. Le ratio est
+  // recalculé chaque jour selon le shift en cours pour l'équipe, avec une rotation
+  // équitable des conducteurs entre les deux groupes.
   vacationRatioByShift: {
-    S1: { V1: 10, V2: 20 },
+    S1: { V1: 13.5, V2: 16.5 },
     S2: { V1: 25, V2: 25 },
     S3: { V1: 12, V2: 8 }
   },
@@ -229,7 +228,7 @@ const RTG_SEED = {
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
   // ignorer d'anciennes données mises en cache (ex. un ancien roster de conducteurs)
   // plutôt que de les fusionner avec le nouveau seed.
-  dataVersion: 6,
+  dataVersion: 7,
   drivers: RTG_DRIVERS,
   teams: RTG_TEAMS,
   config: RTG_CONFIG,
