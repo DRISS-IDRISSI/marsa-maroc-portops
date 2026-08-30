@@ -63,6 +63,53 @@ const RestDayEngine = {
     return candidates;
   },
 
+  // Passage 1 : repos OBLIGATOIRE le dimanche sur les shifts 1 et 2 (le shift 3 est
+  // déjà OFF ce jour-là) dès que l'équipe compterait plus de 2×sundayVacationCap
+  // conducteurs disponibles, pour ne jamais dépasser sundayVacationCap par vacation.
+  // Sélection en rotation équitable (le point de départ avance à chaque dimanche
+  // concerné) pour que ce ne soit pas toujours les mêmes conducteurs qui travaillent
+  // — ou qui restent chez eux — le dimanche. Ce repos consomme le quota mensuel.
+  getMandatorySundayOff(team, month, year, state, teamDrivers) {
+    const mandatory = {};
+    teamDrivers.forEach(d => { mandatory[d.id] = new Set(); });
+    if (!team) return mandatory;
+
+    const cap = state.config.sundayVacationCap || 6;
+    const N = teamDrivers.length || 1;
+    const dim = RTGDate.daysInMonth(month, year);
+    let pointer = 0;
+
+    for (let d = 1; d <= dim; d++) {
+      const date = RTGDate.makeDate(year, month, d);
+      if (!RTGDate.isSunday(date)) continue;
+      const iso = RTGDate.toISO(date);
+      if (HolidayEngine.getHoliday(iso, state.config)) continue;
+      const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
+      if (shift !== "S1" && shift !== "S2") continue;
+
+      const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state));
+      const requiredOff = available.length - 2 * cap;
+      if (requiredOff <= 0) continue;
+
+      const availableIds = new Set(available.map(dr => dr.id));
+      let chosen = 0;
+      let scanned = 0;
+      let idx = pointer;
+      while (chosen < requiredOff && scanned < N * 2) {
+        const candidate = teamDrivers[idx % N];
+        if (availableIds.has(candidate.id)) {
+          mandatory[candidate.id].add(d);
+          chosen++;
+        }
+        idx++;
+        scanned++;
+      }
+      pointer = idx % N;
+    }
+
+    return mandatory;
+  },
+
   // Calcule les repos de TOUTE l'équipe en une passe, avec un plafond partagé du
   // nombre de conducteurs en repos le même jour civil.
   getTeamRestDays(team, month, year, state) {
@@ -78,21 +125,30 @@ const RestDayEngine = {
     const dayUsage = {};
     const results = {};
 
+    const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers);
+
     teamDrivers.forEach((driver, idxInTeam) => {
       const candidates = this.getCandidatesForDriver(driver, month, year, state, team);
       const congeDays = this.countCongeDaysInMonth(driver, month, year, state);
       const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
       const quota = Math.max(0, state.config.reposMensuel - reduction);
-      const target = Math.min(quota, candidates.length);
 
-      if (target <= 0) { results[driver.id] = []; return; }
+      const mandatoryDays = mandatorySundayOff[driver.id] || new Set();
+      const chosen = [];
+      const used = new Set();
+      mandatoryDays.forEach(d => {
+        chosen.push(d);
+        used.add(d);
+        dayUsage[d] = (dayUsage[d] || 0) + 1;
+      });
+
+      const target = Math.max(0, Math.min(quota, candidates.length) - chosen.length);
+
+      if (target <= 0) { results[driver.id] = chosen.sort((a, b) => a - b); return; }
 
       const spacing = candidates.length / target;
       const offset = Math.floor((idxInTeam / N) * candidates.length);
       const windowRadius = Math.max(1, Math.floor(spacing / 2));
-
-      const chosen = [];
-      const used = new Set();
 
       for (let k = 0; k < target; k++) {
         const basePos = Math.round(k * spacing);

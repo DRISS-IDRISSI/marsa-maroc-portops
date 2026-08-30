@@ -6,6 +6,9 @@
 // La répartition tourne équitablement d'un jour à l'autre (curseur commun, gelé du
 // dimanche au lundi comme l'exigeait l'ancienne règle d'exception) afin qu'un même
 // conducteur ne reste pas toujours dans le même groupe.
+// Exception : le dimanche sur S1/S2, l'effectif présent est déjà plafonné par
+// restDayEngine (repos obligatoire) à sundayVacationCap×2 ; on répartit alors 50/50
+// plutôt que selon le ratio normal, pour ne jamais dépasser le plafond par vacation.
 // ==========================================
 
 const VacationRotationEngine = {
@@ -57,7 +60,14 @@ const VacationRotationEngine = {
     if (idx === -1) { this._cache[key] = null; return null; }
 
     const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-    const ratio = (state.config.vacationRatioByShift && state.config.vacationRatioByShift[shift]) || { V1: 1, V2: 1 };
+    // Le dimanche, sur S1/S2, restDayEngine a déjà ramené l'effectif présent à
+    // sundayVacationCap×2 au maximum : on répartit alors 50/50 (pas le ratio normal
+    // du shift, pensé pour un effectif complet) pour ne jamais dépasser le plafond
+    // par vacation.
+    const isSundayCapped = RTGDate.isSunday(date) && (shift === "S1" || shift === "S2");
+    const ratio = isSundayCapped
+      ? { V1: 1, V2: 1 }
+      : (state.config.vacationRatioByShift && state.config.vacationRatioByShift[shift]) || { V1: 1, V2: 1 };
     const n = present.length;
     const nV1 = Math.round(n * ratio.V1 / (ratio.V1 + ratio.V2));
 
