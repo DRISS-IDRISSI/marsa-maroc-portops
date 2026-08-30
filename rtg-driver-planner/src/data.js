@@ -175,6 +175,11 @@ const RTG_MALADIES = [
 const RTG_ABSENCES = [];
 
 const RTG_SEED = {
+  // Incrémenté à chaque changement du roster/de la structure de référence : le store
+  // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
+  // ignorer d'anciennes données mises en cache (ex. un ancien roster de conducteurs)
+  // plutôt que de les fusionner avec le nouveau seed.
+  dataVersion: 3,
   drivers: RTG_DRIVERS,
   teams: RTG_TEAMS,
   config: RTG_CONFIG,

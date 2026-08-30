@@ -18,8 +18,18 @@ function rtgLoadInitialState() {
     const raw = localStorage.getItem(RTG_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Complète les clés manquantes si le seed a évolué depuis la dernière visite.
       const seed = rtgCloneSeed();
+      if (parsed.dataVersion !== seed.dataVersion) {
+        // Le roster/la référence a changé depuis la dernière visite (nouvelle liste de
+        // conducteurs, matricules corrigés...) : les anciennes données en cache ne
+        // correspondent plus (elles référencent d'anciens IDs de conducteurs), donc on
+        // repart du nouveau seed plutôt que de les fusionner.
+        rtgPersist(seed);
+        return seed;
+      }
+      // Même version : on fusionne pour ne pas perdre les modifications manuelles de
+      // l'utilisateur (congés/repos édités, etc.) tout en complétant les clés que le
+      // seed aurait pu ajouter depuis.
       return Object.assign(seed, parsed);
     }
   } catch (e) {
