@@ -57,15 +57,19 @@ const RestDayEngine = {
     }
 
     const spacing = candidates.length / target;
-    const teamDrivers = state.drivers.filter(dr => dr.teamId === driver.teamId);
+    // Décalage propre à CHAQUE conducteur (pas seulement à target=6 groupes) : sans ça,
+    // idxInTeam % target ne produit que `target` décalages distincts, donc plusieurs
+    // conducteurs d'une même équipe de ~25 se retrouvent avec des jours de repos
+    // identiques et peuvent finir en repos tous ensemble le même jour.
+    const teamDrivers = state.drivers.filter(dr => dr.teamId === driver.teamId && dr.actif !== false);
     const idxInTeam = Math.max(0, teamDrivers.findIndex(dr => dr.id === driver.id));
-    const offset = idxInTeam % target;
+    const teamSize = teamDrivers.length || 1;
+    const offset = Math.floor((idxInTeam / teamSize) * candidates.length);
 
     const chosen = [];
     const used = new Set();
     for (let k = 0; k < target; k++) {
-      let pos = Math.round(((offset + k) % target) * spacing + spacing / 2);
-      pos = Math.max(0, Math.min(candidates.length - 1, pos));
+      let pos = (offset + Math.round(k * spacing)) % candidates.length;
       let tries = 0;
       while (used.has(candidates[pos]) && tries < candidates.length) {
         pos = (pos + 1) % candidates.length;
