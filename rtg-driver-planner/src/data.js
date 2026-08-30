@@ -27,6 +27,15 @@ const RTG_CONFIG = {
   // Pour chaque tranche de 5 jours de CONGÉ dans le mois, le quota de repos du
   // conducteur ce mois-là est réduit d'un jour (plancher 0).
   reposReductionParJoursCongé: 5,
+  // Poids de préférence pour le placement des repos, par jour de la semaine
+  // (indices Lundi=0 ... Dimanche=6) : plus le poids est élevé, plus le jour est
+  // privilégié pour y placer un repos (car charge de travail plus faible).
+  // Lundi/Mardi = charge faible en début de semaine, Mercredi-Vendredi = pic de
+  // charge (à éviter pour les repos), Dimanche = charge la plus faible.
+  restDayWeightByDow: [3, 3, 1, 1, 1, 2, 4],
+  // Le samedi, si l'équipe est sur le SHIFT 2 cette semaine-là, la charge est
+  // plus faible que d'habitude : ce poids remplace celui de restDayWeightByDow[5].
+  restDayWeightSaturdayShift2: 4,
   offShift3Dimanche: true,
   exceptionDimancheLundi: true,
   shiftRotationCycleDefault: ["S1", "S3", "S2"],
@@ -215,7 +224,7 @@ const RTG_SEED = {
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
   // ignorer d'anciennes données mises en cache (ex. un ancien roster de conducteurs)
   // plutôt que de les fusionner avec le nouveau seed.
-  dataVersion: 4,
+  dataVersion: 5,
   drivers: RTG_DRIVERS,
   teams: RTG_TEAMS,
   config: RTG_CONFIG,
