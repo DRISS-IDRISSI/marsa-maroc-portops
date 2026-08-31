@@ -55,7 +55,7 @@ function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId
       <div>
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Détail</label>
         <div className="flex gap-1">
-          {[["code","C"],["vacation","C/V1"],["zone","C/V1/A"]].map(([k,l]) => (
+          {[["code","C"],["vacation","V1"],["zone","V1/A"]].map(([k,l]) => (
             <button key={k} onClick={() => setDetailLevel(k)}
               className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${detailLevel === k ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{l}</button>
           ))}
@@ -110,10 +110,10 @@ function Cell({ assignment, detailLevel }) {
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
   let text = meta.code;
   if (assignment.status === "PRESENT" && detailLevel !== "code") {
-    const parts = [meta.code];
+    const parts = [];
     if (assignment.vacation) parts.push(assignment.vacation);
     if (detailLevel === "zone" && assignment.zone) parts.push(assignment.zone);
-    text = parts.join("/");
+    text = parts.length ? parts.join("/") : meta.code;
   }
   return (
     <td className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className}`} title={assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label}>

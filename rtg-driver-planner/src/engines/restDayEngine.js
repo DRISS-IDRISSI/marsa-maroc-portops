@@ -64,11 +64,15 @@ const RestDayEngine = {
   },
 
   // Passage 1 : repos OBLIGATOIRE le dimanche sur les shifts 1 et 2 (le shift 3 est
-  // déjà OFF ce jour-là) dès que l'équipe compterait plus de 2×sundayVacationCap
-  // conducteurs disponibles, pour ne jamais dépasser sundayVacationCap par vacation.
-  // Sélection en rotation équitable (le point de départ avance à chaque dimanche
-  // concerné) pour que ce ne soit pas toujours les mêmes conducteurs qui travaillent
-  // — ou qui restent chez eux — le dimanche. Ce repos consomme le quota mensuel.
+  // déjà OFF ce jour-là) pour ne jamais dépasser sundayVacationCap par vacation.
+  // La vacation de chaque conducteur disponible ce dimanche-là est désormais son
+  // alternance INDIVIDUELLE (VacationRotationEngine, indépendante de la présence —
+  // §9-10), et non plus un split de groupe forcé à 50/50 : les deux groupes V1 et
+  // V2 issus de cette alternance sont donc traités séparément, chacun plafonné à
+  // sundayVacationCap. Sélection en rotation équitable au sein de chaque groupe (le
+  // point de départ avance à chaque groupe/dimanche traité) pour que ce ne soit pas
+  // toujours les mêmes conducteurs qui travaillent — ou qui restent chez eux — le
+  // dimanche. Ce repos consomme le quota mensuel.
   getMandatorySundayOff(team, month, year, state, teamDrivers) {
     const mandatory = {};
     teamDrivers.forEach(d => { mandatory[d.id] = new Set(); });
@@ -88,23 +92,32 @@ const RestDayEngine = {
       if (shift !== "S1" && shift !== "S2") continue;
 
       const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state));
-      const requiredOff = available.length - 2 * cap;
-      if (requiredOff <= 0) continue;
+      const byVacation = { V1: [], V2: [] };
+      available.forEach(dr => {
+        const vac = VacationRotationEngine.getVacationForDate(dr, date, state);
+        if (vac === "V1" || vac === "V2") byVacation[vac].push(dr);
+      });
 
-      const availableIds = new Set(available.map(dr => dr.id));
-      let chosen = 0;
-      let scanned = 0;
-      let idx = pointer;
-      while (chosen < requiredOff && scanned < N * 2) {
-        const candidate = teamDrivers[idx % N];
-        if (availableIds.has(candidate.id)) {
-          mandatory[candidate.id].add(d);
-          chosen++;
+      ["V1", "V2"].forEach(vac => {
+        const group = byVacation[vac];
+        const requiredOff = group.length - cap;
+        if (requiredOff <= 0) return;
+
+        const groupIds = new Set(group.map(dr => dr.id));
+        let chosen = 0;
+        let scanned = 0;
+        let idx = pointer;
+        while (chosen < requiredOff && scanned < N * 2) {
+          const candidate = teamDrivers[idx % N];
+          if (groupIds.has(candidate.id)) {
+            mandatory[candidate.id].add(d);
+            chosen++;
+          }
+          idx++;
+          scanned++;
         }
-        idx++;
-        scanned++;
-      }
-      pointer = idx % N;
+        pointer = idx % N;
+      });
     }
 
     return mandatory;
