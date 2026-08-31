@@ -48,11 +48,12 @@ const PlanningEngine = {
         if (vacDef) { startTime = vacDef.start; endTime = vacDef.end; }
       }
 
-      return { driver: driver, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime };
+      return { driver: driver, driverId: driver.id, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime };
     });
 
-    // Passe 2 : correctif zone A non prioritaire — par créneau (shift + vacation),
-    // si plus de 8 présents, un seul reste en zone A, le surplus double B-H.
+    // Passe 2 : répartition équitable des zones par créneau (shift + vacation) —
+    // zone A non prioritaire (vide si <8 présents, jamais doublée avant les autres
+    // si 8 ou plus).
     const groups = {};
     base.forEach(b => {
       if (b.status !== "PRESENT" || !b.shift || !b.vacation) return;
@@ -60,7 +61,7 @@ const PlanningEngine = {
       (groups[key] = groups[key] || []).push(b);
     });
     Object.keys(groups).forEach(key => {
-      ZoneBalancingEngine.rebalance(groups[key], state.config.zones);
+      ZoneBalancingEngine.assignZonesForSlot(groups[key], state.config.zones);
     });
 
     // Passe 3 : applique les affectations manuelles par-dessus le résultat auto.
