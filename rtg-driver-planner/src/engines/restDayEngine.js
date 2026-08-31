@@ -78,6 +78,12 @@ const RestDayEngine = {
   // bloc/dimanche traité) pour que ce ne soit pas toujours les mêmes conducteurs
   // qui travaillent — ou qui restent chez eux — le dimanche. Ce repos consomme le
   // quota mensuel.
+  // Utilise VacationRotationEngine.getRawVacationForDate (bascule calendaire pure du
+  // bloc, sans connaissance des repos individuels) plutôt que getVacationForDate :
+  // cette dernière gèle désormais la vacation autour des jours de REPOS de CHAQUE
+  // conducteur, donc dépend du statut du jour (PlanningEngine.getDailyStatus) qui
+  // dépend lui-même de RestDayEngine — l'appeler ici créerait une dépendance
+  // circulaire, puisqu'on est justement en train de calculer les repos.
   getMandatorySundayOff(team, month, year, state, teamDrivers) {
     const mandatory = {};
     teamDrivers.forEach(d => { mandatory[d.id] = new Set(); });
@@ -99,7 +105,7 @@ const RestDayEngine = {
       const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state));
       const byVacation = { V1: [], V2: [] };
       available.forEach(dr => {
-        const vac = VacationRotationEngine.getVacationForDate(dr, date, state);
+        const vac = VacationRotationEngine.getRawVacationForDate(dr, date, state);
         if (vac === "V1" || vac === "V2") byVacation[vac].push(dr);
       });
 
@@ -156,6 +162,27 @@ const RestDayEngine = {
       mandatoryDays.forEach(d => { dayUsage[d] = (dayUsage[d] || 0) + 1; });
     });
 
+    // Repos du DERNIER jour du mois précédent, par conducteur : deux mois sont
+    // calculés indépendamment l'un de l'autre, donc sans cette vérification un
+    // repos pourrait être choisi le 1er jour de CE mois alors que le conducteur
+    // était déjà en repos la veille (dernier jour du mois précédent) — deux
+    // repos consécutifs à cheval sur la frontière des mois. Ne regarde qu'en
+    // arrière (jamais le mois suivant) pour ne jamais créer de dépendance
+    // circulaire entre deux mois calculés l'un après l'autre.
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonthLastDay = RTGDate.daysInMonth(prevMonth, prevYear);
+    const prevMonthRestByDriver = {};
+    if (team) {
+      const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+      if (refDate.getTime() < RTGDate.makeDate(prevYear, prevMonth, prevMonthLastDay).getTime()) {
+        teamDrivers.forEach(driver => {
+          const prevDays = this.getRestDaysForMonth(driver, prevMonth, prevYear, state, state.teams);
+          prevMonthRestByDriver[driver.id] = prevDays.indexOf(prevMonthLastDay) !== -1;
+        });
+      }
+    }
+
     teamDrivers.forEach((driver, idxInTeam) => {
       const candidates = this.getCandidatesForDriver(driver, month, year, state, team);
       const congeDays = this.countCongeDaysInMonth(driver, month, year, state);
@@ -169,6 +196,9 @@ const RestDayEngine = {
         chosen.push(d);
         used.add(d);
       });
+      // Jour 0 virtuel : bloque le jour 1 par adjacence si le conducteur était
+      // déjà en repos le dernier jour du mois précédent.
+      if (prevMonthRestByDriver[driver.id]) used.add(0);
 
       const target = Math.max(0, Math.min(quota, candidates.length) - chosen.length);
 
