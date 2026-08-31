@@ -82,7 +82,7 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved }) {
           </select>
         </div>
         <div>
-          <label className={LABEL_CLS}>Vacation initiale</label>
+          <label className={LABEL_CLS}>Vacation (bloc fixe)</label>
           <select className={FIELD_CLS} value={form.initialVacation} onChange={e => setForm(f => Object.assign({}, f, { initialVacation: e.target.value }))}>
             {state.config.vacationCycle.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
@@ -159,7 +159,7 @@ function DriversPage() {
             <tr className="text-left">
               <th className="px-3 py-2">Mat</th><th className="px-3 py-2">Nom</th><th className="px-3 py-2">Prénom</th>
               <th className="px-3 py-2">Équipe</th><th className="px-3 py-2">Shift auj.</th><th className="px-3 py-2">Zone init.</th>
-              <th className="px-3 py-2">Vacation init.</th><th className="px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
+              <th className="px-3 py-2">Vacation</th><th className="px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>

@@ -19,8 +19,7 @@
 // Deux repos consécutifs pour un même conducteur sont évités (le choix d'un
 // jour candidat écarte systématiquement les jours immédiatement adjacents à
 // un repos déjà retenu ce mois-ci), sauf repli extrême si aucune autre
-// option n'est disponible. VacationRotationEngine.getVacationForDate gèle en
-// retour l'alternance V1/V2 de part et d'autre de tout repos ainsi placé.
+// option n'est disponible.
 // ==========================================
 
 const RestDayEngine = {
@@ -71,20 +70,13 @@ const RestDayEngine = {
 
   // Passage 1 : repos OBLIGATOIRE le dimanche sur les shifts 1 et 2 (le shift 3 est
   // déjà OFF ce jour-là) pour ne jamais dépasser sundayVacationCap par vacation.
-  // La vacation de chaque conducteur disponible ce dimanche-là est désormais son
-  // alternance INDIVIDUELLE (VacationRotationEngine, indépendante de la présence —
-  // §9-10), et non plus un split de groupe forcé à 50/50 : les deux groupes V1 et
-  // V2 issus de cette alternance sont donc traités séparément, chacun plafonné à
-  // sundayVacationCap. Sélection en rotation équitable au sein de chaque groupe (le
-  // point de départ avance à chaque groupe/dimanche traité) pour que ce ne soit pas
-  // toujours les mêmes conducteurs qui travaillent — ou qui restent chez eux — le
-  // dimanche. Ce repos consomme le quota mensuel.
-  // Utilise VacationRotationEngine.getRawVacationForDate (alternance calendaire pure,
-  // sans connaissance des repos) plutôt que getVacationForDate : cette dernière gèle
-  // désormais l'alternance autour des jours de REPOS, donc dépend du statut du jour
-  // (PlanningEngine.getDailyStatus) qui dépend lui-même de RestDayEngine — l'appeler
-  // ici créerait une dépendance circulaire, puisqu'on est justement en train de
-  // calculer les repos.
+  // Chaque conducteur appartient en permanence à un bloc V1 OU V2 (§9-10,
+  // driver.initialVacation, fixe) ; les deux blocs disponibles ce dimanche-là sont
+  // donc traités séparément, chacun plafonné à sundayVacationCap. Sélection en
+  // rotation équitable au sein de chaque bloc (le point de départ avance à chaque
+  // bloc/dimanche traité) pour que ce ne soit pas toujours les mêmes conducteurs
+  // qui travaillent — ou qui restent chez eux — le dimanche. Ce repos consomme le
+  // quota mensuel.
   getMandatorySundayOff(team, month, year, state, teamDrivers) {
     const mandatory = {};
     teamDrivers.forEach(d => { mandatory[d.id] = new Set(); });
@@ -106,7 +98,7 @@ const RestDayEngine = {
       const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state));
       const byVacation = { V1: [], V2: [] };
       available.forEach(dr => {
-        const vac = VacationRotationEngine.getRawVacationForDate(dr, date, state);
+        const vac = dr.initialVacation;
         if (vac === "V1" || vac === "V2") byVacation[vac].push(dr);
       });
 
