@@ -142,6 +142,7 @@ const RestDayEngine = {
 
     const teamDrivers = state.drivers.filter(dr => dr.teamId === (team ? team.id : null) && dr.actif !== false);
     const N = teamDrivers.length || 1;
+    const cap = state.config.sundayVacationCap || 6;
     // Plafond de conducteurs en repos le même jour : suffisamment large pour laisser
     // jouer la préférence des jours à faible charge, assez bas pour ne jamais vider
     // une part significative de l'équipe le même jour.
@@ -265,6 +266,71 @@ const RestDayEngine = {
 
       results[driver.id] = chosen.sort((a, b) => a - b);
     });
+
+    // Passage 2 : rattrapage du plafond du dimanche en utilisant la vacation
+    // RÉELLE (VacationRotationEngine.getVacationForDate, qui applique le
+    // correctif local autour de chaque repos individuel — §9-10) plutôt que
+    // l'approximation "brute" du Passage 1 ci-dessus. Les deux peuvent diverger
+    // ponctuellement pour un conducteur dont un repos tombe un dimanche ou le
+    // lundi juste après (le correctif d'un seul jour s'applique alors même là) :
+    // ce conducteur peut se retrouver compté dans le mauvais groupe par le
+    // Passage 1, qui ne connaît que la bascule brute. On met `results` en cache
+    // PRÉCOCEMENT pour que getVacationForDate (via PlanningEngine.getDailyStatus
+    // → RestDayEngine.getRestDaysForMonth) puisse le relire sans dépendance
+    // circulaire, maintenant qu'il est complet.
+    if (team) {
+      this._teamCache[key] = results;
+      VacationRotationEngine.clearCache();
+
+      const dim2 = RTGDate.daysInMonth(month, year);
+      for (let d = 1; d <= dim2; d++) {
+        const date = RTGDate.makeDate(year, month, d);
+        if (!RTGDate.isSunday(date)) continue;
+        const iso = RTGDate.toISO(date);
+        if (HolidayEngine.getHoliday(iso, state.config)) continue;
+        const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
+        if (shift !== "S1" && shift !== "S2") continue;
+
+        ["V1", "V2"].forEach(vac => {
+          const presentInVac = teamDrivers.filter(dr => {
+            if (results[dr.id].indexOf(d) !== -1) return false;
+            if (AbsenceEngine.getFixedStatus(dr, iso, state)) return false;
+            return VacationRotationEngine.getVacationForDate(dr, date, state, state.teams) === vac;
+          });
+          let surplus = presentInVac.length - cap;
+          if (surplus <= 0) return;
+
+          // Ordre déterministe (par matricule) pour un résultat reproductible.
+          const ordered = presentInVac.slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule)));
+          for (const dr of ordered) {
+            if (surplus <= 0) break;
+            const driverDays = results[dr.id];
+            const protectedDays = mandatorySundayOff[dr.id] || new Set();
+            // Cherche, parmi les repos déjà retenus ce mois-ci pour ce
+            // conducteur, un jour NON obligatoire et non adjacent au nouveau
+            // dimanche, à déplacer vers ce dimanche : le total de repos du mois
+            // ne change pas, seule sa répartition est ajustée.
+            let swapIdx = -1;
+            for (let i = driverDays.length - 1; i >= 0; i--) {
+              const day = driverDays[i];
+              if (day === d || protectedDays.has(day)) continue;
+              // Après retrait de CE jour, aucun des jours restants ne doit être
+              // adjacent au nouveau dimanche.
+              const wouldStayAdjacent = driverDays.some((other, j) => j !== i && Math.abs(other - d) <= 1);
+              if (wouldStayAdjacent) continue;
+              swapIdx = i;
+              break;
+            }
+            if (swapIdx === -1) continue;
+            driverDays.splice(swapIdx, 1);
+            driverDays.push(d);
+            driverDays.sort((a, b) => a - b);
+            VacationRotationEngine.clearCache();
+            surplus--;
+          }
+        });
+      }
+    }
 
     this._teamCache[key] = results;
     return results;
