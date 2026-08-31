@@ -15,6 +15,12 @@
 //
 // Le quota de 6 repos est réduit d'un jour pour chaque tranche de
 // config.reposReductionParJoursCongé (5) jours de CONGÉ pris dans le mois.
+//
+// Deux repos consécutifs pour un même conducteur sont évités (le choix d'un
+// jour candidat écarte systématiquement les jours immédiatement adjacents à
+// un repos déjà retenu ce mois-ci), sauf repli extrême si aucune autre
+// option n'est disponible. VacationRotationEngine.getVacationForDate gèle en
+// retour l'alternance V1/V2 de part et d'autre de tout repos ainsi placé.
 // ==========================================
 
 const RestDayEngine = {
@@ -73,6 +79,12 @@ const RestDayEngine = {
   // point de départ avance à chaque groupe/dimanche traité) pour que ce ne soit pas
   // toujours les mêmes conducteurs qui travaillent — ou qui restent chez eux — le
   // dimanche. Ce repos consomme le quota mensuel.
+  // Utilise VacationRotationEngine.getRawVacationForDate (alternance calendaire pure,
+  // sans connaissance des repos) plutôt que getVacationForDate : cette dernière gèle
+  // désormais l'alternance autour des jours de REPOS, donc dépend du statut du jour
+  // (PlanningEngine.getDailyStatus) qui dépend lui-même de RestDayEngine — l'appeler
+  // ici créerait une dépendance circulaire, puisqu'on est justement en train de
+  // calculer les repos.
   getMandatorySundayOff(team, month, year, state, teamDrivers) {
     const mandatory = {};
     teamDrivers.forEach(d => { mandatory[d.id] = new Set(); });
@@ -94,7 +106,7 @@ const RestDayEngine = {
       const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state));
       const byVacation = { V1: [], V2: [] };
       available.forEach(dr => {
-        const vac = VacationRotationEngine.getVacationForDate(dr, date, state);
+        const vac = VacationRotationEngine.getRawVacationForDate(dr, date, state);
         if (vac === "V1" || vac === "V2") byVacation[vac].push(dr);
       });
 
@@ -173,6 +185,11 @@ const RestDayEngine = {
       const offset = Math.floor((idxInTeam / N) * candidates.length);
       const windowRadius = Math.max(1, Math.floor(spacing / 2));
 
+      // Un jour candidat est adjacent (veille/lendemain civil) à un repos déjà
+      // retenu pour CE conducteur : à éviter en priorité pour ne jamais produire
+      // deux repos consécutifs.
+      const isAdjacentToUsed = day => used.has(day - 1) || used.has(day + 1);
+
       for (let k = 0; k < target; k++) {
         const basePos = Math.round(k * spacing);
         let best = null;
@@ -182,6 +199,7 @@ const RestDayEngine = {
             const pos = ((offset + basePos + dj) % candidates.length + candidates.length) % candidates.length;
             const day = candidates[pos];
             if (used.has(day)) continue;
+            if (isAdjacentToUsed(day)) continue;
             if ((dayUsage[day] || 0) >= maxPerDay) continue;
             const weight = this.getDayWeight(RTGDate.makeDate(year, month, day), team, state);
             if (!best || weight > best.weight || (weight === best.weight && Math.abs(dj) < best.dist)) {
@@ -190,16 +208,30 @@ const RestDayEngine = {
           }
         }
         if (!best) {
-          // Repli : rien de disponible dans la fenêtre (plafond atteint partout autour) —
-          // recherche linéaire du premier jour candidat encore sous le plafond.
+          // Repli niveau 1 : rien de disponible dans la fenêtre (plafond atteint
+          // partout autour) — recherche linéaire du premier jour candidat encore
+          // sous le plafond, non adjacent à un repos déjà choisi.
           let pos = (offset + basePos) % candidates.length;
           let tries = 0;
           let found = null;
           while (tries < candidates.length) {
             const day = candidates[pos];
-            if (!used.has(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
+            if (!used.has(day) && !isAdjacentToUsed(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
             pos = (pos + 1) % candidates.length;
             tries++;
+          }
+          if (found === null) {
+            // Repli niveau 2 : aucun jour non adjacent disponible (mois très
+            // contraint) — on relâche uniquement la contrainte d'adjacence, le
+            // plafond partagé et l'unicité du jour restant respectés.
+            pos = (offset + basePos) % candidates.length;
+            tries = 0;
+            while (tries < candidates.length) {
+              const day = candidates[pos];
+              if (!used.has(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
+              pos = (pos + 1) % candidates.length;
+              tries++;
+            }
           }
           best = { day: found !== null ? found : candidates[pos] };
         }
