@@ -47,9 +47,8 @@ const RTG_CONFIG = {
   // Lundi de la semaine de référence utilisée pour caler la rotation des shifts
   // (semaine contenant le 01/08/2026, telle qu'observée sur les plannings fournis).
   referenceWeekStart: "2026-07-27",
-  // Date à partir de laquelle la rotation de zone est calculée ; driver.initialZone
-  // s'applique exactement à cette date (driver.initialVacation, lui, est fixe et ne
-  // dépend d'aucune date — voir rtgBuildTeam dans ce fichier).
+  // Date à partir de laquelle les rotations de zone/vacation sont calculées ;
+  // driver.initialZone / driver.initialVacation s'appliquent exactement à cette date.
   rotationReferenceDate: "2026-08-01",
   // Charge de travail par shift/vacation (répartie sur 100%), utilisée pour fixer
   // le ratio V1/V2 de conducteurs présents au sein de chaque shift. Le ratio est
@@ -104,11 +103,11 @@ function rtgBuildTeam(teamId, list) {
     teamId: teamId,
     initialShift: RTG_TEAMS.find(t => t.id === teamId).shiftCycle[0],
     initialZone: zones[i % zones.length],
-    // Vacation FIXE et PERMANENTE du conducteur (§9-10, mise à jour d'après la
-    // liste officielle des conducteurs RTG par shift et vacation) : un conducteur
-    // appartient en permanence au bloc V1 OU au bloc V2, jamais aux deux — chaque
-    // vacation travaille en bloc, les conducteurs d'un même bloc ne se séparent
-    // jamais. Ce n'est plus un point de départ pour une alternance quotidienne.
+    // Bloc de vacation du conducteur à rotationReferenceDate (§9-10, d'après la
+    // liste officielle des conducteurs RTG par shift et vacation) : le conducteur
+    // appartient en permanence à ce bloc (les membres d'un même bloc ne se
+    // séparent jamais), mais le bloc ENTIER bascule chaque jour entre V1 et V2,
+    // gelé entre dimanche et lundi — voir VacationRotationEngine.getVacationForDate.
     initialVacation: d.vac,
     statut: "PRESENT",
     dateEntree: "2020-01-01",

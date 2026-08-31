@@ -41,7 +41,7 @@ const PlanningEngine = {
       let shift = null, vacation = null, zone = null, startTime = null, endTime = null;
       if (status === "PRESENT" && team) {
         shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-        vacation = VacationRotationEngine.getVacationForDate(driver);
+        vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
         zone = ZoneRotationEngine.getZoneForDate(driver, date, state, teams);
         const vacDefs = state.config.vacations[shift] || [];
         const vacDef = vacDefs.find(v => v.id === vacation);
@@ -106,6 +106,7 @@ const PlanningEngine = {
   generateMonthlyPlanning(month, year, state) {
     RestDayEngine.clearCache();
     ZoneRotationEngine.clearCache();
+    VacationRotationEngine.clearCache();
 
     const dim = RTGDate.daysInMonth(month, year);
     const days = [];

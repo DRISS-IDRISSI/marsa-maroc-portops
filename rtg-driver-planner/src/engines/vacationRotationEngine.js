@@ -1,16 +1,42 @@
 // ==========================================
-// RTG DRIVER PLANNER — Vacation FIXE du conducteur (§9-10)
-// Règle métier (mise à jour d'après la liste officielle des conducteurs RTG par
-// shift et vacation) : chaque conducteur appartient en PERMANENCE à un seul bloc,
-// V1 OU V2, jamais les deux. Chaque vacation travaille en bloc — les conducteurs
-// d'un même bloc ne se séparent jamais, il n'y a plus d'alternance quotidienne
-// individuelle entre V1 et V2. La vacation d'un conducteur est donc simplement
-// driver.initialVacation, fixée une fois pour toutes (indépendante de la date, de
-// la présence, du shift ou de toute charge de travail).
+// RTG DRIVER PLANNER — Rotation du BLOC de vacation (§9-10)
+// Règle métier : chaque conducteur appartient à un bloc fixe (défini par
+// driver.initialVacation, d'après la liste officielle des conducteurs RTG par
+// shift et vacation — les membres d'un même bloc ne se séparent JAMAIS, ils
+// bougent toujours ensemble). Ce bloc bascule ENTIER, jour après jour, entre
+// Vacation 1 et Vacation 2 : si le bloc est affecté V1 le jour j, il passe à V2
+// le jour j+1, SAUF entre dimanche et lundi où il garde la même vacation
+// (changement de shift). driver.initialVacation fixe uniquement la vacation du
+// bloc du conducteur à rotationReferenceDate — pas sa vacation permanente.
 // ==========================================
 
 const VacationRotationEngine = {
-  getVacationForDate(driver) {
-    return driver.initialVacation || null;
+  _cache: {},
+
+  clearCache() {
+    this._cache = {};
+  },
+
+  getVacationForDate(driver, date, state) {
+    const iso = RTGDate.toISO(date);
+    const key = driver.id + "_" + iso;
+    if (this._cache[key] !== undefined) return this._cache[key];
+
+    const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+    if (date.getTime() < refDate.getTime()) { this._cache[key] = null; return null; }
+
+    let toggles = 0;
+    let cursor = refDate;
+    while (cursor.getTime() < date.getTime()) {
+      const next = RTGDate.addDays(cursor, 1);
+      const freeze = state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next);
+      if (!freeze) toggles++;
+      cursor = next;
+    }
+
+    const start = driver.initialVacation === "V2" ? 1 : 0;
+    const result = (start + toggles) % 2 === 0 ? "V1" : "V2";
+    this._cache[key] = result;
+    return result;
   }
 };

@@ -70,8 +70,9 @@ const RestDayEngine = {
 
   // Passage 1 : repos OBLIGATOIRE le dimanche sur les shifts 1 et 2 (le shift 3 est
   // déjà OFF ce jour-là) pour ne jamais dépasser sundayVacationCap par vacation.
-  // Chaque conducteur appartient en permanence à un bloc V1 OU V2 (§9-10,
-  // driver.initialVacation, fixe) ; les deux blocs disponibles ce dimanche-là sont
+  // La vacation de chaque conducteur disponible ce dimanche-là est celle de son
+  // bloc ce jour précis (VacationRotationEngine, bascule quotidienne du bloc entier,
+  // gelée dimanche→lundi — §9-10) ; les deux blocs V1 et V2 de ce dimanche-là sont
   // donc traités séparément, chacun plafonné à sundayVacationCap. Sélection en
   // rotation équitable au sein de chaque bloc (le point de départ avance à chaque
   // bloc/dimanche traité) pour que ce ne soit pas toujours les mêmes conducteurs
@@ -98,7 +99,7 @@ const RestDayEngine = {
       const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state));
       const byVacation = { V1: [], V2: [] };
       available.forEach(dr => {
-        const vac = dr.initialVacation;
+        const vac = VacationRotationEngine.getVacationForDate(dr, date, state);
         if (vac === "V1" || vac === "V2") byVacation[vac].push(dr);
       });
 
