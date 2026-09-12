@@ -120,9 +120,12 @@ function TeamNameEditor({ team, editable }) {
     );
   }
   return (
-    <div className="flex items-center gap-1.5 mb-1 group">
+    <div className="flex items-center gap-1.5 mb-1">
       <div className="text-xs uppercase tracking-wider text-slate-500">{team.nom}</div>
-      <button onClick={() => setEditing(true)} title="Renommer ce shift/équipe" className="text-slate-600 hover:text-orange-400"><i className="fas fa-pen text-[10px]"></i></button>
+      <button onClick={() => setEditing(true)} title="Renommer ce shift/équipe"
+        className="flex items-center gap-1 text-[10px] font-medium text-orange-400/80 hover:text-orange-400 border border-orange-500/30 hover:border-orange-500/60 rounded px-1.5 py-0.5">
+        <i className="fas fa-pen text-[9px]"></i>Renommer
+      </button>
     </div>
   );
 }

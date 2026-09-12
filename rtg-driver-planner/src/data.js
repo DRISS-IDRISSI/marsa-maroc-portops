@@ -102,7 +102,7 @@ const RTG_CONFIG = {
 // Le shift de chaque équipe pour la semaine de référence (01/08/2026) a été relevé
 // directement sur l'en-tête de chaque feuille Excel fournie.
 const RTG_TEAMS = [
-  { id: "A", nom: "GR EDDAOUIDI", shiftCycle: ["S3", "S2", "S1"] },
+  { id: "A", nom: "GR BAKKALI", shiftCycle: ["S3", "S2", "S1"] },
   { id: "B", nom: "GR YAGOUBI", shiftCycle: ["S2", "S1", "S3"] },
   { id: "C", nom: "GR AZZAM", shiftCycle: ["S1", "S3", "S2"] }
 ];
