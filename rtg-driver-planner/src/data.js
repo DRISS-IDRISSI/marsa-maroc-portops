@@ -50,15 +50,6 @@ const RTG_CONFIG = {
   // Date à partir de laquelle les rotations de zone/vacation sont calculées ;
   // driver.initialZone / driver.initialVacation s'appliquent exactement à cette date.
   rotationReferenceDate: "2026-08-01",
-  // Charge de travail par shift/vacation (répartie sur 100%), utilisée pour fixer
-  // le ratio V1/V2 de conducteurs présents au sein de chaque shift. Le ratio est
-  // recalculé chaque jour selon le shift en cours pour l'équipe, avec une rotation
-  // équitable des conducteurs entre les deux groupes.
-  vacationRatioByShift: {
-    S1: { V1: 13.5, V2: 16.5 },
-    S2: { V1: 25, V2: 25 },
-    S3: { V1: 11.5, V2: 8.5 }
-  },
   // Jours fériés marocains — affichage uniquement (aucun impact sur les repos ou
   // les affectations). Les dates religieuses (Aïd, Moharram, Mawlid) sont
   // approximatives : elles dépendent de l'observation du croissant lunaire et
