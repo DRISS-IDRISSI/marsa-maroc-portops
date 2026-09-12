@@ -36,6 +36,13 @@ const RTG_CONFIG = {
   // Le samedi, si l'équipe est sur le SHIFT 2 cette semaine-là, la charge est
   // plus faible que d'habitude : ce poids remplace celui de restDayWeightByDow[5].
   restDayWeightSaturdayShift2: 4,
+  // Charge de travail par shift (§ note métier) : Shift 1 = 30% (10%+20%),
+  // Shift 2 = 50% (25%+25%), Shift 3 = 20% (12%+8%). Le poids de placement des
+  // repos est inversement proportionnel à cette charge : plus la charge du
+  // shift est faible, plus il est privilégié pour y placer des repos (donc
+  // moins de conducteurs présents), et inversement pour un shift à forte
+  // charge. Ce facteur se combine (multiplication) avec restDayWeightByDow.
+  restDayWeightByShift: { S1: 1, S2: 0.6, S3: 1.5 },
   // Le dimanche, sur les shifts 1 et 2 (le shift 3 est déjà OFF), au plus ce nombre
   // de conducteurs peut être affecté par vacation (V1 et V2) : le surplus de
   // l'équipe est mis en repos obligatoire ce dimanche-là, en rotation équitable
@@ -224,7 +231,7 @@ const RTG_SEED = {
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
   // ignorer d'anciennes données mises en cache (ex. un ancien roster de conducteurs)
   // plutôt que de les fusionner avec le nouveau seed.
-  dataVersion: 9,
+  dataVersion: 10,
   drivers: RTG_DRIVERS,
   teams: RTG_TEAMS,
   config: RTG_CONFIG,

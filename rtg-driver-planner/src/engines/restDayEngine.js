@@ -20,6 +20,21 @@
 // jour candidat écarte systématiquement les jours immédiatement adjacents à
 // un repos déjà retenu ce mois-ci), sauf repli extrême si aucune autre
 // option n'est disponible.
+//
+// Le quota mensuel de chaque conducteur est réparti par ANTICIPATION entre les
+// semaines où son équipe est sur Shift 1, Shift 2 et Shift 3, proportionnellement
+// au nombre de jours candidats de chaque shift ce mois-là ET à sa charge de
+// travail relative (config.restDayWeightByShift — Shift 3 = 20% de charge donc
+// plus de repos que Shift 1 = 30% ou Shift 2 = 50%). Le placement fin à
+// l'intérieur de chaque shift utilise ensuite le même algorithme d'espacement
+// pondéré par jour de semaine qu'avant (restDayWeightByDow).
+//
+// Chaque conducteur appartient à un bloc de vacation FIXE (driver.initialVacation,
+// §9-10 — les deux blocs d'une équipe ne se séparent jamais). Pour qu'un bloc ne
+// se retrouve pas presque vide de repos pendant que l'autre est presque vidé de
+// conducteurs présents un même jour, le nombre de repos pris le même jour dans
+// CHAQUE bloc est plafonné proportionnellement à la taille de ce bloc (en plus
+// du plafond global par jour toute l'équipe confondue).
 // ==========================================
 
 const RestDayEngine = {
@@ -44,11 +59,14 @@ const RestDayEngine = {
   getDayWeight(date, team, state) {
     const dow = RTGDate.dowMon0(date); // 0=Lundi ... 6=Dimanche
     const weights = state.config.restDayWeightByDow || [1, 1, 1, 1, 1, 1, 1];
-    if (dow === 5 && team) {
-      const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-      if (shift === "S2") return state.config.restDayWeightSaturdayShift2 || weights[5];
+    const shift = team ? ShiftRotationEngine.getTeamShiftForDate(team, date, state.config) : null;
+    const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
+    const shiftFactor = (shift && shiftWeights[shift]) || 1;
+
+    if (dow === 5 && shift === "S2") {
+      return (state.config.restDayWeightSaturdayShift2 || weights[5]) * shiftFactor;
     }
-    return weights[dow] || 1;
+    return (weights[dow] || 1) * shiftFactor;
   },
 
   getCandidatesForDriver(driver, month, year, state, team) {
@@ -140,8 +158,31 @@ const RestDayEngine = {
     // jouer la préférence des jours à faible charge, assez bas pour ne jamais vider
     // une part significative de l'équipe le même jour.
     const maxPerDay = Math.max(2, Math.ceil(N * 0.3));
+    const dim = RTGDate.daysInMonth(month, year);
     const dayUsage = {};
     const results = {};
+
+    // Taille de chaque bloc de vacation FIXE de l'équipe (driver.initialVacation —
+    // ne bouge jamais, cf. en-tête du fichier), pour plafonner les repos du même
+    // jour dans chaque bloc proportionnellement à sa taille.
+    const groupSizes = { V1: 0, V2: 0 };
+    teamDrivers.forEach(dr => {
+      if (dr.initialVacation === "V1" || dr.initialVacation === "V2") groupSizes[dr.initialVacation]++;
+    });
+    const maxPerDayGroup = {
+      V1: Math.max(1, Math.ceil(maxPerDay * groupSizes.V1 / N)),
+      V2: Math.max(1, Math.ceil(maxPerDay * groupSizes.V2 / N))
+    };
+    const groupDayUsage = {}; // { [day]: { V1: n, V2: n } }
+    const bumpGroupUsage = (day, group) => {
+      if (group !== "V1" && group !== "V2") return;
+      const g = (groupDayUsage[day] = groupDayUsage[day] || { V1: 0, V2: 0 });
+      g[group]++;
+    };
+    const groupUsageAt = (day, group) => {
+      const g = groupDayUsage[day];
+      return g ? g[group] || 0 : 0;
+    };
 
     const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers);
 
@@ -153,7 +194,10 @@ const RestDayEngine = {
     // largement dépasser le plafond une fois tout le monde traité.
     teamDrivers.forEach(driver => {
       const mandatoryDays = mandatorySundayOff[driver.id] || new Set();
-      mandatoryDays.forEach(d => { dayUsage[d] = (dayUsage[d] || 0) + 1; });
+      mandatoryDays.forEach(d => {
+        dayUsage[d] = (dayUsage[d] || 0) + 1;
+        bumpGroupUsage(d, driver.initialVacation);
+      });
     });
 
     // Repos du DERNIER jour du mois précédent, par conducteur : deux mois sont
@@ -177,6 +221,17 @@ const RestDayEngine = {
       }
     }
 
+    // Shift de l'équipe pour chaque jour du mois (indépendant du conducteur) —
+    // sert à répartir le quota de repos de chaque conducteur entre les périodes
+    // Shift 1 / Shift 2 / Shift 3 avant le placement fin jour par jour.
+    const dayShift = {};
+    if (team) {
+      for (let d = 1; d <= dim; d++) {
+        dayShift[d] = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, d), state.config);
+      }
+    }
+    const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
+
     teamDrivers.forEach((driver, idxInTeam) => {
       const candidates = this.getCandidatesForDriver(driver, month, year, state, team);
       const congeDays = this.countCongeDaysInMonth(driver, month, year, state);
@@ -198,63 +253,185 @@ const RestDayEngine = {
 
       if (target <= 0) { results[driver.id] = chosen.sort((a, b) => a - b); return; }
 
-      const spacing = candidates.length / target;
-      const offset = Math.floor((idxInTeam / N) * candidates.length);
-      const windowRadius = Math.max(1, Math.floor(spacing / 2));
-
+      const group = driver.initialVacation;
+      const groupCap = maxPerDayGroup[group] !== undefined ? maxPerDayGroup[group] : maxPerDay;
+      const underGroupCap = day => groupUsageAt(day, group) < groupCap;
       // Un jour candidat est adjacent (veille/lendemain civil) à un repos déjà
       // retenu pour CE conducteur : à éviter en priorité pour ne jamais produire
       // deux repos consécutifs.
       const isAdjacentToUsed = day => used.has(day - 1) || used.has(day + 1);
 
-      for (let k = 0; k < target; k++) {
-        const basePos = Math.round(k * spacing);
-        let best = null;
-        for (let j = 0; j <= windowRadius; j++) {
-          const deltas = j === 0 ? [0] : [-j, j];
-          for (const dj of deltas) {
-            const pos = ((offset + basePos + dj) % candidates.length + candidates.length) % candidates.length;
-            const day = candidates[pos];
-            if (used.has(day)) continue;
-            if (isAdjacentToUsed(day)) continue;
-            if ((dayUsage[day] || 0) >= maxPerDay) continue;
-            const weight = this.getDayWeight(RTGDate.makeDate(year, month, day), team, state);
-            if (!best || weight > best.weight || (weight === best.weight && Math.abs(dj) < best.dist)) {
-              best = { day: day, weight: weight, dist: Math.abs(dj) };
+      // Place jusqu'à `bucketTarget` repos parmi `bucketCandidates` (sous-ensemble
+      // des jours candidats, ex. tous ceux d'un même shift), avec le même
+      // algorithme d'espacement + fenêtre pondérée qu'avant — mais borné à ce
+      // sous-ensemble, en partageant used/dayUsage/groupDayUsage/chosen avec les
+      // autres buckets du même conducteur (adjacence et plafonds valables sur tout
+      // le mois, pas seulement à l'intérieur d'un bucket).
+      //
+      // Si `allowAdjacencyRelax` est faux (répartition PAR SHIFT), on ne force
+      // jamais deux repos consécutifs pour rester dans un bucket trop petit/serré :
+      // on s'arrête dès qu'aucun jour ne respecte au moins la non-adjacence et le
+      // plafond d'équipe, et on rend le nombre réellement placé — l'appelant
+      // reporte le reliquat sur un autre bucket (ou sur l'ensemble du mois en tout
+      // dernier recours, où la marge de manœuvre est bien plus grande). Si vrai
+      // (dernier recours sur tout le mois, comme avant ce correctif), la relaxation
+      // de l'adjacence reste le tout dernier repli, inchangée.
+      const assignWithinBucket = (bucketCandidates, bucketTarget, allowAdjacencyRelax) => {
+        if (bucketTarget <= 0 || bucketCandidates.length === 0) return 0;
+        const spacing = bucketCandidates.length / bucketTarget;
+        const offset = Math.floor((idxInTeam / N) * bucketCandidates.length);
+        const windowRadius = Math.max(1, Math.floor(spacing / 2));
+        let placed = 0;
+
+        for (let k = 0; k < bucketTarget; k++) {
+          const basePos = Math.round(k * spacing);
+          let best = null;
+          for (let j = 0; j <= windowRadius; j++) {
+            const deltas = j === 0 ? [0] : [-j, j];
+            for (const dj of deltas) {
+              const pos = ((offset + basePos + dj) % bucketCandidates.length + bucketCandidates.length) % bucketCandidates.length;
+              const day = bucketCandidates[pos];
+              if (used.has(day)) continue;
+              if (isAdjacentToUsed(day)) continue;
+              if ((dayUsage[day] || 0) >= maxPerDay) continue;
+              if (!underGroupCap(day)) continue;
+              const weight = this.getDayWeight(RTGDate.makeDate(year, month, day), team, state);
+              if (!best || weight > best.weight || (weight === best.weight && Math.abs(dj) < best.dist)) {
+                best = { day: day, weight: weight, dist: Math.abs(dj) };
+              }
             }
           }
-        }
-        if (!best) {
-          // Repli niveau 1 : rien de disponible dans la fenêtre (plafond atteint
-          // partout autour) — recherche linéaire du premier jour candidat encore
-          // sous le plafond, non adjacent à un repos déjà choisi.
-          let pos = (offset + basePos) % candidates.length;
-          let tries = 0;
-          let found = null;
-          while (tries < candidates.length) {
-            const day = candidates[pos];
-            if (!used.has(day) && !isAdjacentToUsed(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
-            pos = (pos + 1) % candidates.length;
-            tries++;
-          }
-          if (found === null) {
-            // Repli niveau 2 : aucun jour non adjacent disponible (mois très
-            // contraint) — on relâche uniquement la contrainte d'adjacence, le
-            // plafond partagé et l'unicité du jour restant respectés.
-            pos = (offset + basePos) % candidates.length;
-            tries = 0;
-            while (tries < candidates.length) {
-              const day = candidates[pos];
-              if (!used.has(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
-              pos = (pos + 1) % candidates.length;
+          if (!best) {
+            // Repli niveau 1 : rien de disponible dans la fenêtre (plafond atteint
+            // partout autour) — recherche linéaire du premier jour candidat encore
+            // sous le plafond (équipe et bloc), non adjacent à un repos déjà choisi.
+            let pos = (offset + basePos) % bucketCandidates.length;
+            let tries = 0;
+            let found = null;
+            while (tries < bucketCandidates.length) {
+              const day = bucketCandidates[pos];
+              if (!used.has(day) && !isAdjacentToUsed(day) && (dayUsage[day] || 0) < maxPerDay && underGroupCap(day)) { found = day; break; }
+              pos = (pos + 1) % bucketCandidates.length;
               tries++;
             }
+            if (found === null) {
+              // Repli niveau 2 : on relâche uniquement le plafond du BLOC (le plafond
+              // partagé de l'équipe et la non-adjacence restent respectés) — préférable
+              // à casser l'équilibre entre blocs plutôt qu'à produire deux repos
+              // consécutifs ou dépasser le plafond d'équipe.
+              pos = (offset + basePos) % bucketCandidates.length;
+              tries = 0;
+              while (tries < bucketCandidates.length) {
+                const day = bucketCandidates[pos];
+                if (!used.has(day) && !isAdjacentToUsed(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
+                pos = (pos + 1) % bucketCandidates.length;
+                tries++;
+              }
+            }
+            if (found === null && !allowAdjacencyRelax) {
+              // Ce bucket est épuisé sans casser la non-adjacence : on s'arrête ici,
+              // le reliquat sera replacé ailleurs (autre bucket, puis en tout
+              // dernier recours sur l'ensemble du mois).
+              return placed;
+            }
+            if (found === null) {
+              // Repli niveau 3 (dernier recours, mois entier uniquement) : aucun
+              // jour non adjacent disponible — on relâche aussi la contrainte
+              // d'adjacence ; le plafond partagé de l'équipe reste respecté.
+              pos = (offset + basePos) % bucketCandidates.length;
+              tries = 0;
+              while (tries < bucketCandidates.length) {
+                const day = bucketCandidates[pos];
+                if (!used.has(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
+                pos = (pos + 1) % bucketCandidates.length;
+                tries++;
+              }
+            }
+            best = { day: found !== null ? found : bucketCandidates[pos] };
           }
-          best = { day: found !== null ? found : candidates[pos] };
+          used.add(best.day);
+          dayUsage[best.day] = (dayUsage[best.day] || 0) + 1;
+          bumpGroupUsage(best.day, group);
+          chosen.push(best.day);
+          placed++;
         }
-        used.add(best.day);
-        dayUsage[best.day] = (dayUsage[best.day] || 0) + 1;
-        chosen.push(best.day);
+        return placed;
+      };
+
+      if (!team) {
+        assignWithinBucket(candidates, target, true);
+      } else {
+        // Répartit `target` entre les jours candidats de Shift 1 / Shift 2 / Shift 3,
+        // proportionnellement au nombre de jours candidats de chaque shift ET à sa
+        // charge de travail relative (restDayWeightByShift) — plus la charge d'un
+        // shift est faible, plus il reçoit une part de repos élevée. Méthode du plus
+        // grand reste pour que les parts arrondies totalisent exactement `target`.
+        const availableCandidates = candidates.filter(d => !used.has(d));
+        const buckets = { S1: [], S2: [], S3: [] };
+        availableCandidates.forEach(d => {
+          const s = dayShift[d];
+          if (buckets[s]) buckets[s].push(d);
+        });
+
+        const shiftIds = ["S1", "S2", "S3"];
+        const weightedLen = {};
+        let totalWeighted = 0;
+        shiftIds.forEach(s => {
+          weightedLen[s] = buckets[s].length * (shiftWeights[s] || 1);
+          totalWeighted += weightedLen[s];
+        });
+
+        const shares = {};
+        if (totalWeighted > 0) {
+          let allocated = 0;
+          const remainders = [];
+          shiftIds.forEach(s => {
+            const raw = target * weightedLen[s] / totalWeighted;
+            const floor = Math.min(Math.floor(raw), buckets[s].length);
+            shares[s] = floor;
+            allocated += floor;
+            remainders.push({ s: s, rem: raw - Math.floor(raw) });
+          });
+          // Distribue le reste (méthode du plus grand reste), en respectant la
+          // capacité (nombre de jours candidats disponibles) de chaque bucket : on
+          // ajoute 1 au bucket avec le plus grand reste et de la capacité restante,
+          // en écartant les buckets déjà pleins, jusqu'à écouler tout le reste ou
+          // épuiser toute capacité disponible (mois très contraint).
+          let leftover = target - allocated;
+          remainders.sort((a, b) => b.rem - a.rem);
+          while (leftover > 0) {
+            const r = remainders.find(r => shares[r.s] < buckets[r.s].length);
+            if (!r) break;
+            shares[r.s]++;
+            leftover--;
+            remainders.splice(remainders.indexOf(r), 1);
+            remainders.push(r);
+          }
+        } else {
+          shiftIds.forEach(s => { shares[s] = 0; });
+        }
+
+        // Traite les buckets dans l'ordre chronologique (premier jour candidat de
+        // chaque bucket) pour un comportement prévisible d'un mois à l'autre ; en
+        // mode strict (sans relâcher l'adjacence), un bucket trop serré peut placer
+        // moins que sa part — le reliquat est cumulé pour un dernier passage.
+        let shortfall = 0;
+        shiftIds
+          .filter(s => buckets[s].length > 0)
+          .sort((a, b) => (buckets[a][0] || 0) - (buckets[b][0] || 0))
+          .forEach(s => {
+            const placed = assignWithinBucket(buckets[s], shares[s], false);
+            shortfall += shares[s] - placed;
+          });
+
+        if (shortfall > 0) {
+          // Dernier recours : replace le reliquat sur l'ensemble des jours candidats
+          // encore libres ce mois-ci (tous shifts confondus), avec la marge de
+          // manœuvre bien plus grande qu'à l'échelle d'un seul bucket — la
+          // relaxation de l'adjacence n'y est donc quasiment jamais nécessaire.
+          const remaining = candidates.filter(d => !used.has(d));
+          assignWithinBucket(remaining, shortfall, true);
+        }
       }
 
       results[driver.id] = chosen.sort((a, b) => a - b);
