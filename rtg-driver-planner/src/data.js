@@ -250,6 +250,18 @@ const RTG_ABSENCES = [];
 // "DOUBLAGE" n'a aucun effet sur le statut du jour, seulement sur le rapport RH.
 const RTG_HEURES_EXCEPTIONNELLES = [];
 
+// Utilisateurs (§30) : ADMIN (accès complet + gestion des utilisateurs + nom des
+// équipes/shifts), RESPONSABLE (accès opérationnel complet, toutes équipes),
+// RESPONSABLE_SHIFT (accès limité à SON équipe uniquement — teamId obligatoire).
+// Important : cette appli n'a pas de serveur (localStorage uniquement) — ces
+// comptes filtrent l'accès dans l'interface, ce n'est PAS une sécurité réelle
+// contre quelqu'un qui inspecterait le stockage local du navigateur.
+// Identifiants par défaut du compte admin initial : admin / admin123 (à changer
+// depuis la page Utilisateurs, ou à utiliser pour créer d'autres comptes).
+const RTG_USERS = [
+  { id: "u_admin", username: "admin", password: "admin123", nom: "Administrateur", role: "ADMIN", teamId: null, actif: true }
+];
+
 const RTG_SEED = {
   // Incrémenté à chaque changement du roster/de la structure de référence : le store
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
@@ -263,6 +275,8 @@ const RTG_SEED = {
   maladies: RTG_MALADIES,
   absences: RTG_ABSENCES,
   heuresExceptionnelles: RTG_HEURES_EXCEPTIONNELLES,
+  users: RTG_USERS,
+  currentUserId: null,
   manualOverrides: {},
   auditLog: []
 };

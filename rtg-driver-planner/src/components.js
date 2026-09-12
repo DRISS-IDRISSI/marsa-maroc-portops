@@ -2,6 +2,53 @@ const { useState, useEffect } = React;
 const { useLocation, useNavigate } = ReactRouterDOM;
 
 // ==========================================
+// Connexion (§30) — écran plein écran tant qu'aucun utilisateur n'est
+// connecté ; AuthGate l'affiche à la place de l'appli (pas de sidebar/topbar).
+// ==========================================
+function LoginPage() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const submit = e => {
+    e.preventDefault();
+    const user = RTGStore.login(username, password);
+    if (!user) setError("Identifiant ou mot de passe incorrect.");
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-port px-4">
+      <form onSubmit={submit} className="w-full max-w-sm bg-card border border-border rounded-xl p-6 space-y-4 fade-in">
+        <div className="text-center mb-2">
+          <div className="w-12 h-12 mx-auto rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white text-xl mb-3">
+            <i className="fas fa-users-gear"></i>
+          </div>
+          <h1 className="text-lg font-bold text-white">RTG Driver Planner</h1>
+          <p className="text-xs text-slate-500 mt-1">Marsa Maroc — Terminal à conteneurs</p>
+        </div>
+        {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Identifiant</label>
+          <input autoFocus className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full" value={username} onChange={e => setUsername(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mot de passe</label>
+          <input type="password" className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full" value={password} onChange={e => setPassword(e.target.value)} />
+        </div>
+        <button type="submit" className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Se connecter</button>
+      </form>
+    </div>
+  );
+}
+
+function AuthGate({ children }) {
+  const state = useRtgState();
+  const currentUser = state.users.find(u => u.id === state.currentUserId) || null;
+  if (!currentUser) return <LoginPage />;
+  return children;
+}
+
+// ==========================================
 // KPICard
 // ==========================================
 function KPICard({ icon, label, value, sub, color = "blue", highlight }) {
@@ -25,6 +72,8 @@ function KPICard({ icon, label, value, sub, color = "blue", highlight }) {
 function Sidebar() {
   const loc = useLocation();
   const nav = useNavigate();
+  const state = useRtgState();
+  const currentUser = state.users.find(u => u.id === state.currentUserId) || null;
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -40,6 +89,9 @@ function Sidebar() {
     { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" },
     { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapport RH" }
   ];
+  if (currentUser && currentUser.role === "ADMIN") {
+    links.push({ to: "/utilisateurs", icon: "fa-user-shield", label: "Utilisateurs" });
+  }
 
   const isActive = (p) => loc.pathname === p;
 
@@ -66,7 +118,17 @@ function Sidebar() {
       <div className="mt-auto p-4 border-t border-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-marine-500 to-marine-700 flex items-center justify-center text-white text-xs"><i className="fas fa-user"></i></div>
-          {!collapsed && <div><div className="text-xs font-medium text-white">Responsable Exploitation</div><div className="text-[10px] text-slate-500">RTG</div></div>}
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-white truncate">{currentUser ? currentUser.nom : "—"}</div>
+              <div className="text-[10px] text-slate-500 truncate">{currentUser ? (ROLE_LABELS[currentUser.role] || currentUser.role) + (currentUser.teamId ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "") : ""}</div>
+            </div>
+          )}
+          {!collapsed && (
+            <button onClick={() => RTGStore.logout()} title="Déconnexion" className="text-slate-500 hover:text-red-400 shrink-0">
+              <i className="fas fa-right-from-bracket"></i>
+            </button>
+          )}
         </div>
       </div>
     </>

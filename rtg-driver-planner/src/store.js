@@ -69,12 +69,21 @@ const RTGStore = (function () {
     };
   }
 
+  function getCurrentUser() {
+    return state.users.find(u => u.id === state.currentUserId) || null;
+  }
+
+  function currentUserLabel() {
+    const u = getCurrentUser();
+    return u ? u.nom : "Système";
+  }
+
   function addAuditEntry(entry) {
     set(s => Object.assign({}, s, {
       auditLog: [Object.assign({
         id: "audit_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
         date: new Date().toISOString(),
-        utilisateur: "Responsable Exploitation"
+        utilisateur: currentUserLabel()
       }, entry), ...s.auditLog]
     }));
   }
@@ -136,7 +145,7 @@ const RTGStore = (function () {
     const record = Object.assign({
       id: listKey + "_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
       createdAt: new Date().toISOString(),
-      utilisateur: "Responsable Exploitation"
+      utilisateur: currentUserLabel()
     }, input);
     set(s => Object.assign({}, s, { [listKey]: [...s[listKey], record] }));
     const d = state.drivers.find(dr => dr.id === input.driverId);
@@ -195,6 +204,75 @@ const RTGStore = (function () {
     addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: auditAction || "Modification affectation", details: isoDate + (auditDetails ? " — " + auditDetails : "") });
   }
 
+  // ---------- Utilisateurs / authentification (§30) ----------
+  //
+  // Pas de backend : ces comptes filtrent l'accès dans l'interface (qui voit/
+  // modifie quoi), ce n'est PAS une sécurité réelle — n'importe qui inspectant
+  // le stockage local du navigateur peut lire les mots de passe et les rôles.
+  // Suffisant pour organiser l'accès dans un cadre de confiance (poste
+  // partagé au bureau), pas pour protéger contre un utilisateur malveillant.
+
+  function isUsernameTaken(username, excludeUserId) {
+    return state.users.some(u => u.username.toLowerCase() === username.toLowerCase() && u.id !== excludeUserId);
+  }
+
+  function login(username, password) {
+    const user = state.users.find(u =>
+      u.actif !== false &&
+      u.username.toLowerCase() === (username || "").trim().toLowerCase() &&
+      u.password === password
+    );
+    if (!user) return null;
+    set(s => Object.assign({}, s, { currentUserId: user.id }));
+    return user;
+  }
+
+  function logout() {
+    set(s => Object.assign({}, s, { currentUserId: null }));
+  }
+
+  function addUser(input) {
+    const user = {
+      id: "u_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      username: input.username.trim(),
+      password: input.password,
+      nom: input.nom.trim(),
+      role: input.role,
+      teamId: input.role === "RESPONSABLE_SHIFT" ? input.teamId : null,
+      actif: true
+    };
+    set(s => Object.assign({}, s, { users: [...s.users, user] }));
+    addAuditEntry({ action: "Création utilisateur", details: user.nom + " (" + user.username + ") — " + user.role });
+    return user;
+  }
+
+  function updateUser(userId, patch) {
+    set(s => Object.assign({}, s, { users: s.users.map(u => u.id === userId ? Object.assign({}, u, patch) : u) }));
+    addAuditEntry({ action: "Modification utilisateur", details: userId });
+  }
+
+  function setUserActive(userId, actif) {
+    updateUser(userId, { actif: actif });
+    if (!actif && state.currentUserId === userId) logout();
+  }
+
+  function deleteUser(userId) {
+    const u = state.users.find(x => x.id === userId);
+    set(s => Object.assign({}, s, { users: s.users.filter(x => x.id !== userId) }));
+    if (state.currentUserId === userId) logout();
+    addAuditEntry({ action: "Suppression utilisateur", details: u ? u.nom + " (" + u.username + ")" : userId });
+  }
+
+  // ---------- Équipes : renommer le shift/l'équipe (§30) ----------
+
+  function updateTeam(teamId, patch) {
+    const before = state.teams.find(t => t.id === teamId);
+    set(s => Object.assign({}, s, { teams: s.teams.map(t => t.id === teamId ? Object.assign({}, t, patch) : t) }));
+    if (before) {
+      addAuditEntry({ action: "Renommage équipe/shift", details: before.nom + " → " + (patch.nom || before.nom) });
+    }
+  }
+
   return {
     get, set, subscribe, addAuditEntry, resetToSeed,
     isMatriculeTaken, addDriver, updateDriver, setDriverActive,
@@ -202,6 +280,9 @@ const RTGStore = (function () {
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
     addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
-    setManualOverride
+    setManualOverride,
+    getCurrentUser, login, logout,
+    isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
+    updateTeam
   };
 })();

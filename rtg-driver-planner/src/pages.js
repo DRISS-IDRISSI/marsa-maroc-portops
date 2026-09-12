@@ -7,6 +7,21 @@ function useRtgState() {
   return state;
 }
 
+// Utilisateur connecté (§30) — null si personne n'est connecté (AuthGate
+// affiche alors l'écran de connexion à la place de l'appli).
+function useCurrentUser() {
+  const state = useRtgState();
+  return state.users.find(u => u.id === state.currentUserId) || null;
+}
+
+const ROLE_LABELS = { ADMIN: "Administrateur", RESPONSABLE: "Responsable Exploitation", RESPONSABLE_SHIFT: "Responsable de Shift" };
+
+// Un Responsable de Shift ne voit/agit que sur SON équipe (teamId) ; les autres
+// rôles (Admin, Responsable) ont accès à toutes les équipes — §30.
+function isShiftRestricted(user) {
+  return !!user && user.role === "RESPONSABLE_SHIFT";
+}
+
 // ==========================================
 // Codes / légende
 // ==========================================
@@ -31,7 +46,7 @@ function Legend() {
   );
 }
 
-function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId, teams, detailLevel, setDetailLevel }) {
+function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId, teams, detailLevel, setDetailLevel, lockTeam }) {
   const months = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
   return (
     <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
@@ -45,6 +60,7 @@ function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Année</label>
         <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className="w-24 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
       </div>
+      {!lockTeam && (
       <div>
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Équipe</label>
         <select value={teamId} onChange={e => setTeamId(e.target.value)} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white">
@@ -52,6 +68,7 @@ function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId
           {teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
         </select>
       </div>
+      )}
       <div>
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Détail</label>
         <div className="flex gap-1">
@@ -210,6 +227,8 @@ function ShiftBlock({ title, icon, rows }) {
 // ==========================================
 function Home() {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const nav = useNavigate();
   const today = new Date();
   const month = today.getUTCMonth() + 1;
@@ -217,21 +236,34 @@ function Home() {
 
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
   const todayIso = RTGDate.toISO(RTGDate.makeDate(year, month, Math.min(today.getUTCDate(), planning.days.length)));
-  const todayAssignments = useMemo(() => PlanningEngine.generateDailyAssignments(todayIso, state), [state, todayIso]);
+  const todayAssignments = useMemo(() => {
+    const all = PlanningEngine.generateDailyAssignments(todayIso, state);
+    return shiftRestricted ? all.filter(a => a.teamId === currentUser.teamId) : all;
+  }, [state, todayIso, shiftRestricted, currentUser]);
 
   const counts = { PRESENT: 0, REPOS: 0, CONGE: 0, MALADIE: 0, ABSENCE: 0, FORMATION: 0, OFF: 0 };
   todayAssignments.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
 
-  const byTeam = state.teams.map(t => ({
+  const byTeam = (shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams).map(t => ({
     team: t,
     shift: ShiftRotationEngine.getTeamShiftForDate(t, RTGDate.parseISO(todayIso), state.config)
   }));
+
+  const validation = shiftRestricted
+    ? (() => {
+        const anomalies = planning.validation.anomalies.filter(a => {
+          const d = state.drivers.find(dr => dr.id === a.driverId);
+          return d && d.teamId === currentUser.teamId;
+        });
+        return { valid: anomalies.length === 0, anomalies: anomalies, count: anomalies.length };
+      })()
+    : planning.validation;
 
   return (
     <div className="space-y-6 fade-in">
       <div>
         <h1 className="text-2xl font-bold text-white">RTG Driver Planner</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs RTG — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}</p>
+        <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs RTG — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -254,7 +286,7 @@ function Home() {
         ))}
       </div>
 
-      <ValidationBanner validation={planning.validation} />
+      <ValidationBanner validation={validation} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <button onClick={() => nav("/planning")} className="text-left bg-card rounded-xl border border-border p-5 hover:border-orange-400 transition-all flex items-center gap-4">
@@ -281,14 +313,27 @@ function Home() {
 // ==========================================
 function PlanningMensuel() {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
-  const [teamId, setTeamId] = useState("all");
+  const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
   const [detailLevel, setDetailLevel] = useState("vacation");
 
+  const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
-  const drivers = useMemo(() => state.drivers.filter(d => d.actif !== false && (teamId === "all" || d.teamId === teamId)), [state.drivers, teamId]);
+  const drivers = useMemo(() => state.drivers.filter(d => d.actif !== false && (effectiveTeamId === "all" || d.teamId === effectiveTeamId)), [state.drivers, effectiveTeamId]);
+
+  const validation = shiftRestricted
+    ? (() => {
+        const anomalies = planning.validation.anomalies.filter(a => {
+          const d = state.drivers.find(dr => dr.id === a.driverId);
+          return d && d.teamId === currentUser.teamId;
+        });
+        return { valid: anomalies.length === 0, anomalies: anomalies, count: anomalies.length };
+      })()
+    : planning.validation;
 
   return (
     <div className="space-y-4 fade-in">
@@ -297,9 +342,9 @@ function PlanningMensuel() {
         <p className="text-slate-400 text-sm mt-0.5">Généré automatiquement par le moteur de planification (shift / zone / vacation / repos)</p>
       </div>
 
-      <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={teamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} />
+      <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={effectiveTeamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} lockTeam={shiftRestricted} />
 
-      <ValidationBanner validation={planning.validation} />
+      <ValidationBanner validation={validation} />
 
       <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} />
 
@@ -315,11 +360,16 @@ function PlanningMensuel() {
 // ==========================================
 function AffectationDuJour() {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const [dateStr, setDateStr] = useState(RTGDate.toISO(new Date()));
 
   const assignments = useMemo(() => {
-    try { return PlanningEngine.generateDailyAssignments(dateStr, state); } catch (e) { return []; }
-  }, [state, dateStr]);
+    try {
+      const all = PlanningEngine.generateDailyAssignments(dateStr, state);
+      return shiftRestricted ? all.filter(a => a.teamId === currentUser.teamId) : all;
+    } catch (e) { return []; }
+  }, [state, dateStr, shiftRestricted, currentUser]);
 
   const grouped = {};
   state.config.shifts.forEach(s => {

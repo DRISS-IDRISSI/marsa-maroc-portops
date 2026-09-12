@@ -36,11 +36,11 @@ const LABEL_CLS = "block text-[10px] uppercase tracking-wider text-slate-500 mb-
 // ==========================================
 // 1. Conducteurs (CRUD complet — §28)
 // ==========================================
-function emptyDriverForm() {
-  return { matricule: "", nom: "", prenom: "", teamId: "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "" };
+function emptyDriverForm(lockedTeamId) {
+  return { matricule: "", nom: "", prenom: "", teamId: lockedTeamId || "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "" };
 }
 
-function DriverForm({ state, initial, editingId, onCancel, onSaved }) {
+function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId }) {
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
 
@@ -53,7 +53,8 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved }) {
       setError("Ce matricule est déjà utilisé par un autre conducteur.");
       return;
     }
-    const payload = Object.assign({}, form, { matricule: form.matricule.trim(), nom: form.nom.trim().toUpperCase(), prenom: form.prenom.trim().toUpperCase() });
+    const teamId = lockedTeamId || form.teamId;
+    const payload = Object.assign({}, form, { teamId: teamId, matricule: form.matricule.trim(), nom: form.nom.trim().toUpperCase(), prenom: form.prenom.trim().toUpperCase() });
     if (editingId) {
       RTGStore.updateDriver(editingId, payload);
     } else {
@@ -69,12 +70,14 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved }) {
         <div><label className={LABEL_CLS}>Matricule</label><input className={FIELD_CLS} value={form.matricule} onChange={e => setForm(f => Object.assign({}, f, { matricule: e.target.value }))} /></div>
         <div><label className={LABEL_CLS}>Nom</label><input className={FIELD_CLS} value={form.nom} onChange={e => setForm(f => Object.assign({}, f, { nom: e.target.value }))} /></div>
         <div><label className={LABEL_CLS}>Prénom</label><input className={FIELD_CLS} value={form.prenom} onChange={e => setForm(f => Object.assign({}, f, { prenom: e.target.value }))} /></div>
+        {!lockedTeamId && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
           <select className={FIELD_CLS} value={form.teamId} onChange={e => setForm(f => Object.assign({}, f, { teamId: e.target.value }))}>
             {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
           </select>
         </div>
+        )}
         <div>
           <label className={LABEL_CLS}>Zone initiale</label>
           <select className={FIELD_CLS} value={form.initialZone} onChange={e => setForm(f => Object.assign({}, f, { initialZone: e.target.value }))}>
@@ -98,18 +101,48 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved }) {
   );
 }
 
+// Renommer une équipe/shift (§30) — édition en ligne, réservée à Admin/Responsable
+// (un Responsable de Shift ne gère pas le nom de son équipe, seulement ses conducteurs).
+function TeamNameEditor({ team, editable }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(team.nom);
+
+  if (!editable) return <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">{team.nom}</div>;
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5 mb-1">
+        <input autoFocus value={value} onChange={e => setValue(e.target.value)}
+          className="bg-surface border border-border rounded px-2 py-1 text-xs text-white w-32" />
+        <button onClick={() => { if (value.trim()) RTGStore.updateTeam(team.id, { nom: value.trim() }); setEditing(false); }} className="text-emerald-400 hover:text-emerald-300"><i className="fas fa-check"></i></button>
+        <button onClick={() => { setValue(team.nom); setEditing(false); }} className="text-slate-500 hover:text-white"><i className="fas fa-times"></i></button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 mb-1 group">
+      <div className="text-xs uppercase tracking-wider text-slate-500">{team.nom}</div>
+      <button onClick={() => setEditing(true)} title="Renommer ce shift/équipe" className="text-slate-600 hover:text-orange-400"><i className="fas fa-pen text-[10px]"></i></button>
+    </div>
+  );
+}
+
 function DriversPage() {
   const state = useRtgState();
-  const [teamFilter, setTeamFilter] = useState("all");
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
+  const [teamFilter, setTeamFilter] = useState(shiftRestricted ? currentUser.teamId : "all");
   const [statusFilter, setStatusFilter] = useState("actifs");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
 
+  const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams;
+
   const drivers = useMemo(() => state.drivers.filter(d =>
-    (teamFilter === "all" || d.teamId === teamFilter) &&
+    (shiftRestricted ? d.teamId === currentUser.teamId : (teamFilter === "all" || d.teamId === teamFilter)) &&
     (statusFilter === "tous" || (statusFilter === "actifs" ? d.actif !== false : d.actif === false))
-  ), [state.drivers, teamFilter, statusFilter]);
+  ), [state.drivers, teamFilter, statusFilter, shiftRestricted, currentUser]);
 
   const today = RTGDate.toISO(new Date());
   const todayDate = RTGDate.parseISO(today);
@@ -121,7 +154,7 @@ function DriversPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-white">Conducteurs</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{state.drivers.filter(d => d.actif !== false).length} conducteurs actifs sur {state.drivers.length}</p>
+          <p className="text-slate-400 text-sm mt-0.5">{drivers.filter(d => d.actif !== false).length} conducteurs actifs{shiftRestricted ? " — " + visibleTeams[0].nom : " sur " + state.drivers.length}</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
           <i className="fas fa-plus mr-1.5"></i>Nouveau conducteur
@@ -129,27 +162,30 @@ function DriversPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {state.teams.map(t => {
+        {visibleTeams.map(t => {
           const effectif = state.drivers.filter(d => d.actif !== false && d.teamId === t.id).length;
           const shift = ShiftRotationEngine.getTeamShiftForDate(t, todayDate, state.config);
           return (
             <div key={t.id} className="bg-card rounded-xl border border-border p-4">
-              <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">{t.nom} — {shift} aujourd'hui</div>
+              <TeamNameEditor team={t} editable={!shiftRestricted} />
+              <div className="text-xs text-slate-500 -mt-0.5 mb-1">{shift} aujourd'hui</div>
               <div className="text-2xl font-bold text-white">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
             </div>
           );
         })}
       </div>
-      <p className="text-xs text-slate-500 -mt-2">Modifiez l'équipe d'un conducteur (bouton « Modifier ») pour rééquilibrer les effectifs entre shifts.</p>
+      {!shiftRestricted && <p className="text-xs text-slate-500 -mt-2">Modifiez l'équipe d'un conducteur (bouton « Modifier ») pour rééquilibrer les effectifs entre shifts.</p>}
 
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
-          <DriverForm state={state} initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "" } : emptyDriverForm()}
+          <DriverForm state={state} lockedTeamId={shiftRestricted ? currentUser.teamId : null}
+            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
             editingId={editingId} onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
 
       <div className="flex flex-wrap gap-3 bg-card rounded-xl border border-border p-4">
+        {!shiftRestricted && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
           <select className={FIELD_CLS} value={teamFilter} onChange={e => setTeamFilter(e.target.value)}>
@@ -157,6 +193,7 @@ function DriversPage() {
             {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
           </select>
         </div>
+        )}
         <div>
           <label className={LABEL_CLS}>Statut</label>
           <select className={FIELD_CLS} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
@@ -237,8 +274,9 @@ function DriversPage() {
 // ==========================================
 // Sélecteur de conducteur générique (congés/maladies/absences/remplacement)
 // ==========================================
-function DriverSelect({ state, value, onChange, onlyActive }) {
-  const drivers = onlyActive ? state.drivers.filter(d => d.actif !== false) : state.drivers;
+function DriverSelect({ state, value, onChange, onlyActive, teamId }) {
+  let drivers = onlyActive ? state.drivers.filter(d => d.actif !== false) : state.drivers;
+  if (teamId) drivers = drivers.filter(d => d.teamId === teamId);
   return (
     <select className={FIELD_CLS} value={value} onChange={e => onChange(e.target.value)}>
       <option value="">— Sélectionner —</option>
@@ -257,11 +295,19 @@ function driverLabel(state, driverId) {
 // ==========================================
 function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, deleteFn }) {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ driverId: "", dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), type: showTypeSelect ? "ABSENCE" : "", commentaire: "" });
   const [error, setError] = useState("");
 
-  const records = state[listKey].slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+  const records = state[listKey]
+    .filter(r => {
+      if (!shiftRestricted) return true;
+      const d = state.drivers.find(dr => dr.id === r.driverId);
+      return d && d.teamId === currentUser.teamId;
+    })
+    .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
 
   const submit = () => {
     if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
@@ -289,7 +335,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, d
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} /></div>
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
               <div><label className={LABEL_CLS}>Date début</label><input type="date" className={FIELD_CLS} value={form.dateDebut} onChange={e => setForm(f => Object.assign({}, f, { dateDebut: e.target.value }))} /></div>
               <div><label className={LABEL_CLS}>Date fin</label><input type="date" className={FIELD_CLS} value={form.dateFin} onChange={e => setForm(f => Object.assign({}, f, { dateFin: e.target.value }))} /></div>
               {showTypeSelect && (
@@ -376,11 +422,19 @@ function emptyHeureExceptionnelleForm() {
 
 function HeuresExceptionnellesPage() {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyHeureExceptionnelleForm());
   const [error, setError] = useState("");
 
-  const records = state.heuresExceptionnelles.slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+  const records = state.heuresExceptionnelles
+    .filter(r => {
+      if (!shiftRestricted) return true;
+      const d = state.drivers.find(dr => dr.id === r.driverId);
+      return d && d.teamId === currentUser.teamId;
+    })
+    .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
 
   const submit = () => {
     if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
@@ -409,7 +463,7 @@ function HeuresExceptionnellesPage() {
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} /></div>
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
               <div><label className={LABEL_CLS}>Date</label><input type="date" className={FIELD_CLS} value={form.date} onChange={e => setForm(f => Object.assign({}, f, { date: e.target.value }))} /></div>
               <div>
                 <label className={LABEL_CLS}>Type</label>
@@ -472,6 +526,8 @@ function HeuresExceptionnellesPage() {
 // ==========================================
 function RemplacementPage() {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const [dateStr, setDateStr] = useState(RTGDate.toISO(new Date()));
   const [absentId, setAbsentId] = useState("");
   const [chosenId, setChosenId] = useState("");
@@ -479,7 +535,10 @@ function RemplacementPage() {
 
   const date = RTGDate.parseISO(dateStr);
   const assignments = useMemo(() => PlanningEngine.generateDailyAssignments(dateStr, state), [state, dateStr]);
-  const absentDrivers = assignments.filter(a => ["CONGE", "MALADIE", "ABSENCE", "FORMATION"].indexOf(a.status) !== -1);
+  const absentDrivers = assignments.filter(a =>
+    ["CONGE", "MALADIE", "ABSENCE", "FORMATION"].indexOf(a.status) !== -1 &&
+    (!shiftRestricted || a.teamId === currentUser.teamId)
+  );
 
   const candidates = useMemo(() => absentId ? ReplacementEngine.getCandidates(dateStr, absentId, state) : [], [state, dateStr, absentId]);
   const absentDriver = state.drivers.find(d => d.id === absentId);
@@ -619,12 +678,15 @@ function buildRapportRH(state, month, year, teamId) {
 
 function RapportRHPage() {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
-  const [teamId, setTeamId] = useState("all");
+  const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
+  const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
 
-  const report = useMemo(() => buildRapportRH(state, month, year, teamId), [state, month, year, teamId]);
+  const report = useMemo(() => buildRapportRH(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
   const generatedAt = new Date();
 
   const th = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
@@ -654,6 +716,7 @@ function RapportRHPage() {
           <label className={LABEL_CLS}>Année</label>
           <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
         </div>
+        {!shiftRestricted && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
           <select value={teamId} onChange={e => setTeamId(e.target.value)} className={FIELD_CLS}>
@@ -661,6 +724,7 @@ function RapportRHPage() {
             {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
           </select>
         </div>
+        )}
       </div>
 
       {/* Contenu imprimable : style "papier" clair, indépendant du thème sombre de l'appli. */}
@@ -668,7 +732,7 @@ function RapportRHPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div>
             <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
-            <div className="text-xs sm:text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{teamId !== "all" ? " — " + (state.teams.find(t => t.id === teamId) || {}).nom : ""}</div>
+            <div className="text-xs sm:text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
             <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
@@ -726,6 +790,157 @@ function RapportRHPage() {
         <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
           Document généré automatiquement par RTG Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 8. Utilisateurs (§30) — réservé au rôle ADMIN
+// ==========================================
+const ROLE_OPTIONS = [
+  { value: "ADMIN", label: "Administrateur — accès complet + gestion des utilisateurs" },
+  { value: "RESPONSABLE", label: "Responsable — accès opérationnel complet, toutes équipes" },
+  { value: "RESPONSABLE_SHIFT", label: "Responsable de Shift — accès limité à SON équipe" }
+];
+
+function emptyUserForm() {
+  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: "A" };
+}
+
+function UserForm({ state, initial, editingId, onCancel, onSaved }) {
+  const [form, setForm] = useState(initial);
+  const [error, setError] = useState("");
+
+  const submit = () => {
+    if (!form.nom.trim() || !form.username.trim()) { setError("Nom et identifiant sont obligatoires."); return; }
+    if (!editingId && !form.password) { setError("Mot de passe obligatoire à la création."); return; }
+    if (RTGStore.isUsernameTaken(form.username.trim(), editingId)) { setError("Cet identifiant est déjà utilisé."); return; }
+    if (form.role === "RESPONSABLE_SHIFT" && !form.teamId) { setError("Sélectionnez l'équipe pour un Responsable de Shift."); return; }
+
+    const payload = { nom: form.nom.trim(), username: form.username.trim(), role: form.role, teamId: form.role === "RESPONSABLE_SHIFT" ? form.teamId : null };
+    if (form.password) payload.password = form.password;
+
+    if (editingId) {
+      RTGStore.updateUser(editingId, payload);
+    } else {
+      RTGStore.addUser(payload);
+    }
+    onSaved();
+  };
+
+  return (
+    <div className="space-y-3">
+      {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label className={LABEL_CLS}>Nom complet</label><input className={FIELD_CLS} value={form.nom} onChange={e => setForm(f => Object.assign({}, f, { nom: e.target.value }))} /></div>
+        <div><label className={LABEL_CLS}>Identifiant</label><input className={FIELD_CLS} value={form.username} onChange={e => setForm(f => Object.assign({}, f, { username: e.target.value }))} /></div>
+        <div>
+          <label className={LABEL_CLS}>Mot de passe{editingId ? " (laisser vide pour ne pas changer)" : ""}</label>
+          <input type="password" className={FIELD_CLS} value={form.password} onChange={e => setForm(f => Object.assign({}, f, { password: e.target.value }))} />
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Rôle</label>
+          <select className={FIELD_CLS} value={form.role} onChange={e => setForm(f => Object.assign({}, f, { role: e.target.value }))}>
+            {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </div>
+        {form.role === "RESPONSABLE_SHIFT" && (
+          <div>
+            <label className={LABEL_CLS}>Équipe / Shift</label>
+            <select className={FIELD_CLS} value={form.teamId} onChange={e => setForm(f => Object.assign({}, f, { teamId: e.target.value }))}>
+              {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={submit} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">{editingId ? "Enregistrer" : "Créer l'utilisateur"}</button>
+        <button onClick={onCancel} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+      </div>
+    </div>
+  );
+}
+
+function UsersPage() {
+  const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  if (!currentUser || currentUser.role !== "ADMIN") {
+    return (
+      <div className="space-y-4 fade-in">
+        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+          <i className="fas fa-lock"></i> Cette page est réservée aux administrateurs.
+        </div>
+      </div>
+    );
+  }
+
+  const editingUser = editingId ? state.users.find(u => u.id === editingId) : null;
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Utilisateurs</h1>
+          <p className="text-slate-400 text-sm mt-0.5">{state.users.length} compte{state.users.length > 1 ? "s" : ""} — Admin, Responsable, Responsable de Shift</p>
+        </div>
+        <button onClick={() => { setShowForm(true); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+          <i className="fas fa-plus mr-1.5"></i>Nouvel utilisateur
+        </button>
+      </div>
+
+      <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+        <i className="fas fa-circle-info mr-1.5"></i>Cette application n'a pas de serveur : ces comptes filtrent l'accès dans l'interface, ce n'est pas une sécurité contre quelqu'un qui inspecterait le stockage local du navigateur.
+      </p>
+
+      {showForm && (
+        <Panel title={editingId ? "Modifier l'utilisateur" : "Nouvel utilisateur"} icon="fa-user-shield">
+          <UserForm state={state} editingId={editingId}
+            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || "A" } : emptyUserForm()}
+            onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
+        </Panel>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-surface text-slate-400">
+            <tr className="text-left">
+              <th className="px-3 py-2">Nom</th><th className="px-3 py-2">Identifiant</th><th className="px-3 py-2">Rôle</th>
+              <th className="px-3 py-2">Équipe</th><th className="px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.users.map(u => {
+              const team = u.teamId ? state.teams.find(t => t.id === u.teamId) : null;
+              const isSelf = currentUser.id === u.id;
+              return (
+                <tr key={u.id} className="border-t border-border hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-white font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
+                  <td className="px-3 py-2 text-slate-300">{u.username}</td>
+                  <td className="px-3 py-2 text-slate-400">{ROLE_LABELS[u.role] || u.role}</td>
+                  <td className="px-3 py-2 text-slate-400">{team ? team.nom : "—"}</td>
+                  <td className="px-3 py-2">
+                    {u.actif !== false
+                      ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Actif</span>
+                      : <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">Inactif</span>}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => { setEditingId(u.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-300">Modifier</button>
+                      {u.actif !== false
+                        ? <ConfirmButton label="Désactiver" confirmLabel={isSelf ? "Vous déconnecter ?" : "Désactiver ?"} onConfirm={() => RTGStore.setUserActive(u.id, false)} className="text-red-400 hover:text-red-300 text-xs" />
+                        : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setUserActive(u.id, true)} className="text-emerald-400 hover:text-emerald-300 text-xs" />}
+                      {!isSelf && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteUser(u.id)} className="text-red-400 hover:text-red-300 text-xs" />}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
