@@ -124,39 +124,42 @@ function Cell({ assignment, detailLevel }) {
 
 function PlanningGrid({ planning, drivers, detailLevel, config }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="border-collapse text-xs w-full">
-        <thead>
-          <tr className="bg-surface">
-            <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10">Mat</th>
-            <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[110px]">Nom</th>
-            <th className="border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>
-            <th className="border border-border/60 px-2 py-2 text-slate-300">Équipe</th>
-            {planning.days.map(day => {
-              const holiday = HolidayEngine.getHoliday(day.iso, config);
-              return (
-                <th key={day.iso} className={`border border-border/60 px-1.5 py-2 min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
-                  {String(day.day).padStart(2, "0")}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {drivers.map(driver => (
-            <tr key={driver.id} className="hover:bg-marine-600/10">
-              <td className="sticky left-0 bg-card border border-border/60 px-2 py-1.5 text-slate-300 z-10">{driver.matricule}</td>
-              <td className="sticky left-14 bg-card border border-border/60 px-2 py-1.5 text-white font-medium z-10">{driver.nom}</td>
-              <td className="border border-border/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
-              <td className="border border-border/60 px-2 py-1.5 text-center text-slate-400">{driver.teamId}</td>
+    <div>
+      <p className="sm:hidden text-[11px] text-slate-500 mb-1.5"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir tous les jours</p>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="border-collapse text-xs w-full">
+          <thead>
+            <tr className="bg-surface">
+              <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10">Mat</th>
+              <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>
+              <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>
+              <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-slate-300">Équipe</th>
               {planning.days.map(day => {
-                const a = day.assignments.find(x => x.driverId === driver.id);
-                return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} />;
+                const holiday = HolidayEngine.getHoliday(day.iso, config);
+                return (
+                  <th key={day.iso} className={`border border-border/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
+                    {String(day.day).padStart(2, "0")}
+                  </th>
+                );
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {drivers.map(driver => (
+              <tr key={driver.id} className="hover:bg-marine-600/10">
+                <td className="sticky left-0 bg-card border border-border/60 px-2 py-1.5 text-slate-300 z-10">{driver.matricule}</td>
+                <td className="sticky left-14 bg-card border border-border/60 px-2 py-1.5 text-white font-medium z-10">{driver.nom}</td>
+                <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
+                <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-center text-slate-400">{driver.teamId}</td>
+                {planning.days.map(day => {
+                  const a = day.assignments.find(x => x.driverId === driver.id);
+                  return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} />;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -176,9 +179,9 @@ function ShiftBlock({ title, icon, rows }) {
           <table className="w-full text-xs">
             <thead className="text-slate-400">
               <tr className="text-left border-b border-border">
-                <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="py-1.5 pr-3">Prénom</th>
-                <th className="py-1.5 pr-3">Équipe</th><th className="py-1.5 pr-3">Vacation</th><th className="py-1.5 pr-3">Horaire</th>
-                <th className="py-1.5 pr-3">Zone</th><th className="py-1.5 pr-3">Statut</th>
+                <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="hidden sm:table-cell py-1.5 pr-3">Prénom</th>
+                <th className="hidden sm:table-cell py-1.5 pr-3">Équipe</th><th className="py-1.5 pr-3">Vacation</th><th className="hidden sm:table-cell py-1.5 pr-3">Horaire</th>
+                <th className="py-1.5 pr-3">Zone</th><th className="hidden sm:table-cell py-1.5 pr-3">Statut</th>
               </tr>
             </thead>
             <tbody>
@@ -186,12 +189,12 @@ function ShiftBlock({ title, icon, rows }) {
                 <tr key={a.driverId} className="border-b border-border/50">
                   <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
                   <td className="py-1.5 pr-3 text-white font-medium">{a.nom}</td>
-                  <td className="py-1.5 pr-3 text-slate-300">{a.prenom}</td>
-                  <td className="py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
+                  <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
+                  <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
                   <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-marine-600/20 text-marine-300">{a.vacation}</span></td>
-                  <td className="py-1.5 pr-3 text-slate-400">{a.startTime}–{a.endTime}</td>
+                  <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime}–{a.endTime}</td>
                   <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{a.zone}</span></td>
-                  <td className="py-1.5 pr-3 text-emerald-400">{a.status}</td>
+                  <td className="hidden sm:table-cell py-1.5 pr-3 text-emerald-400">{a.status}</td>
                 </tr>
               ))}
             </tbody>

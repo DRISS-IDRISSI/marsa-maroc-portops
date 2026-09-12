@@ -167,13 +167,14 @@ function DriversPage() {
         </div>
       </div>
 
+      <p className="sm:hidden text-[11px] text-slate-500 -mt-2"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-xs">
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
-              <th className="px-3 py-2">Mat</th><th className="px-3 py-2">Nom</th><th className="px-3 py-2">Prénom</th>
-              <th className="px-3 py-2">Équipe</th><th className="px-3 py-2">Shift auj.</th><th className="px-3 py-2">Zone init.</th>
-              <th className="px-3 py-2">Bloc vacation</th><th className="px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
+              <th className="px-3 py-2">Mat</th><th className="px-3 py-2">Nom</th><th className="hidden sm:table-cell px-3 py-2">Prénom</th>
+              <th className="px-3 py-2">Équipe</th><th className="hidden sm:table-cell px-3 py-2">Shift auj.</th><th className="hidden sm:table-cell px-3 py-2">Zone init.</th>
+              <th className="hidden sm:table-cell px-3 py-2">Bloc vacation</th><th className="hidden sm:table-cell px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -185,12 +186,12 @@ function DriversPage() {
                   <tr className="border-t border-border hover:bg-marine-600/10">
                     <td className="px-3 py-2 text-slate-300">{d.matricule}</td>
                     <td className="px-3 py-2 text-white font-medium">{d.nom}</td>
-                    <td className="px-3 py-2 text-slate-300">{d.prenom}</td>
+                    <td className="hidden sm:table-cell px-3 py-2 text-slate-300">{d.prenom}</td>
                     <td className="px-3 py-2 text-slate-400">{team ? team.nom : d.teamId}</td>
-                    <td className="px-3 py-2 text-slate-400">{shift}</td>
-                    <td className="px-3 py-2 text-center"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{d.initialZone}</span></td>
-                    <td className="px-3 py-2 text-center">{d.initialVacation}</td>
-                    <td className="px-3 py-2">
+                    <td className="hidden sm:table-cell px-3 py-2 text-slate-400">{shift}</td>
+                    <td className="hidden sm:table-cell px-3 py-2 text-center"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{d.initialZone}</span></td>
+                    <td className="hidden sm:table-cell px-3 py-2 text-center">{d.initialVacation}</td>
+                    <td className="hidden sm:table-cell px-3 py-2">
                       {d.actif !== false
                         ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Actif</span>
                         : <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">Inactif</span>}
@@ -310,13 +311,14 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, d
         </Panel>
       )}
 
+      <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-xs">
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
               {showTypeSelect && <th className="px-3 py-2">Type</th>}
-              <th className="px-3 py-2">Commentaire</th><th className="px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
+              <th className="px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -330,7 +332,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, d
                 <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
                 {showTypeSelect && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${r.type === "FORMATION" ? "bg-blue-600/30 text-blue-300" : "bg-red-600/30 text-red-300"}`}>{r.type === "FORMATION" ? "Formation" : "Absence"}</span></td>}
                 <td className="px-3 py-2 text-slate-400">{r.type && !showTypeSelect ? r.type : r.commentaire}</td>
-                <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
+                <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
                 <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteFn(r.id)} className="text-red-400 hover:text-red-300 text-xs" /></td>
               </tr>
             ))}
@@ -431,12 +433,13 @@ function HeuresExceptionnellesPage() {
         </Panel>
       )}
 
+      <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-xs">
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2">Heures</th><th className="px-3 py-2">Commentaire</th><th className="px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
+              <th className="px-3 py-2">Heures</th><th className="hidden sm:table-cell px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -524,13 +527,15 @@ function RemplacementPage() {
           {candidates.length === 0 ? (
             <p className="text-xs text-slate-500 italic">Aucun conducteur disponible dans la même équipe ce jour-là.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div>
+              <p className="sm:hidden text-[11px] text-slate-500 mb-1.5"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
+              <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="text-slate-400">
                   <tr className="text-left border-b border-border">
-                    <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="py-1.5 pr-3">Prénom</th>
-                    <th className="py-1.5 pr-3">Zone propre</th><th className="py-1.5 pr-3">Jours travaillés</th>
-                    <th className="py-1.5 pr-3">Jours repos</th><th className="py-1.5 pr-3">Dernière affect.</th><th className="py-1.5 pr-3"></th>
+                    <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="hidden sm:table-cell py-1.5 pr-3">Prénom</th>
+                    <th className="py-1.5 pr-3">Zone propre</th><th className="hidden sm:table-cell py-1.5 pr-3">Jours travaillés</th>
+                    <th className="hidden sm:table-cell py-1.5 pr-3">Jours repos</th><th className="hidden sm:table-cell py-1.5 pr-3">Dernière affect.</th><th className="py-1.5 pr-3"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -538,11 +543,11 @@ function RemplacementPage() {
                     <tr key={c.driver.id} className={`border-b border-border/50 ${chosenId === c.driver.id ? "bg-orange-500/10" : ""}`}>
                       <td className="py-1.5 pr-3 text-slate-300">{c.driver.matricule}</td>
                       <td className="py-1.5 pr-3 text-white font-medium">{c.driver.nom}</td>
-                      <td className="py-1.5 pr-3 text-slate-300">{c.driver.prenom}</td>
+                      <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{c.driver.prenom}</td>
                       <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{assignments.find(a => a.driverId === c.driver.id) ? assignments.find(a => a.driverId === c.driver.id).zone : "—"}</span></td>
-                      <td className="py-1.5 pr-3 text-slate-400">{c.joursTravailles}</td>
-                      <td className="py-1.5 pr-3 text-slate-400">{c.joursRepos}</td>
-                      <td className="py-1.5 pr-3 text-slate-400">{c.derniereAffectation || "—"}</td>
+                      <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.joursTravailles}</td>
+                      <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.joursRepos}</td>
+                      <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.derniereAffectation || "—"}</td>
                       <td className="py-1.5 pr-3">
                         <button onClick={() => setChosenId(c.driver.id)} className="text-xs px-2.5 py-1 rounded-lg bg-marine-800 text-slate-300 hover:bg-orange-500 hover:text-white transition-all">Choisir</button>
                       </td>
@@ -550,6 +555,7 @@ function RemplacementPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </Panel>
@@ -658,18 +664,19 @@ function RapportRHPage() {
       </div>
 
       {/* Contenu imprimable : style "papier" clair, indépendant du thème sombre de l'appli. */}
-      <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-6 print:rounded-none print:border-0 print:p-0">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-slate-800">
+      <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div>
-            <div className="text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
-            <div className="text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{teamId !== "all" ? " — " + (state.teams.find(t => t.id === teamId) || {}).nom : ""}</div>
+            <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
+            <div className="text-xs sm:text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{teamId !== "all" ? " — " + (state.teams.find(t => t.id === teamId) || {}).nom : ""}</div>
           </div>
-          <div className="text-right text-xs text-slate-500">
+          <div className="sm:text-right text-xs text-slate-500">
             <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
             <div>{report.rows.length} conducteur{report.rows.length > 1 ? "s" : ""}</div>
           </div>
         </div>
 
+        <p className="sm:hidden print:hidden text-[11px] text-slate-500 mb-1.5"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir toutes les colonnes</p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
