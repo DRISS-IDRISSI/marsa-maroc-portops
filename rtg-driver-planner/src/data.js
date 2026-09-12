@@ -262,6 +262,14 @@ const RTG_USERS = [
   { id: "u_admin", username: "admin", password: "admin123", nom: "Administrateur", role: "ADMIN", teamId: null, actif: true }
 ];
 
+// Mouvements réalisés un jour férié (§31), PAR CONDUCTEUR PRÉSENT — un jour férié
+// est chômé (statut FERIE pour tous), sauf pour un conducteur ayant un
+// enregistrement FERIE_TRAVAILLE (nécessité de service, §29), qui apparaît alors
+// PRÉSENT : c'est pour CE conducteur-là qu'on saisit le nombre de mouvements
+// réalisés ce jour-là. Une seule entrée par (date, conducteur), mise à jour en
+// place (upsert) plutôt qu'accumulée.
+const RTG_FERIES_MOUVEMENTS = [];
+
 const RTG_SEED = {
   // Incrémenté à chaque changement du roster/de la structure de référence : le store
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
@@ -275,6 +283,7 @@ const RTG_SEED = {
   maladies: RTG_MALADIES,
   absences: RTG_ABSENCES,
   heuresExceptionnelles: RTG_HEURES_EXCEPTIONNELLES,
+  feriesMouvements: RTG_FERIES_MOUVEMENTS,
   users: RTG_USERS,
   currentUserId: null,
   manualOverrides: {},

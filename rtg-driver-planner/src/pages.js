@@ -356,6 +356,74 @@ function PlanningMensuel() {
 }
 
 // ==========================================
+// Mouvements réalisés un jour férié, PAR CONDUCTEUR PRÉSENT (§31) — un jour
+// férié est chômé (statut FERIE pour tous), sauf pour un conducteur avec un
+// enregistrement "jour férié travaillé" (§29), qui apparaît alors PRÉSENT :
+// c'est pour lui qu'on saisit le nombre de mouvements réalisés ce jour-là.
+// ==========================================
+function FerieMouvementsRow({ dateStr, driverId, label }) {
+  const existing = RTGStore.getFerieMouvements(dateStr, driverId);
+  const [value, setValue] = useState(existing ? String(existing.mouvements) : "");
+  const [comment, setComment] = useState(existing ? existing.commentaire || "" : "");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const rec = RTGStore.getFerieMouvements(dateStr, driverId);
+    setValue(rec ? String(rec.mouvements) : "");
+    setComment(rec ? rec.commentaire || "" : "");
+    setSaved(false);
+  }, [dateStr, driverId]);
+
+  const save = () => {
+    const n = Number(value);
+    if (!value || isNaN(n) || n < 0) return;
+    RTGStore.setFerieMouvements(dateStr, driverId, n, comment);
+    setSaved(true);
+  };
+
+  return (
+    <div className="flex flex-wrap items-end gap-3 py-2 border-b border-border/50 last:border-0">
+      <div className="text-xs text-slate-300 font-medium w-40 shrink-0">{label}</div>
+      <div>
+        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mouvements réalisés</label>
+        <input type="number" min="0" value={value} onChange={e => { setValue(e.target.value); setSaved(false); }}
+          className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-white w-28" />
+      </div>
+      <div className="flex-1 min-w-[140px]">
+        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Commentaire</label>
+        <input value={comment} onChange={e => { setComment(e.target.value); setSaved(false); }}
+          className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-white w-full" />
+      </div>
+      <button onClick={save} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Enregistrer</button>
+      {saved && <span className="text-xs text-emerald-400"><i className="fas fa-circle-check mr-1"></i>Enregistré</span>}
+    </div>
+  );
+}
+
+function FerieMouvementsPanel({ dateStr, presentDrivers }) {
+  if (presentDrivers.length === 0) {
+    return (
+      <div className="bg-card rounded-xl border border-border p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <i className="fas fa-truck-ramp-box text-orange-400 text-sm"></i>
+          <h3 className="text-white text-sm font-semibold">Mouvements réalisés — jour férié</h3>
+        </div>
+        <p className="text-xs text-slate-500 italic">Aucun conducteur présent ce jour férié (aucun enregistrement "jour férié travaillé" — page Heures exceptionnelles).</p>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-card rounded-xl border border-border p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <i className="fas fa-truck-ramp-box text-orange-400 text-sm"></i>
+        <h3 className="text-white text-sm font-semibold">Mouvements réalisés — jour férié</h3>
+      </div>
+      {presentDrivers.map(a => <FerieMouvementsRow key={a.driverId} dateStr={dateStr} driverId={a.driverId} label={a.matricule + " — " + a.nom + " " + a.prenom} />)}
+    </div>
+  );
+}
+
+// ==========================================
 // 3. Affectation du jour
 // ==========================================
 function AffectationDuJour() {
@@ -389,12 +457,6 @@ function AffectationDuJour() {
         <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date pour voir l'affectation détaillée des 3 shifts</p>
       </div>
 
-      {holiday && (
-        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 rounded-xl px-4 py-3 text-sm">
-          <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} — journée chômée, aucune affectation générée
-        </div>
-      )}
-
       <div className="bg-card rounded-xl border border-border p-4 flex items-end gap-3">
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Date</label>
@@ -402,6 +464,16 @@ function AffectationDuJour() {
         </div>
         <div className="text-xs text-slate-500">{RTGDate.formatFr(RTGDate.parseISO(dateStr))}</div>
       </div>
+
+      {holiday && (
+        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 rounded-xl px-4 py-3 text-sm">
+          <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} — journée chômée, aucune affectation générée
+        </div>
+      )}
+
+      {holiday && (
+        <FerieMouvementsPanel dateStr={dateStr} presentDrivers={assignments.filter(a => a.status === "PRESENT")} />
+      )}
 
       {state.config.shifts.map(s => (
         <div key={s.id} className="space-y-3">

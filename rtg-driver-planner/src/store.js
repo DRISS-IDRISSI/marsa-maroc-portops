@@ -204,6 +204,33 @@ const RTGStore = (function () {
     addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: auditAction || "Modification affectation", details: isoDate + (auditDetails ? " — " + auditDetails : "") });
   }
 
+  // ---------- Mouvements réalisés un jour férié, PAR CONDUCTEUR PRÉSENT (§31) ----------
+
+  function getFerieMouvements(isoDate, driverId) {
+    return state.feriesMouvements.find(f => f.date === isoDate && f.driverId === driverId) || null;
+  }
+
+  function setFerieMouvements(isoDate, driverId, mouvements, commentaire) {
+    const existing = getFerieMouvements(isoDate, driverId);
+    const d = state.drivers.find(dr => dr.id === driverId);
+    set(s => {
+      if (existing) {
+        return Object.assign({}, s, {
+          feriesMouvements: s.feriesMouvements.map(f => f.id === existing.id
+            ? Object.assign({}, f, { mouvements: mouvements, commentaire: commentaire, updatedAt: new Date().toISOString(), utilisateur: currentUserLabel() })
+            : f)
+        });
+      }
+      const record = {
+        id: "ferie_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        date: isoDate, driverId: driverId, mouvements: mouvements, commentaire: commentaire,
+        createdAt: new Date().toISOString(), utilisateur: currentUserLabel()
+      };
+      return Object.assign({}, s, { feriesMouvements: [...s.feriesMouvements, record] });
+    });
+    addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: "Mouvements jour férié", details: isoDate + " — " + mouvements + " mouvement(s)" });
+  }
+
   // ---------- Utilisateurs / authentification (§30) ----------
   //
   // Pas de backend : ces comptes filtrent l'accès dans l'interface (qui voit/
@@ -283,6 +310,7 @@ const RTGStore = (function () {
     setManualOverride,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
-    updateTeam
+    updateTeam,
+    getFerieMouvements, setFerieMouvements
   };
 })();
