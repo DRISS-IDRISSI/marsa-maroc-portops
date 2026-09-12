@@ -174,6 +174,14 @@ const RTGStore = (function () {
   function updateAbsence(id, patch) { return updateRecord("absences", id, patch, "Modification absence/formation"); }
   function deleteAbsence(id) { return deleteRecord("absences", id, "Suppression absence/formation"); }
 
+  // ---------- Heures exceptionnelles : doublage / férié travaillé / dimanche S3 (§29) ----------
+
+  const HEURE_EXCEPTIONNELLE_LABELS = { DOUBLAGE: "Ajout doublage", FERIE_TRAVAILLE: "Ajout jour férié travaillé", DIMANCHE_S3: "Ajout 3ème shift dimanche" };
+
+  function addHeureExceptionnelle(input) { return addRecord("heuresExceptionnelles", input, HEURE_EXCEPTIONNELLE_LABELS[input.type] || "Ajout heures exceptionnelles"); }
+  function updateHeureExceptionnelle(id, patch) { return updateRecord("heuresExceptionnelles", id, patch, "Modification heures exceptionnelles"); }
+  function deleteHeureExceptionnelle(id) { return deleteRecord("heuresExceptionnelles", id, "Suppression heures exceptionnelles"); }
+
   // ---------- Affectations manuelles / remplacement (§26-27) ----------
 
   function setManualOverride(isoDate, driverId, override, auditAction, auditDetails) {
@@ -193,6 +201,7 @@ const RTGStore = (function () {
     addConge, updateConge, deleteConge,
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
+    addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
     setManualOverride
   };
 })();

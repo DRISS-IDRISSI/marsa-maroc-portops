@@ -242,6 +242,14 @@ const RTG_MALADIES = [
 
 const RTG_ABSENCES = [];
 
+// Heures exceptionnelles (§29) : doublage, jour férié travaillé, 3ème shift dimanche
+// (nécessité de service) — un conducteur donné, un jour donné (dateDebut = dateFin,
+// même forme que congés/maladies pour réutiliser AbsenceEngine.findRecord), avec un
+// nombre d'heures. "FERIE_TRAVAILLE" et "DIMANCHE_S3" annulent, pour CE conducteur
+// uniquement, le statut FERIE/OFF normalement appliqué à tous (PlanningEngine) ;
+// "DOUBLAGE" n'a aucun effet sur le statut du jour, seulement sur le rapport RH.
+const RTG_HEURES_EXCEPTIONNELLES = [];
+
 const RTG_SEED = {
   // Incrémenté à chaque changement du roster/de la structure de référence : le store
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
@@ -254,6 +262,7 @@ const RTG_SEED = {
   conges: RTG_CONGES,
   maladies: RTG_MALADIES,
   absences: RTG_ABSENCES,
+  heuresExceptionnelles: RTG_HEURES_EXCEPTIONNELLES,
   manualOverrides: {},
   auditLog: []
 };

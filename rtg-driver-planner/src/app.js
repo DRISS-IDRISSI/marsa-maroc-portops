@@ -12,7 +12,9 @@ function App() {
           <Route path="/conges" element={<CongesPage />} />
           <Route path="/maladies" element={<MaladiesPage />} />
           <Route path="/absences" element={<AbsencesPage />} />
+          <Route path="/heures-exceptionnelles" element={<HeuresExceptionnellesPage />} />
           <Route path="/remplacement" element={<RemplacementPage />} />
+          <Route path="/rapport-rh" element={<RapportRHPage />} />
         </Routes>
       </Layout>
     </HashRouter>

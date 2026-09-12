@@ -36,7 +36,9 @@ function Sidebar() {
     { to: "/conges", icon: "fa-umbrella-beach", label: "Congés" },
     { to: "/maladies", icon: "fa-briefcase-medical", label: "Maladies" },
     { to: "/absences", icon: "fa-user-slash", label: "Absences" },
-    { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" }
+    { to: "/heures-exceptionnelles", icon: "fa-clock-rotate-left", label: "Heures except." },
+    { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" },
+    { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapport RH" }
   ];
 
   const isActive = (p) => loc.pathname === p;
@@ -71,20 +73,20 @@ function Sidebar() {
   );
 
   return (<>
-    <button onClick={() => setMobileOpen(!mobileOpen)} className="lg:hidden fixed top-4 left-4 z-50 w-10 h-10 bg-card border border-border rounded-lg flex items-center justify-center text-white">
+    <button onClick={() => setMobileOpen(!mobileOpen)} className="print:hidden lg:hidden fixed top-4 left-4 z-50 w-10 h-10 bg-card border border-border rounded-lg flex items-center justify-center text-white">
       <i className={`fas ${mobileOpen ? 'fa-times' : 'fa-bars'}`}></i>
     </button>
 
-    {mobileOpen && <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileOpen(false)}></div>}
+    {mobileOpen && <div className="print:hidden lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileOpen(false)}></div>}
 
-    <aside className={`hidden lg:flex flex-col bg-card border-r border-border h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'}`}>
+    <aside className={`print:hidden hidden lg:flex flex-col bg-card border-r border-border h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'}`}>
       <button onClick={() => setCollapsed(!collapsed)} className="absolute -right-3 top-20 w-6 h-6 bg-card border border-border rounded-full flex items-center justify-center text-slate-400 hover:text-white z-10">
         <i className={`fas fa-chevron-${collapsed ? 'right' : 'left'} text-xs`}></i>
       </button>
       {sidebarContent}
     </aside>
 
-    <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 w-60 bg-card border-r border-border flex flex-col transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <aside className={`print:hidden lg:hidden fixed inset-y-0 left-0 z-50 w-60 bg-card border-r border-border flex flex-col transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       {sidebarContent}
     </aside>
   </>);
@@ -97,7 +99,7 @@ function Topbar() {
   const [time, setTime] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
   return (
-    <header className="h-14 bg-card/80 backdrop-blur border-b border-border flex items-center justify-between px-6 sticky top-0 z-30">
+    <header className="print:hidden h-14 bg-card/80 backdrop-blur border-b border-border flex items-center justify-between px-6 sticky top-0 z-30">
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-bold text-white ml-12 lg:ml-0">RTG <span className="text-orange-400">Driver Planner</span></h1>
         <span className="hidden sm:inline text-xs text-slate-600">|</span>
@@ -117,16 +119,16 @@ function Topbar() {
 // ==========================================
 function Layout({ children }) {
   return (
-    <div className="flex min-h-screen bg-port">
+    <div className="flex min-h-screen bg-port print:bg-white">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 p-4 lg:p-6 overflow-auto print:p-0">
+          <div className="max-w-7xl mx-auto print:max-w-none">
             {children}
           </div>
         </main>
-        <footer className="bg-card border-t border-border px-6 py-3 text-center text-xs text-slate-600">
+        <footer className="print:hidden bg-card border-t border-border px-6 py-3 text-center text-xs text-slate-600">
           © 2026 Marsa Maroc — RTG Driver Planner — Terminal à conteneurs
         </footer>
       </div>

@@ -128,6 +128,20 @@ function DriversPage() {
         </button>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {state.teams.map(t => {
+          const effectif = state.drivers.filter(d => d.actif !== false && d.teamId === t.id).length;
+          const shift = ShiftRotationEngine.getTeamShiftForDate(t, todayDate, state.config);
+          return (
+            <div key={t.id} className="bg-card rounded-xl border border-border p-4">
+              <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">{t.nom} — {shift} aujourd'hui</div>
+              <div className="text-2xl font-bold text-white">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-slate-500 -mt-2">Modifiez l'équipe d'un conducteur (bouton « Modifier ») pour rééquilibrer les effectifs entre shifts.</p>
+
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
           <DriverForm state={state} initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "" } : emptyDriverForm()}
@@ -346,7 +360,112 @@ function AbsencesPage() {
 }
 
 // ==========================================
-// 5. Remplacement (§27)
+// 5. Heures exceptionnelles — doublage / férié travaillé / dimanche S3 (§29)
+// ==========================================
+const HEURE_EXCEPTIONNELLE_TYPES = {
+  DOUBLAGE: { label: "Doublage", icon: "fa-layer-group", className: "bg-amber-600/30 text-amber-300" },
+  FERIE_TRAVAILLE: { label: "Jour férié travaillé", icon: "fa-star-and-crescent", className: "bg-indigo-600/30 text-indigo-300" },
+  DIMANCHE_S3: { label: "3ème shift dimanche (nécessité de service)", icon: "fa-triangle-exclamation", className: "bg-rose-600/30 text-rose-300" }
+};
+
+function emptyHeureExceptionnelleForm() {
+  return { driverId: "", date: RTGDate.toISO(new Date()), type: "DOUBLAGE", heures: 8, commentaire: "" };
+}
+
+function HeuresExceptionnellesPage() {
+  const state = useRtgState();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyHeureExceptionnelleForm());
+  const [error, setError] = useState("");
+
+  const records = state.heuresExceptionnelles.slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+
+  const submit = () => {
+    if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
+    const heures = Number(form.heures);
+    if (!heures || heures <= 0) { setError("Le nombre d'heures doit être supérieur à 0."); return; }
+    RTGStore.addHeureExceptionnelle({ driverId: form.driverId, dateDebut: form.date, dateFin: form.date, type: form.type, heures: heures, commentaire: form.commentaire });
+    setForm(emptyHeureExceptionnelleForm());
+    setError("");
+    setShowForm(false);
+  };
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Heures exceptionnelles</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Doublage, jour férié travaillé, 3ème shift dimanche (nécessité de service) — {records.length} enregistrement{records.length > 1 ? "s" : ""}</p>
+        </div>
+        <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+          <i className="fas fa-plus mr-1.5"></i>Nouveau
+        </button>
+      </div>
+
+      {showForm && (
+        <Panel title="Nouvel enregistrement — heures exceptionnelles" icon="fa-clock-rotate-left">
+          <div className="space-y-3">
+            {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} /></div>
+              <div><label className={LABEL_CLS}>Date</label><input type="date" className={FIELD_CLS} value={form.date} onChange={e => setForm(f => Object.assign({}, f, { date: e.target.value }))} /></div>
+              <div>
+                <label className={LABEL_CLS}>Type</label>
+                <select className={FIELD_CLS} value={form.type} onChange={e => setForm(f => Object.assign({}, f, { type: e.target.value }))}>
+                  {Object.entries(HEURE_EXCEPTIONNELLE_TYPES).map(([k, meta]) => <option key={k} value={k}>{meta.label}</option>)}
+                </select>
+              </div>
+              <div><label className={LABEL_CLS}>Heures</label><input type="number" min="0" step="0.5" className={FIELD_CLS} value={form.heures} onChange={e => setForm(f => Object.assign({}, f, { heures: e.target.value }))} /></div>
+              <div className="sm:col-span-3"><label className={LABEL_CLS}>Commentaire</label><input className={FIELD_CLS} value={form.commentaire} onChange={e => setForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
+            </div>
+            {(form.type === "FERIE_TRAVAILLE" || form.type === "DIMANCHE_S3") && (
+              <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                <i className="fas fa-circle-info mr-1.5"></i>Ce conducteur sera affiché PRÉSENT ce jour-là (au lieu de {form.type === "FERIE_TRAVAILLE" ? "férié" : "OFF"}) sur le planning et l'affectation du jour.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={submit} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Enregistrer</button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-surface text-slate-400">
+            <tr className="text-left">
+              <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th>
+              <th className="px-3 py-2">Heures</th><th className="px-3 py-2">Commentaire</th><th className="px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.length === 0 && (
+              <tr><td colSpan="7" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
+            )}
+            {records.map(r => {
+              const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-300" };
+              return (
+                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
+                  <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
+                  <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${meta.className}`}>{meta.label}</span></td>
+                  <td className="px-3 py-2 text-slate-300 text-center">{r.heures}h</td>
+                  <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
+                  <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
+                  <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-300 text-xs" /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 6. Remplacement (§27)
 // ==========================================
 function RemplacementPage() {
   const state = useRtgState();
@@ -452,6 +571,155 @@ function RemplacementPage() {
           </div>
         </Panel>
       )}
+    </div>
+  );
+}
+
+// ==========================================
+// 7. Rapport RH — imprimable, fin de mois (§29)
+// ==========================================
+const RAPPORT_MOIS_LABELS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+
+function buildRapportRH(state, month, year, teamId) {
+  const planning = PlanningEngine.generateMonthlyPlanning(month, year, state);
+  const firstIso = planning.days[0].iso;
+  const lastIso = planning.days[planning.days.length - 1].iso;
+
+  const drivers = state.drivers.filter(d => d.actif !== false && (teamId === "all" || d.teamId === teamId));
+
+  const rows = drivers.map(driver => {
+    const counts = { PRESENT: 0, REPOS: 0, CONGE: 0, MALADIE: 0, ABSENCE: 0, FORMATION: 0, OFF: 0, FERIE: 0 };
+    planning.days.forEach(day => {
+      const a = day.assignments.find(x => x.driverId === driver.id);
+      if (a) counts[a.status] = (counts[a.status] || 0) + 1;
+    });
+
+    const exceptions = state.heuresExceptionnelles.filter(r => r.driverId === driver.id && r.dateDebut >= firstIso && r.dateDebut <= lastIso);
+    const byType = { DOUBLAGE: { jours: 0, heures: 0 }, FERIE_TRAVAILLE: { jours: 0, heures: 0 }, DIMANCHE_S3: { jours: 0, heures: 0 } };
+    let totalHeures = 0;
+    exceptions.forEach(r => {
+      if (!byType[r.type]) return;
+      byType[r.type].jours++;
+      byType[r.type].heures += Number(r.heures) || 0;
+      totalHeures += Number(r.heures) || 0;
+    });
+
+    const team = state.teams.find(t => t.id === driver.teamId);
+    return { driver: driver, teamNom: team ? team.nom : driver.teamId, counts: counts, byType: byType, totalHeures: totalHeures };
+  });
+
+  return { planning: planning, rows: rows };
+}
+
+function RapportRHPage() {
+  const state = useRtgState();
+  const now = new Date();
+  const [month, setMonth] = useState(now.getUTCMonth() + 1);
+  const [year, setYear] = useState(now.getUTCFullYear());
+  const [teamId, setTeamId] = useState("all");
+
+  const report = useMemo(() => buildRapportRH(state, month, year, teamId), [state, month, year, teamId]);
+  const generatedAt = new Date();
+
+  const th = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
+  const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
+  const tdCenter = td + " text-center";
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Rapport RH</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Récapitulatif mensuel à imprimer / envoyer au service RH</p>
+        </div>
+        <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+          <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4 print:hidden">
+        <div>
+          <label className={LABEL_CLS}>Mois</label>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
+            {RAPPORT_MOIS_LABELS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Année</label>
+          <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Équipe</label>
+          <select value={teamId} onChange={e => setTeamId(e.target.value)} className={FIELD_CLS}>
+            <option value="all">Toutes les équipes</option>
+            {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Contenu imprimable : style "papier" clair, indépendant du thème sombre de l'appli. */}
+      <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-6 print:rounded-none print:border-0 print:p-0">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-slate-800">
+          <div>
+            <div className="text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
+            <div className="text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{teamId !== "all" ? " — " + (state.teams.find(t => t.id === teamId) || {}).nom : ""}</div>
+          </div>
+          <div className="text-right text-xs text-slate-500">
+            <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+            <div>{report.rows.length} conducteur{report.rows.length > 1 ? "s" : ""}</div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr>
+                <th className={th}>Mat</th>
+                <th className={th}>Nom</th>
+                <th className={th}>Prénom</th>
+                <th className={th}>Équipe</th>
+                <th className={th}>Présents</th>
+                <th className={th}>Repos</th>
+                <th className={th}>Congés</th>
+                <th className={th}>Maladies</th>
+                <th className={th}>Absences</th>
+                <th className={th}>Formations</th>
+                <th className={th}>Doublage (h)</th>
+                <th className={th}>Férié travaillé (j/h)</th>
+                <th className={th}>Dim. 3ème shift (j/h)</th>
+                <th className={th}>Total h except.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.rows.map(r => (
+                <tr key={r.driver.id}>
+                  <td className={td}>{r.driver.matricule}</td>
+                  <td className={td + " font-medium"}>{r.driver.nom}</td>
+                  <td className={td}>{r.driver.prenom}</td>
+                  <td className={td}>{r.teamNom}</td>
+                  <td className={tdCenter}>{r.counts.PRESENT}</td>
+                  <td className={tdCenter}>{r.counts.REPOS}</td>
+                  <td className={tdCenter}>{r.counts.CONGE}</td>
+                  <td className={tdCenter}>{r.counts.MALADIE}</td>
+                  <td className={tdCenter}>{r.counts.ABSENCE}</td>
+                  <td className={tdCenter}>{r.counts.FORMATION}</td>
+                  <td className={tdCenter}>{r.byType.DOUBLAGE.heures || "—"}</td>
+                  <td className={tdCenter}>{r.byType.FERIE_TRAVAILLE.jours ? `${r.byType.FERIE_TRAVAILLE.jours} / ${r.byType.FERIE_TRAVAILLE.heures}h` : "—"}</td>
+                  <td className={tdCenter}>{r.byType.DIMANCHE_S3.jours ? `${r.byType.DIMANCHE_S3.jours} / ${r.byType.DIMANCHE_S3.heures}h` : "—"}</td>
+                  <td className={tdCenter + " font-semibold"}>{r.totalHeures || "—"}</td>
+                </tr>
+              ))}
+              {report.rows.length === 0 && (
+                <tr><td colSpan="14" className="px-2 py-6 text-center text-slate-500 italic">Aucun conducteur pour cette sélection.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+          Document généré automatiquement par RTG Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
+        </div>
+      </div>
     </div>
   );
 }

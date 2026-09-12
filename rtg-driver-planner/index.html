@@ -32,6 +32,10 @@
     ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0B1426}::-webkit-scrollbar-thumb{background:#243555;border-radius:3px}
     .fade-in{animation:fadeIn .3s ease}@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
     .pulse-dot{animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    @media print {
+      @page { size: landscape; margin: 10mm; }
+      body { background: #fff !important; }
+    }
     </style>
 </head>
 <body class="min-h-screen">
@@ -41,6 +45,7 @@
     <script src="src/engines/dateUtils.js"></script>
     <script src="src/engines/shiftRotationEngine.js"></script>
     <script src="src/engines/absenceEngine.js"></script>
+    <script src="src/engines/exceptionEngine.js"></script>
     <script src="src/engines/restDayEngine.js"></script>
     <script src="src/engines/vacationRotationEngine.js"></script>
     <script src="src/engines/zoneRotationEngine.js"></script>

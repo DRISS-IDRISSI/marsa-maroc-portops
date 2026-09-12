@@ -7,20 +7,31 @@
 const PlanningEngine = {
   // Statut d'un conducteur à une date donnée, AVANT toute modification manuelle.
   // Ordre de priorité : congé/maladie/absence/formation figés > jour férié (chômé
-  // pour tous) > OFF shift3 dimanche > repos généré > présent.
+  // pour tous, SAUF pour ce conducteur s'il a un enregistrement "jour férié
+  // travaillé" — §29) > OFF shift3 dimanche (idem, sauf "3ème shift dimanche") >
+  // repos généré > présent. Un jour férié/dimanche-S3 travaillé ne peut jamais
+  // coïncider avec un repos généré (RestDayEngine exclut déjà ces jours-là des
+  // candidats de repos, pour tout le monde), donc pas de conflit de priorité
+  // possible entre ce cas et le repos.
   getDailyStatus(driver, date, state, teams) {
     const iso = RTGDate.toISO(date);
 
     const fixed = AbsenceEngine.getFixedStatus(driver, iso, state);
     if (fixed) return fixed;
 
-    if (HolidayEngine.getHoliday(iso, state.config)) return "FERIE";
+    const holiday = HolidayEngine.getHoliday(iso, state.config);
+    const holidayWorked = holiday && ExceptionEngine.hasWorked(state, driver.id, iso, "FERIE_TRAVAILLE");
+    if (holiday && !holidayWorked) return "FERIE";
 
     const team = teams.find(t => t.id === driver.teamId);
     if (!team) return "ABSENCE";
 
     const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-    if (state.config.offShift3Dimanche && shift === "S3" && RTGDate.isSunday(date)) return "OFF";
+    const sundayS3Off = state.config.offShift3Dimanche && shift === "S3" && RTGDate.isSunday(date);
+    const sundayWorked = sundayS3Off && ExceptionEngine.hasWorked(state, driver.id, iso, "DIMANCHE_S3");
+    if (sundayS3Off && !sundayWorked) return "OFF";
+
+    if (holidayWorked || sundayWorked) return "PRESENT";
 
     const restDays = RestDayEngine.getRestDaysForMonth(driver, date.getUTCMonth() + 1, date.getUTCFullYear(), state, teams);
     if (restDays.indexOf(date.getUTCDate()) !== -1) return "REPOS";
