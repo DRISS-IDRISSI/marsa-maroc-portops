@@ -43,6 +43,22 @@ const RTG_CONFIG = {
   // moins de conducteurs présents), et inversement pour un shift à forte
   // charge. Ce facteur se combine (multiplication) avec restDayWeightByDow.
   restDayWeightByShift: { S1: 1, S2: 0.6, S3: 1.5 },
+  // Charge de travail par VACATION à l'intérieur de chaque shift (§ note métier,
+  // sur 100) : Shift 1 = 10% (V1) / 20% (V2), Shift 2 = 25% / 25%, Shift 3 = 12%
+  // (V1) / 8% (V2). NE définit PAS l'appartenance à un bloc (driver.initialVacation
+  // reste fixe, un bloc ne se sépare jamais — §9-10) : sert uniquement à biaiser,
+  // à l'intérieur d'un shift, le placement des repos selon le LABEL de vacation
+  // qu'affiche CE JOUR-LÀ le bloc de chaque conducteur (qui bascule quotidiennement
+  // — VacationRotationEngine). Plus la charge d'une vacation est faible, plus les
+  // jours où le bloc du conducteur affiche cette vacation sont privilégiés pour y
+  // placer un repos — ce qui fait mécaniquement pencher la présence quotidienne
+  // vers la vacation à charge plus élevée (ex. Shift 3 : plus de présents en V1
+  // qu'en V2, conformément à 12% contre 8%).
+  restDayLabelBiasByShift: {
+    S1: { V1: 10, V2: 20 },
+    S2: { V1: 25, V2: 25 },
+    S3: { V1: 12, V2: 8 }
+  },
   // Le dimanche, sur les shifts 1 et 2 (le shift 3 est déjà OFF), au plus ce nombre
   // de conducteurs peut être affecté par vacation (V1 et V2) : le surplus de
   // l'équipe est mis en repos obligatoire ce dimanche-là, en rotation équitable
@@ -231,7 +247,7 @@ const RTG_SEED = {
   // compare cette valeur à celle enregistrée dans localStorage pour savoir s'il doit
   // ignorer d'anciennes données mises en cache (ex. un ancien roster de conducteurs)
   // plutôt que de les fusionner avec le nouveau seed.
-  dataVersion: 10,
+  dataVersion: 11,
   drivers: RTG_DRIVERS,
   teams: RTG_TEAMS,
   config: RTG_CONFIG,

@@ -231,6 +231,42 @@ const RestDayEngine = {
       }
     }
     const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
+    const labelBiasByShift = state.config.restDayLabelBiasByShift || {};
+
+    // Répartit `total` entre des groupes de jours candidats (ex. par shift, ou par
+    // label de vacation du jour), proportionnellement à leur nombre de jours ET à
+    // un poids relatif — méthode du plus grand reste pour que les parts arrondies
+    // totalisent exactement `total`, sans jamais dépasser la capacité (longueur)
+    // de chacun.
+    const distributeByWeight = (total, groups) => {
+      const shares = {};
+      let totalWeighted = 0;
+      groups.forEach(g => { g.weighted = g.days.length * (g.weight || 0); totalWeighted += g.weighted; });
+      if (totalWeighted <= 0) {
+        groups.forEach(g => { shares[g.key] = 0; });
+        return shares;
+      }
+      let allocated = 0;
+      const remainders = [];
+      groups.forEach(g => {
+        const raw = total * g.weighted / totalWeighted;
+        const floor = Math.min(Math.floor(raw), g.days.length);
+        shares[g.key] = floor;
+        allocated += floor;
+        remainders.push({ key: g.key, rem: raw - Math.floor(raw), cap: g.days.length });
+      });
+      let leftover = total - allocated;
+      remainders.sort((a, b) => b.rem - a.rem);
+      while (leftover > 0) {
+        const r = remainders.find(r => shares[r.key] < r.cap);
+        if (!r) break;
+        shares[r.key]++;
+        leftover--;
+        remainders.splice(remainders.indexOf(r), 1);
+        remainders.push(r);
+      }
+      return shares;
+    };
 
     teamDrivers.forEach((driver, idxInTeam) => {
       const candidates = this.getCandidatesForDriver(driver, month, year, state, team);
@@ -254,8 +290,27 @@ const RestDayEngine = {
       if (target <= 0) { results[driver.id] = chosen.sort((a, b) => a - b); return; }
 
       const group = driver.initialVacation;
-      const groupCap = maxPerDayGroup[group] !== undefined ? maxPerDayGroup[group] : maxPerDay;
-      const underGroupCap = day => groupUsageAt(day, group) < groupCap;
+      // Plafond quotidien de repos pour LE BLOC de ce conducteur, recalculé jour
+      // par jour : quand une charge par label est définie pour le shift de ce
+      // jour (restDayLabelBiasByShift), le plafond suit CETTE proportion (même
+      // poids que le sous-partage ci-dessous : la vacation à charge plus faible
+      // reçoit un plafond plus haut, donc plus de repos ce jour-là) — sinon, on
+      // retombe sur le plafond proportionnel à la taille du bloc (comportement
+      // précédent, qui empêche déjà un bloc de vider l'autre un jour donné).
+      const groupCapForDay = day => {
+        const shift = dayShift[day];
+        const ratio = shift && labelBiasByShift[shift];
+        if (ratio && ratio.V1 > 0 && ratio.V2 > 0) {
+          const label = VacationRotationEngine.getVacationForDate(driver, RTGDate.makeDate(year, month, day), state);
+          if (label === "V1" || label === "V2") {
+            const w = { V1: 1 / (ratio.V1 * ratio.V1), V2: 1 / (ratio.V2 * ratio.V2) };
+            const share = w[label] / (w.V1 + w.V2);
+            return Math.max(1, Math.ceil(maxPerDay * share));
+          }
+        }
+        return maxPerDayGroup[group] !== undefined ? maxPerDayGroup[group] : maxPerDay;
+      };
+      const underGroupCap = day => groupUsageAt(day, group) < groupCapForDay(day);
       // Un jour candidat est adjacent (veille/lendemain civil) à un repos déjà
       // retenu pour CE conducteur : à éviter en priorité pour ne jamais produire
       // deux repos consécutifs.
@@ -358,6 +413,42 @@ const RestDayEngine = {
         return placed;
       };
 
+      // Sous-répartit `bucketTarget` (déjà attribué à un shift) entre les jours où
+      // le bloc de CE conducteur affiche ce jour-là le label V1 et ceux où il
+      // affiche V2 (VacationRotationEngine — bascule quotidienne du bloc entier),
+      // selon restDayLabelBiasByShift : la vacation à charge plus FAIBLE reçoit
+      // davantage de repos (donc moins de présents), ce qui fait mécaniquement
+      // pencher la présence quotidienne vers la vacation à charge plus élevée
+      // (ex. Shift 3 : plus de présents en V1 qu'en V2, conforme à 12% / 8%).
+      // N'affecte jamais l'appartenance au bloc, seulement le PLACEMENT des repos.
+      const assignShiftBucket = (bucketDays, bucketTarget, shiftId) => {
+        if (bucketTarget <= 0 || bucketDays.length === 0) return 0;
+        const ratio = labelBiasByShift[shiftId];
+        if (!ratio || !(ratio.V1 > 0) || !(ratio.V2 > 0)) {
+          return assignWithinBucket(bucketDays, bucketTarget, false);
+        }
+        const labelDays = { V1: [], V2: [] };
+        bucketDays.forEach(d => {
+          const label = VacationRotationEngine.getVacationForDate(driver, RTGDate.makeDate(year, month, d), state);
+          if (labelDays[label]) labelDays[label].push(d);
+        });
+        // Poids en 1/pct² (et non 1/pct) : les contraintes déjà en jeu (espacement,
+        // plafond équipe, non-adjacence, arrondis par petits buckets) atténuent
+        // fortement un simple ratio inverse — l'exposant 2 est nécessaire pour que
+        // l'écart de présence obtenu se rapproche de celui attendu (ex. Shift 3 :
+        // V1 réellement au-dessus de V2 la plupart des jours, pas à l'égalité).
+        const subShares = distributeByWeight(bucketTarget, [
+          { key: "V1", days: labelDays.V1, weight: 1 / (ratio.V1 * ratio.V1) },
+          { key: "V2", days: labelDays.V2, weight: 1 / (ratio.V2 * ratio.V2) }
+        ]);
+        let placed = 0;
+        ["V1", "V2"]
+          .filter(l => labelDays[l].length > 0)
+          .sort((a, b) => (labelDays[a][0] || 0) - (labelDays[b][0] || 0))
+          .forEach(l => { placed += assignWithinBucket(labelDays[l], subShares[l], false); });
+        return placed;
+      };
+
       if (!team) {
         assignWithinBucket(candidates, target, true);
       } else {
@@ -374,42 +465,9 @@ const RestDayEngine = {
         });
 
         const shiftIds = ["S1", "S2", "S3"];
-        const weightedLen = {};
-        let totalWeighted = 0;
-        shiftIds.forEach(s => {
-          weightedLen[s] = buckets[s].length * (shiftWeights[s] || 1);
-          totalWeighted += weightedLen[s];
-        });
-
-        const shares = {};
-        if (totalWeighted > 0) {
-          let allocated = 0;
-          const remainders = [];
-          shiftIds.forEach(s => {
-            const raw = target * weightedLen[s] / totalWeighted;
-            const floor = Math.min(Math.floor(raw), buckets[s].length);
-            shares[s] = floor;
-            allocated += floor;
-            remainders.push({ s: s, rem: raw - Math.floor(raw) });
-          });
-          // Distribue le reste (méthode du plus grand reste), en respectant la
-          // capacité (nombre de jours candidats disponibles) de chaque bucket : on
-          // ajoute 1 au bucket avec le plus grand reste et de la capacité restante,
-          // en écartant les buckets déjà pleins, jusqu'à écouler tout le reste ou
-          // épuiser toute capacité disponible (mois très contraint).
-          let leftover = target - allocated;
-          remainders.sort((a, b) => b.rem - a.rem);
-          while (leftover > 0) {
-            const r = remainders.find(r => shares[r.s] < buckets[r.s].length);
-            if (!r) break;
-            shares[r.s]++;
-            leftover--;
-            remainders.splice(remainders.indexOf(r), 1);
-            remainders.push(r);
-          }
-        } else {
-          shiftIds.forEach(s => { shares[s] = 0; });
-        }
+        const shares = distributeByWeight(target, shiftIds.map(s => ({
+          key: s, days: buckets[s], weight: shiftWeights[s] || 1
+        })));
 
         // Traite les buckets dans l'ordre chronologique (premier jour candidat de
         // chaque bucket) pour un comportement prévisible d'un mois à l'autre ; en
@@ -420,7 +478,7 @@ const RestDayEngine = {
           .filter(s => buckets[s].length > 0)
           .sort((a, b) => (buckets[a][0] || 0) - (buckets[b][0] || 0))
           .forEach(s => {
-            const placed = assignWithinBucket(buckets[s], shares[s], false);
+            const placed = assignShiftBucket(buckets[s], shares[s], s);
             shortfall += shares[s] - placed;
           });
 
