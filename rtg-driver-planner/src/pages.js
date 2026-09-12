@@ -36,6 +36,29 @@ const RTG_STATUS_META = {
   FERIE: { code: "FÉR", label: "Jour férié (chômé)", className: "bg-indigo-500/25 text-indigo-300 border-indigo-500/40" }
 };
 
+// Styles pour les rapports imprimables ("papier" clair, indépendant du thème
+// sombre de l'appli) — même convention que le Rapport RH (pages2.js).
+const PRINT_TH = "px-2 py-1.5 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
+const PRINT_TD = "px-2 py-1 border-b border-slate-200 whitespace-nowrap";
+const PRINT_TD_CENTER = PRINT_TD + " text-center";
+const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+
+function PrintHeader({ subtitle, count, countLabel }) {
+  const generatedAt = new Date();
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
+      <div>
+        <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
+        <div className="text-xs sm:text-sm text-slate-600">{subtitle}</div>
+      </div>
+      <div className="sm:text-right text-xs text-slate-500">
+        <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+        {count != null && <div>{count} {countLabel}{count > 1 ? "s" : ""}</div>}
+      </div>
+    </div>
+  );
+}
+
 function Legend() {
   return (
     <div className="flex flex-wrap gap-2 text-[11px]">
@@ -311,6 +334,51 @@ function Home() {
 // ==========================================
 // 2. Planning mensuel
 // ==========================================
+// Version imprimable (noir sur blanc, sans couleurs pour économiser l'encre) du
+// planning mensuel — visible uniquement à l'impression / export PDF.
+function PlanningGridPrintable({ planning, drivers, config }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="border-collapse text-[10px] w-full">
+        <thead>
+          <tr>
+            <th className={PRINT_TH}>Mat</th>
+            <th className={PRINT_TH}>Nom</th>
+            <th className={PRINT_TH}>Prénom</th>
+            <th className={PRINT_TH}>Équipe</th>
+            {planning.days.map(day => {
+              const holiday = HolidayEngine.getHoliday(day.iso, config);
+              return <th key={day.iso} className={PRINT_TH + " text-center px-1"} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}{holiday ? "*" : ""}</th>;
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {drivers.map(driver => (
+            <tr key={driver.id}>
+              <td className={PRINT_TD}>{driver.matricule}</td>
+              <td className={PRINT_TD + " font-medium"}>{driver.nom}</td>
+              <td className={PRINT_TD}>{driver.prenom}</td>
+              <td className={PRINT_TD}>{driver.teamId}</td>
+              {planning.days.map(day => {
+                const a = day.assignments.find(x => x.driverId === driver.id);
+                if (!a) return <td key={day.iso} className={PRINT_TD_CENTER}>—</td>;
+                const meta = RTG_STATUS_META[a.status] || { code: a.status };
+                let text = meta.code;
+                if (a.status === "PRESENT") text = [a.vacation, a.zone].filter(Boolean).join("-") || meta.code;
+                return <td key={day.iso} className={PRINT_TD_CENTER}>{text}</td>;
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-600">
+        {Object.entries(RTG_STATUS_META).map(([key, meta]) => <span key={key}>{meta.code} = {meta.label}</span>)}
+        <span>* = jour férié</span>
+      </div>
+    </div>
+  );
+}
+
 function PlanningMensuel() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
@@ -337,19 +405,39 @@ function PlanningMensuel() {
 
   return (
     <div className="space-y-4 fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Planning mensuel RTG</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Généré automatiquement par le moteur de planification (shift / zone / vacation / repos)</p>
+      <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Planning mensuel RTG</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Généré automatiquement par le moteur de planification (shift / zone / vacation / repos)</p>
+        </div>
+        <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+          <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
+        </button>
       </div>
 
-      <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={effectiveTeamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} lockTeam={shiftRestricted} />
+      <div className="print:hidden">
+        <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={effectiveTeamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} lockTeam={shiftRestricted} />
+      </div>
 
-      <ValidationBanner validation={validation} />
+      <div className="print:hidden">
+        <ValidationBanner validation={validation} />
+      </div>
 
-      <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} />
+      <div className="print:hidden">
+        <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} />
+      </div>
 
-      <div className="bg-card rounded-xl border border-border p-4">
+      <div className="bg-card rounded-xl border border-border p-4 print:hidden">
         <Legend />
+      </div>
+
+      {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de l'appli. */}
+      <div className="print-report bg-white text-slate-900 rounded-xl p-0">
+        <PrintHeader
+          subtitle={"Rapport de planning mensuel — RTG — " + RAPPORT_MOIS_LABELS_P[month - 1] + " " + year + (effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : "")}
+          count={drivers.length} countLabel="conducteur"
+        />
+        <PlanningGridPrintable planning={planning} drivers={drivers} config={state.config} />
       </div>
     </div>
   );
@@ -423,6 +511,71 @@ function FerieMouvementsPanel({ dateStr, presentDrivers }) {
   );
 }
 
+// Version imprimable (noir sur blanc) d'un bloc vacation.
+function ShiftBlockPrintable({ title, rows }) {
+  return (
+    <div className="mb-3">
+      <div className="text-[11px] font-bold uppercase tracking-wide mb-1">{title} — {rows.length} conducteur{rows.length > 1 ? "s" : ""}</div>
+      {rows.length === 0 ? (
+        <p className="text-[10px] text-slate-500 italic mb-2">Aucun conducteur affecté.</p>
+      ) : (
+        <table className="w-full text-[10px] border-collapse mb-2">
+          <thead>
+            <tr>
+              <th className={PRINT_TH}>Mat</th><th className={PRINT_TH}>Nom</th><th className={PRINT_TH}>Prénom</th>
+              <th className={PRINT_TH}>Équipe</th><th className={PRINT_TH}>Vacation</th><th className={PRINT_TH}>Horaire</th><th className={PRINT_TH}>Zone</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(a => (
+              <tr key={a.driverId}>
+                <td className={PRINT_TD}>{a.matricule}</td>
+                <td className={PRINT_TD + " font-medium"}>{a.nom}</td>
+                <td className={PRINT_TD}>{a.prenom}</td>
+                <td className={PRINT_TD}>{a.teamNom}</td>
+                <td className={PRINT_TD_CENTER}>{a.vacation}</td>
+                <td className={PRINT_TD}>{a.startTime}–{a.endTime}</td>
+                <td className={PRINT_TD_CENTER}>{a.zone}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function FerieMouvementsPrintable({ dateStr, presentDrivers }) {
+  if (presentDrivers.length === 0) return null;
+  return (
+    <div className="mb-3">
+      <div className="text-[11px] font-bold uppercase tracking-wide mb-1">Mouvements réalisés — jour férié</div>
+      <table className="w-full text-[10px] border-collapse mb-2">
+        <thead>
+          <tr>
+            <th className={PRINT_TH}>Mat</th><th className={PRINT_TH}>Nom</th><th className={PRINT_TH}>Prénom</th>
+            <th className={PRINT_TH}>Mouvements</th><th className={PRINT_TH}>Commentaire</th>
+          </tr>
+        </thead>
+        <tbody>
+          {presentDrivers.map(a => {
+            const rec = RTGStore.getFerieMouvements(dateStr, a.driverId);
+            return (
+              <tr key={a.driverId}>
+                <td className={PRINT_TD}>{a.matricule}</td>
+                <td className={PRINT_TD + " font-medium"}>{a.nom}</td>
+                <td className={PRINT_TD}>{a.prenom}</td>
+                <td className={PRINT_TD_CENTER}>{rec ? rec.mouvements : "—"}</td>
+                <td className={PRINT_TD}>{rec ? rec.commentaire || "" : ""}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ==========================================
 // 3. Affectation du jour
 // ==========================================
@@ -450,14 +603,21 @@ function AffectationDuJour() {
   const offRows = assignments.filter(a => a.status === "OFF");
   const holiday = HolidayEngine.getHoliday(dateStr, state.config);
 
+  const presentDrivers = assignments.filter(a => a.status === "PRESENT");
+
   return (
     <div className="space-y-4 fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Affectation du jour</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date pour voir l'affectation détaillée des 3 shifts</p>
+      <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Affectation du jour</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date pour voir l'affectation détaillée des 3 shifts</p>
+        </div>
+        <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+          <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
+        </button>
       </div>
 
-      <div className="bg-card rounded-xl border border-border p-4 flex items-end gap-3">
+      <div className="bg-card rounded-xl border border-border p-4 flex items-end gap-3 print:hidden">
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Date</label>
           <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
@@ -466,29 +626,62 @@ function AffectationDuJour() {
       </div>
 
       {holiday && (
-        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 rounded-xl px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 rounded-xl px-4 py-3 text-sm print:hidden">
           <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} — journée chômée, aucune affectation générée
         </div>
       )}
 
       {holiday && (
-        <FerieMouvementsPanel dateStr={dateStr} presentDrivers={assignments.filter(a => a.status === "PRESENT")} />
-      )}
-
-      {state.config.shifts.map(s => (
-        <div key={s.id} className="space-y-3">
-          <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {grouped[s.id].map(({ vacation, rows }) => (
-              <ShiftBlock key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} icon="fa-clock" rows={rows} />
-            ))}
-          </div>
+        <div className="print:hidden">
+          <FerieMouvementsPanel dateStr={dateStr} presentDrivers={presentDrivers} />
         </div>
-      ))}
-
-      {offRows.length > 0 && (
-        <ShiftBlock title="OFF — Shift 3 dimanche" icon="fa-power-off" rows={offRows} />
       )}
+
+      <div className="print:hidden space-y-4">
+        {state.config.shifts.map(s => (
+          <div key={s.id} className="space-y-3">
+            <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {grouped[s.id].map(({ vacation, rows }) => (
+                <ShiftBlock key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} icon="fa-clock" rows={rows} />
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {offRows.length > 0 && (
+          <ShiftBlock title="OFF — Shift 3 dimanche" icon="fa-power-off" rows={offRows} />
+        )}
+      </div>
+
+      {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de l'appli. */}
+      <div className="print-report bg-white text-slate-900 rounded-xl p-0">
+        <PrintHeader
+          subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "")}
+          count={holiday ? presentDrivers.length : assignments.length} countLabel={holiday ? "conducteur présent" : "conducteur affecté"}
+        />
+        {holiday ? (
+          <div>
+            <p className="text-xs mb-3">Jour férié — {holiday.label} — journée chômée, aucune affectation générée.</p>
+            <FerieMouvementsPrintable dateStr={dateStr} presentDrivers={presentDrivers} />
+          </div>
+        ) : (
+          <div>
+            {state.config.shifts.map(s => (
+              <div key={s.id} className="mb-3">
+                <div className="text-xs font-bold uppercase tracking-wide mb-1 border-b border-slate-300 pb-1">{s.label} ({s.start} → {s.end})</div>
+                {grouped[s.id].map(({ vacation, rows }) => (
+                  <ShiftBlockPrintable key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} rows={rows} />
+                ))}
+              </div>
+            ))}
+            {offRows.length > 0 && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} />}
+          </div>
+        )}
+        <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+          Document généré automatiquement par RTG Driver Planner.
+        </div>
+      </div>
     </div>
   );
 }

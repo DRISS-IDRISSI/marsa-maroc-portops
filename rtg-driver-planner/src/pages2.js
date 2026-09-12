@@ -679,17 +679,52 @@ function buildRapportRH(state, month, year, teamId) {
   return { planning: planning, rows: rows };
 }
 
+// Rapport jours fériés travaillés & 3ème shift dimanche (§29/§31) — recense les
+// dérogations "nécessité de service" du mois, avec les mouvements réalisés
+// pour chaque jour férié travaillé (cf. FerieMouvementsPanel, pages.js).
+function buildRapportFeriesS3(state, month, year, teamId) {
+  const prefix = year + "-" + String(month).padStart(2, "0");
+  const records = state.heuresExceptionnelles
+    .filter(r => (r.type === "FERIE_TRAVAILLE" || r.type === "DIMANCHE_S3") && r.dateDebut.slice(0, 7) === prefix)
+    .filter(r => {
+      if (teamId === "all") return true;
+      const d = state.drivers.find(dr => dr.id === r.driverId);
+      return d && d.teamId === teamId;
+    })
+    .slice().sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+
+  const rows = records.map(r => {
+    const driver = state.drivers.find(d => d.id === r.driverId);
+    const team = driver ? state.teams.find(t => t.id === driver.teamId) : null;
+    const mouvement = r.type === "FERIE_TRAVAILLE" ? RTGStore.getFerieMouvements(r.dateDebut, r.driverId) : null;
+    return {
+      record: r, driver: driver, teamNom: team ? team.nom : (driver ? driver.teamId : ""),
+      mouvements: mouvement ? mouvement.mouvements : null,
+      mouvementCommentaire: mouvement ? mouvement.commentaire || "" : ""
+    };
+  });
+
+  return {
+    rows: rows,
+    totalFerie: rows.filter(r => r.record.type === "FERIE_TRAVAILLE").length,
+    totalS3: rows.filter(r => r.record.type === "DIMANCHE_S3").length,
+    totalMouvements: rows.reduce((sum, r) => sum + (r.mouvements || 0), 0)
+  };
+}
+
 function RapportRHPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
   const now = new Date();
+  const [tab, setTab] = useState("rh");
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
   const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
   const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
 
   const report = useMemo(() => buildRapportRH(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
+  const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
   const generatedAt = new Date();
 
   const th = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
@@ -700,12 +735,17 @@ function RapportRHPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-white">Rapport RH</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Récapitulatif mensuel à imprimer / envoyer au service RH</p>
+          <h1 className="text-2xl font-bold text-white">Rapports</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Rapports mensuels à imprimer / envoyer au service RH</p>
         </div>
         <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
           <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
         </button>
+      </div>
+
+      <div className="flex gap-2 print:hidden">
+        <button onClick={() => setTab("rh")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "rh" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Rapport RH</button>
+        <button onClick={() => setTab("feries")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "feries" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Jours fériés &amp; 3ème shift dimanche</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4 print:hidden">
@@ -731,6 +771,7 @@ function RapportRHPage() {
       </div>
 
       {/* Contenu imprimable : style "papier" clair, indépendant du thème sombre de l'appli. */}
+      {tab === "rh" && (
       <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div>
@@ -794,6 +835,71 @@ function RapportRHPage() {
           Document généré automatiquement par RTG Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
         </div>
       </div>
+      )}
+
+      {tab === "feries" && (
+      <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
+          <div>
+            <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
+            <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés &amp; 3ème shift dimanche — RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+          </div>
+          <div className="sm:text-right text-xs text-slate-500">
+            <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+            <div>{feriesReport.totalFerie} jour(s) férié(s) travaillé(s) · {feriesReport.totalS3} 3ème shift dimanche</div>
+          </div>
+        </div>
+
+        <p className="sm:hidden print:hidden text-[11px] text-slate-500 mb-1.5"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir toutes les colonnes</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr>
+                <th className={th}>Date</th>
+                <th className={th}>Mat</th>
+                <th className={th}>Nom</th>
+                <th className={th}>Prénom</th>
+                <th className={th}>Équipe</th>
+                <th className={th}>Type</th>
+                <th className={th}>Heures</th>
+                <th className={th}>Mouvements réalisés</th>
+                <th className={th}>Commentaire</th>
+              </tr>
+            </thead>
+            <tbody>
+              {feriesReport.rows.map(r => (
+                <tr key={r.record.id}>
+                  <td className={td}>{r.record.dateDebut}</td>
+                  <td className={td}>{r.driver ? r.driver.matricule : "—"}</td>
+                  <td className={td + " font-medium"}>{r.driver ? r.driver.nom : "—"}</td>
+                  <td className={td}>{r.driver ? r.driver.prenom : ""}</td>
+                  <td className={td}>{r.teamNom}</td>
+                  <td className={td}>{r.record.type === "FERIE_TRAVAILLE" ? "Férié travaillé" : "3ème shift dimanche"}</td>
+                  <td className={tdCenter}>{r.record.heures}h</td>
+                  <td className={tdCenter}>{r.record.type === "FERIE_TRAVAILLE" ? (r.mouvements != null ? r.mouvements : "—") : "—"}</td>
+                  <td className={td}>{r.record.type === "FERIE_TRAVAILLE" ? (r.mouvementCommentaire || r.record.commentaire || "") : (r.record.commentaire || "")}</td>
+                </tr>
+              ))}
+              {feriesReport.rows.length === 0 && (
+                <tr><td colSpan="9" className="px-2 py-6 text-center text-slate-500 italic">Aucun jour férié travaillé ni 3ème shift dimanche pour cette sélection.</td></tr>
+              )}
+            </tbody>
+            {feriesReport.rows.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colSpan="6" className={td + " text-right font-semibold"}>Total mouvements réalisés (jours fériés) :</td>
+                  <td colSpan="3" className={td + " font-semibold"}>{feriesReport.totalMouvements}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+          Document généré automatiquement par RTG Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
+        </div>
+      </div>
+      )}
     </div>
   );
 }

@@ -87,7 +87,7 @@ function Sidebar() {
     { to: "/absences", icon: "fa-user-slash", label: "Absences" },
     { to: "/heures-exceptionnelles", icon: "fa-clock-rotate-left", label: "Heures except." },
     { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" },
-    { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapport RH" }
+    { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapports" }
   ];
   if (currentUser && currentUser.role === "ADMIN") {
     links.push({ to: "/utilisateurs", icon: "fa-user-shield", label: "Utilisateurs" });

@@ -44,6 +44,14 @@
       @page { size: landscape; margin: 10mm; }
       body { background: #fff !important; }
     }
+    /* Blocs dédiés aux rapports imprimables (Planning mensuel, Affectation du
+       jour) : masqués à l'écran, affichés uniquement à l'impression / export
+       PDF. Règles explicites (plutôt que les utilitaires Tailwind hidden/print:block)
+       car l'ordre d'injection du CDN Tailwind ne garantit pas leur priorité. */
+    .print-report { display: none; }
+    @media print {
+      .print-report { display: block !important; }
+    }
     </style>
 </head>
 <body class="min-h-screen">
