@@ -133,10 +133,12 @@ const RTGStore = (function () {
     }
   }
 
-  function setDriverActive(driverId, actif) {
-    updateDriver(driverId, { actif: actif, dateSortie: actif ? null : RTGDate.toISO(new Date()) });
+  // motif (départ) : "RETRAITE", "CHANGEMENT_POSTE" ou "AGENT_SUSPENDU" (arrêt
+  // de travail) — voir DEPART_MOTIF_LABELS (pages2.js) pour les libellés.
+  function setDriverActive(driverId, actif, motif) {
+    updateDriver(driverId, { actif: actif, dateSortie: actif ? null : RTGDate.toISO(new Date()), motifDepart: actif ? null : (motif || "") });
     const d = state.drivers.find(dr => dr.id === driverId);
-    addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: actif ? "Réactivation conducteur" : "Désactivation conducteur", details: "" });
+    addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: actif ? "Réactivation conducteur" : "Départ conducteur", details: actif ? "" : (motif || "") });
   }
 
   // ---------- Congés / Maladies / Absences (§13-15) — API générique ----------

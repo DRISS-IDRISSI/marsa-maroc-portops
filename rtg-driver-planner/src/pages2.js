@@ -17,6 +17,33 @@ function ConfirmButton({ label, confirmLabel, onConfirm, className }) {
   return <button onClick={() => setConfirming(true)} className={className || "text-xs px-2 py-1 rounded bg-marine-800 text-slate-400 hover:text-white"}>{label}</button>;
 }
 
+// Départ d'un conducteur (§ demande RH) — retraite, changement de poste, ou
+// arrêt de travail pour agent suspendu ; dans tous les cas le conducteur est
+// désactivé (RTGStore.setDriverActive(id, false, motif)) et le motif est
+// conservé sur la fiche + l'historique.
+const DEPART_MOTIF_LABELS = {
+  RETRAITE: "Retraite",
+  CHANGEMENT_POSTE: "Changement de poste",
+  AGENT_SUSPENDU: "Arrêt de travail — agent suspendu"
+};
+
+function DepartButton({ onConfirm }) {
+  const [open, setOpen] = useState(false);
+  const [motif, setMotif] = useState("RETRAITE");
+  if (open) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <select value={motif} onChange={e => setMotif(e.target.value)} className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white">
+          {Object.entries(DEPART_MOTIF_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <button onClick={() => { setOpen(false); onConfirm(motif); }} className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30">Confirmer</button>
+        <button onClick={() => setOpen(false)} className="text-xs px-2 py-1 rounded bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+      </span>
+    );
+  }
+  return <button onClick={() => setOpen(true)} className="text-xs px-2 py-1 rounded bg-marine-800 text-red-400 hover:text-red-300">Départ</button>;
+}
+
 function Panel({ title, icon, children, actions }) {
   return (
     <div className="bg-card rounded-xl border border-border p-4">
@@ -234,14 +261,14 @@ function DriversPage() {
                     <td className="hidden sm:table-cell px-3 py-2">
                       {d.actif !== false
                         ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Actif</span>
-                        : <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">Inactif</span>}
+                        : <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400" title={d.motifDepart ? DEPART_MOTIF_LABELS[d.motifDepart] || d.motifDepart : ""}>Inactif{d.motifDepart ? " — " + (DEPART_MOTIF_LABELS[d.motifDepart] || d.motifDepart) : ""}</span>}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-300">Modifier</button>
                         <button onClick={() => setHistoryFor(historyFor === d.id ? null : d.id)} className="text-marine-300 hover:text-white">Historique</button>
                         {d.actif !== false
-                          ? <ConfirmButton label="Désactiver" confirmLabel="Désactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, false)} className="text-red-400 hover:text-red-300 text-xs" />
+                          ? <DepartButton onConfirm={motif => RTGStore.setDriverActive(d.id, false, motif)} />
                           : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, true)} className="text-emerald-400 hover:text-emerald-300 text-xs" />}
                       </div>
                     </td>
@@ -256,7 +283,7 @@ function DriversPage() {
                             <ul className="space-y-1 text-xs">
                               {state.auditLog.filter(a => a.driverId === d.id).map(a => (
                                 <li key={a.id} className="text-slate-400">
-                                  <span className="text-slate-600">{new Date(a.date).toLocaleString("fr-FR")}</span> — <span className="text-white">{a.action}</span>{a.details ? " — " + a.details : ""}
+                                  <span className="text-slate-600">{new Date(a.date).toLocaleString("fr-FR")}</span> — <span className="text-white">{a.action}</span>{a.details ? " — " + (a.action === "Départ conducteur" ? (DEPART_MOTIF_LABELS[a.details] || a.details) : a.details) : ""}
                                 </li>
                               ))}
                             </ul>

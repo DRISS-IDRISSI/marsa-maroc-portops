@@ -576,6 +576,80 @@ function FerieMouvementsPrintable({ dateStr, presentDrivers }) {
   );
 }
 
+// Repos et congés du jour, pour le shift concerné (un conducteur en repos ou
+// en congé reste rattaché au shift de son équipe ce jour-là, même s'il n'est
+// pas affecté) — demandé explicitement en plus des conducteurs présents.
+function ReposCongesBlock({ rows }) {
+  return (
+    <div className="bg-card rounded-xl border border-border p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <i className="fas fa-bed text-orange-400 text-sm"></i>
+        <h3 className="text-white text-sm font-semibold">Repos &amp; congés</h3>
+        <span className="ml-auto text-xs text-slate-500">{rows.length} conducteur{rows.length > 1 ? "s" : ""}</span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-slate-500 italic">Aucun conducteur en repos ou en congé.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-slate-400">
+              <tr className="text-left border-b border-border">
+                <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="hidden sm:table-cell py-1.5 pr-3">Prénom</th>
+                <th className="hidden sm:table-cell py-1.5 pr-3">Équipe</th><th className="py-1.5 pr-3">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(a => {
+                const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "text-slate-400" };
+                return (
+                  <tr key={a.driverId} className="border-b border-border/50">
+                    <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
+                    <td className="py-1.5 pr-3 text-white font-medium">{a.nom}</td>
+                    <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
+                    <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
+                    <td className="py-1.5 pr-3"><span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReposCongesPrintable({ rows }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="mb-3">
+      <div className="text-[11px] font-bold uppercase tracking-wide mb-1">Repos &amp; congés — {rows.length} conducteur{rows.length > 1 ? "s" : ""}</div>
+      <table className="w-full text-[10px] border-collapse mb-2">
+        <thead>
+          <tr>
+            <th className={PRINT_TH}>Mat</th><th className={PRINT_TH}>Nom</th><th className={PRINT_TH}>Prénom</th>
+            <th className={PRINT_TH}>Équipe</th><th className={PRINT_TH}>Statut</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(a => {
+            const meta = RTG_STATUS_META[a.status] || { label: a.status };
+            return (
+              <tr key={a.driverId}>
+                <td className={PRINT_TD}>{a.matricule}</td>
+                <td className={PRINT_TD + " font-medium"}>{a.nom}</td>
+                <td className={PRINT_TD}>{a.prenom}</td>
+                <td className={PRINT_TD}>{a.teamNom}</td>
+                <td className={PRINT_TD}>{meta.label}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ==========================================
 // 3. Affectation du jour
 // ==========================================
@@ -604,6 +678,18 @@ function AffectationDuJour() {
   const holiday = HolidayEngine.getHoliday(dateStr, state.config);
 
   const presentDrivers = assignments.filter(a => a.status === "PRESENT");
+
+  // Un conducteur en repos ou en congé reste rattaché au shift de son équipe
+  // ce jour-là (le shift/vacation ne sont calculés par le moteur que pour les
+  // conducteurs présents) — on retrouve donc ce shift via son équipe pour
+  // pouvoir afficher repos/congés séparément dans chaque section de shift.
+  const teamShiftMap = {};
+  const dateObj = RTGDate.parseISO(dateStr);
+  state.teams.forEach(t => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
+  const reposCongesByShift = {};
+  state.config.shifts.forEach(s => {
+    reposCongesByShift[s.id] = assignments.filter(a => (a.status === "REPOS" || a.status === "CONGE") && teamShiftMap[a.teamId] === s.id);
+  });
 
   return (
     <div className="space-y-4 fade-in">
@@ -639,13 +725,14 @@ function AffectationDuJour() {
 
       <div className="print:hidden space-y-4">
         {state.config.shifts.map(s => (
-          <div key={s.id} className="space-y-3">
+          <div key={s.id} className="space-y-3 pb-4 border-b border-border/60 last:border-0">
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {grouped[s.id].map(({ vacation, rows }) => (
                 <ShiftBlock key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} icon="fa-clock" rows={rows} />
               ))}
             </div>
+            <ReposCongesBlock rows={reposCongesByShift[s.id]} />
           </div>
         ))}
 
@@ -664,6 +751,7 @@ function AffectationDuJour() {
           <div>
             <p className="text-xs mb-3">Jour férié — {holiday.label} — journée chômée, aucune affectation générée.</p>
             <FerieMouvementsPrintable dateStr={dateStr} presentDrivers={presentDrivers} />
+            <ReposCongesPrintable rows={assignments.filter(a => a.status === "REPOS" || a.status === "CONGE")} />
           </div>
         ) : (
           <div>
@@ -673,6 +761,7 @@ function AffectationDuJour() {
                 {grouped[s.id].map(({ vacation, rows }) => (
                   <ShiftBlockPrintable key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} rows={rows} />
                 ))}
+                <ReposCongesPrintable rows={reposCongesByShift[s.id]} />
               </div>
             ))}
             {offRows.length > 0 && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} />}
