@@ -1103,6 +1103,24 @@ function UsersPage() {
         <i className="fas fa-circle-info mr-1.5"></i>Cette application n'a pas de serveur : ces comptes filtrent l'accès dans l'interface, ce n'est pas une sécurité contre quelqu'un qui inspecterait le stockage local du navigateur.
       </p>
 
+      <Panel title="Sauvegarde des données" icon="fa-download">
+        <p className="text-xs text-slate-400 mb-3">Télécharge une copie complète des données actuelles de cet appareil (conducteurs, congés, maladies, absences, heures exceptionnelles, utilisateurs, historique...) dans un fichier JSON. À faire avant toute migration ou changement important.</p>
+        <button onClick={() => {
+          const json = JSON.stringify(state, null, 2);
+          const blob = new Blob([json], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `rtg-sauvegarde-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-700 text-white hover:bg-marine-600">
+          <i className="fas fa-download mr-1.5"></i>Télécharger la sauvegarde (JSON)
+        </button>
+      </Panel>
+
       {showForm && (
         <Panel title={editingId ? "Modifier l'utilisateur" : "Nouvel utilisateur"} icon="fa-user-shield">
           <UserForm state={state} editingId={editingId}
