@@ -134,13 +134,25 @@ const RTGStore = (function () {
   async function login(username, password) {
     const email = (username || "").trim().toLowerCase() + RTG_AUTH_EMAIL_DOMAIN;
     const { data, error } = await sb.auth.signInWithPassword({ email: email, password: password });
-    if (error || !data.user) return null;
+    if (error) {
+      // Messages distincts pour diagnostiquer sans deviner : identifiants
+      // faux, compte non confirmé (voir Auth > Providers > Email > "Confirm
+      // email") et toute autre erreur Supabase renvoyée telle quelle.
+      if (/invalid login credentials/i.test(error.message)) throw new Error("Identifiant ou mot de passe incorrect.");
+      if (/email not confirmed/i.test(error.message)) throw new Error("Ce compte n'est pas confirmé côté Supabase (Authentication > Providers > Email > désactiver « Confirm email »).");
+      throw new Error("Connexion refusée par Supabase : " + error.message);
+    }
+    if (!data.user) throw new Error("Connexion refusée par Supabase (raison inconnue).");
 
     const loaded = await loadAll();
     const me = loaded.users.find(u => u.id === data.user.id);
-    if (!me || me.actif === false) {
+    if (!me) {
       await sb.auth.signOut();
-      return null;
+      throw new Error("Compte authentifié mais aucun profil trouvé dans la table profiles (id " + data.user.id + ").");
+    }
+    if (me.actif === false) {
+      await sb.auth.signOut();
+      throw new Error("Ce compte a été désactivé.");
     }
     set(s => Object.assign({}, s, loaded, { currentUserId: me.id, loading: false, authChecked: true }));
     return me;

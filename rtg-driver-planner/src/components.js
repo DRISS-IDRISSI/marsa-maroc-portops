@@ -16,10 +16,9 @@ function LoginPage() {
     setSubmitting(true);
     setError("");
     try {
-      const user = await RTGStore.login(username, password);
-      if (!user) setError("Identifiant ou mot de passe incorrect.");
+      await RTGStore.login(username, password);
     } catch (err) {
-      setError("Connexion impossible — vérifiez votre connexion internet et réessayez.");
+      setError(err && err.message ? err.message : "Connexion impossible — vérifiez votre connexion internet et réessayez.");
     }
     setSubmitting(false);
   };
