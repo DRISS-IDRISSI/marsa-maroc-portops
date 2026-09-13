@@ -161,18 +161,25 @@ function DriversPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  const loc = useLocation();
   const [teamFilter, setTeamFilter] = useState(shiftRestricted ? currentUser.teamId : "all");
   const [statusFilter, setStatusFilter] = useState("actifs");
+  // Pré-rempli depuis ?q=... quand on arrive via la recherche du tableau de bord.
+  const [searchQuery, setSearchQuery] = useState(() => new URLSearchParams(loc.search).get("q") || "");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
 
   const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams;
 
-  const drivers = useMemo(() => state.drivers.filter(d =>
-    (shiftRestricted ? d.teamId === currentUser.teamId : (teamFilter === "all" || d.teamId === teamFilter)) &&
-    (statusFilter === "tous" || (statusFilter === "actifs" ? d.actif !== false : d.actif === false))
-  ), [state.drivers, teamFilter, statusFilter, shiftRestricted, currentUser]);
+  const drivers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return state.drivers.filter(d =>
+      (shiftRestricted ? d.teamId === currentUser.teamId : (teamFilter === "all" || d.teamId === teamFilter)) &&
+      (statusFilter === "tous" || (statusFilter === "actifs" ? d.actif !== false : d.actif === false)) &&
+      (!q || d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q))
+    );
+  }, [state.drivers, teamFilter, statusFilter, searchQuery, shiftRestricted, currentUser]);
 
   const today = RTGDate.toISO(new Date());
   const todayDate = RTGDate.parseISO(today);
@@ -215,6 +222,10 @@ function DriversPage() {
       )}
 
       <div className="flex flex-wrap gap-3 bg-card rounded-xl border border-border p-4">
+        <div className="flex-1 min-w-[200px]">
+          <label className={LABEL_CLS}>Rechercher</label>
+          <input className={FIELD_CLS} placeholder="Matricule, nom, prénom..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+        </div>
         {!shiftRestricted && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
@@ -304,14 +315,45 @@ function DriversPage() {
 // ==========================================
 // Sélecteur de conducteur générique (congés/maladies/absences/remplacement)
 // ==========================================
+// Combobox avec recherche (matricule/nom/prénom) plutôt qu'un <select> natif
+// — avec 75 conducteurs, faire défiler une liste déroulante pour en trouver
+// un était pénible (demande explicite : une case "recherche").
 function DriverSelect({ state, value, onChange, onlyActive, teamId }) {
   let drivers = onlyActive ? state.drivers.filter(d => d.actif !== false) : state.drivers;
   if (teamId) drivers = drivers.filter(d => d.teamId === teamId);
+
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = drivers.find(d => d.id === value);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? drivers.filter(d => d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q))
+    : drivers;
+
   return (
-    <select className={FIELD_CLS} value={value} onChange={e => onChange(e.target.value)}>
-      <option value="">— Sélectionner —</option>
-      {drivers.map(d => <option key={d.id} value={d.id}>{d.matricule} — {d.nom} {d.prenom}</option>)}
-    </select>
+    <div className="relative">
+      <input
+        className={FIELD_CLS}
+        placeholder="Rechercher (matricule, nom...)"
+        value={open ? query : (selected ? `${selected.matricule} — ${selected.nom} ${selected.prenom}` : "")}
+        onFocus={() => setOpen(true)}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-surface border border-border rounded-lg shadow-lg">
+          {filtered.length === 0 && <div className="px-3 py-2 text-xs text-slate-500 italic">Aucun résultat.</div>}
+          {filtered.map(d => (
+            <button key={d.id} type="button"
+              onMouseDown={() => { onChange(d.id); setQuery(""); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-marine-600/30 ${d.id === value ? "bg-marine-600/20 text-white" : "text-slate-300"}`}>
+              {d.matricule} — {d.nom} {d.prenom}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

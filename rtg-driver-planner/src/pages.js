@@ -274,6 +274,47 @@ function ShiftBlock({ title, icon, rows }) {
   );
 }
 
+// Recherche rapide d'un conducteur depuis le tableau de bord — évite d'avoir
+// à défiler la liste complète des conducteurs pour en retrouver un.
+function DriverSearchBox({ state, shiftRestricted, currentUser, todayAssignments }) {
+  const nav = useNavigate();
+  const [query, setQuery] = useState("");
+  const pool = shiftRestricted ? state.drivers.filter(d => d.teamId === currentUser.teamId) : state.drivers;
+  const q = query.trim().toLowerCase();
+  const results = q
+    ? pool.filter(d => d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q)).slice(0, 8)
+    : [];
+
+  const goTo = driver => { nav("/conducteurs?q=" + encodeURIComponent(driver.matricule)); setQuery(""); };
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <i className="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un conducteur (matricule, nom...)"
+          className="w-full bg-card border border-border rounded-xl pl-9 pr-3 py-2.5 text-sm text-white" />
+      </div>
+      {q && (
+        <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto bg-card border border-border rounded-xl shadow-lg">
+          {results.length === 0 && <div className="px-3 py-2 text-xs text-slate-500 italic">Aucun conducteur trouvé.</div>}
+          {results.map(d => {
+            const a = todayAssignments.find(x => x.driverId === d.id);
+            const team = state.teams.find(t => t.id === d.teamId);
+            const meta = a ? (RTG_STATUS_META[a.status] || { label: a.status }) : null;
+            return (
+              <button key={d.id} type="button" onClick={() => goTo(d)}
+                className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-marine-600/30 border-b border-border/50 last:border-0 flex items-center justify-between gap-2">
+                <span><span className="text-slate-400">{d.matricule}</span> — <span className="text-white font-medium">{d.nom} {d.prenom}</span></span>
+                <span className="text-slate-500 shrink-0">{team ? team.nom : d.teamId}{meta ? " · " + meta.label : ""}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ==========================================
 // 1. Accueil
 // ==========================================
@@ -317,6 +358,8 @@ function Home() {
         <h1 className="text-2xl font-bold text-white">RTG Driver Planner</h1>
         <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs RTG — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
       </div>
+
+      <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <KPICard icon="fa-user-check" label="Présents" value={counts.PRESENT} color="green" />
