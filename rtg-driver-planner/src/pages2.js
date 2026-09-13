@@ -866,9 +866,12 @@ function RapportRHPage() {
       {tab === "rh" && (
       <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
-          <div>
-            <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
-            <div className="text-xs sm:text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+          <div className="flex items-center gap-3">
+            <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
+            <div>
+              <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
+              <div className="text-xs sm:text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+            </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
             <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
@@ -932,9 +935,12 @@ function RapportRHPage() {
       {tab === "feries" && (
       <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
-          <div>
-            <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
-            <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés &amp; 3ème shift dimanche — RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+          <div className="flex items-center gap-3">
+            <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
+            <div>
+              <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
+              <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés &amp; 3ème shift dimanche — RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+            </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
             <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>

@@ -76,9 +76,12 @@ function PrintHeader({ subtitle, count, countLabel }) {
   const generatedAt = new Date();
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
-      <div>
-        <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
-        <div className="text-xs sm:text-sm text-slate-600">{subtitle}</div>
+      <div className="flex items-center gap-3">
+        <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
+        <div>
+          <div className="text-base sm:text-lg font-bold">Marsa Maroc — Terminal à Conteneurs</div>
+          <div className="text-xs sm:text-sm text-slate-600">{subtitle}</div>
+        </div>
       </div>
       <div className="sm:text-right text-xs text-slate-500">
         <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>

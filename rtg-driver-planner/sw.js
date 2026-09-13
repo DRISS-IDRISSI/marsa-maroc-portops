@@ -23,6 +23,7 @@ const PRECACHE_URLS = [
   "manifest.json",
   "icons/icon-192.png",
   "icons/icon-512.png",
+  "icons/marsa-maroc-logo.png",
   "src/data.js",
   "src/store.js",
   "src/engines/dateUtils.js",

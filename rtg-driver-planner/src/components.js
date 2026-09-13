@@ -20,8 +20,8 @@ function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-port px-4">
       <form onSubmit={submit} className="w-full max-w-sm bg-card border border-border rounded-xl p-6 space-y-4 fade-in">
         <div className="text-center mb-2">
-          <div className="w-12 h-12 mx-auto rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white text-xl mb-3">
-            <i className="fas fa-users-gear"></i>
+          <div className="w-20 h-20 mx-auto rounded-lg bg-white flex items-center justify-center p-2 mb-3">
+            <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="max-w-full max-h-full object-contain" />
           </div>
           <h1 className="text-lg font-bold text-white">RTG Driver Planner</h1>
           <p className="text-xs text-slate-500 mt-1">Marsa Maroc — Terminal à conteneurs</p>
@@ -98,8 +98,8 @@ function Sidebar() {
   const sidebarContent = (
     <>
       <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
-        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white">
-          <i className="fas fa-users-gear"></i>
+        <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center p-1 shrink-0">
+          <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="max-w-full max-h-full object-contain" />
         </div>
         {!collapsed && <div><div className="font-bold text-white text-sm leading-tight">RTG Driver Planner</div><div className="text-[10px] text-slate-500 uppercase tracking-wider">Marsa Maroc — Terminal Conteneurs</div></div>}
       </div>
