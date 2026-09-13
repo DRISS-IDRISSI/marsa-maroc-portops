@@ -1114,8 +1114,8 @@ function UsersPage() {
         </button>
       </div>
 
-      <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-        <i className="fas fa-circle-info mr-1.5"></i>Cette application n'a pas de serveur : ces comptes filtrent l'accès dans l'interface, ce n'est pas une sécurité contre quelqu'un qui inspecterait le stockage local du navigateur.
+      <p className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+        <i className="fas fa-shield-halved mr-1.5"></i>Comptes et données hébergés sur Supabase (PostgreSQL + Auth) : les permissions de chaque rôle sont vérifiées côté base (Row Level Security), pas seulement par cette interface.
       </p>
 
       <Panel title="Sauvegarde des données" icon="fa-download">
