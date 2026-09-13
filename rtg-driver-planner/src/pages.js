@@ -589,7 +589,7 @@ function FerieMouvementsPanel({ dateStr, presentDrivers }) {
           <i className="fas fa-truck-ramp-box text-orange-400 text-sm"></i>
           <h3 className="text-white text-sm font-semibold">Mouvements réalisés — jour férié</h3>
         </div>
-        <p className="text-xs text-slate-500 italic">Aucun conducteur présent ce jour férié (aucun enregistrement "jour férié travaillé" — page Heures exceptionnelles).</p>
+        <p className="text-xs text-slate-500 italic">Aucun conducteur présent ce jour férié (aucun enregistrement "jour férié travaillé" — page Over Time).</p>
       </div>
     );
   }

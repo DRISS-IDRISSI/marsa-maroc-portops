@@ -328,9 +328,9 @@ const RTGStore = (function () {
 
   const HEURE_EXCEPTIONNELLE_LABELS = { DOUBLAGE: "Ajout doublage", FERIE_TRAVAILLE: "Ajout jour férié travaillé", DIMANCHE_S3: "Ajout 3ème shift dimanche" };
 
-  function addHeureExceptionnelle(input) { return addRecord("heures_exceptionnelles", "heuresExceptionnelles", input, HEURE_EXCEPTIONNELLE_LABELS[input.type] || "Ajout heures exceptionnelles"); }
-  function updateHeureExceptionnelle(id, patch) { return updateRecord("heures_exceptionnelles", "heuresExceptionnelles", id, patch, "Modification heures exceptionnelles"); }
-  function deleteHeureExceptionnelle(id) { return deleteRecord("heures_exceptionnelles", "heuresExceptionnelles", id, "Suppression heures exceptionnelles"); }
+  function addHeureExceptionnelle(input) { return addRecord("heures_exceptionnelles", "heuresExceptionnelles", input, HEURE_EXCEPTIONNELLE_LABELS[input.type] || "Ajout Over Time"); }
+  function updateHeureExceptionnelle(id, patch) { return updateRecord("heures_exceptionnelles", "heuresExceptionnelles", id, patch, "Modification Over Time"); }
+  function deleteHeureExceptionnelle(id) { return deleteRecord("heures_exceptionnelles", "heuresExceptionnelles", id, "Suppression Over Time"); }
 
   // ---------- Affectations manuelles / remplacement (§26-27) ----------
 

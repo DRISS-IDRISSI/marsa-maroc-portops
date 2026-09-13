@@ -108,7 +108,7 @@ function Sidebar() {
     { to: "/conges", icon: "fa-umbrella-beach", label: "Congés" },
     { to: "/maladies", icon: "fa-briefcase-medical", label: "Maladies" },
     { to: "/absences", icon: "fa-user-slash", label: "Absences" },
-    { to: "/heures-exceptionnelles", icon: "fa-clock-rotate-left", label: "Heures except." },
+    { to: "/heures-exceptionnelles", icon: "fa-clock-rotate-left", label: "Over Time" },
     { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" },
     { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapports" }
   ];

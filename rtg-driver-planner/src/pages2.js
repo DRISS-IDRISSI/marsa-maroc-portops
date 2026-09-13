@@ -530,7 +530,7 @@ function HeuresExceptionnellesPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Heures exceptionnelles</h1>
+          <h1 className="text-2xl font-bold text-white">Over Time</h1>
           <p className="text-slate-400 text-sm mt-0.5">Doublage, jour férié travaillé, 3ème shift dimanche (nécessité de service) — {records.length} enregistrement{records.length > 1 ? "s" : ""}</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
@@ -539,7 +539,7 @@ function HeuresExceptionnellesPage() {
       </div>
 
       {showForm && (
-        <Panel title="Nouvel enregistrement — heures exceptionnelles" icon="fa-clock-rotate-left">
+        <Panel title="Nouvel enregistrement — Over Time" icon="fa-clock-rotate-left">
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -820,7 +820,7 @@ function RapportRHPage() {
       downloadCSV(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
       return;
     }
-    const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total h except."];
+    const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)"];
     const rows = report.rows.map(r => [
       r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.PRESENT, r.counts.REPOS, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE, r.counts.FORMATION,
       r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures
@@ -905,7 +905,7 @@ function RapportRHPage() {
                 <th className={th}>Doublage (h)</th>
                 <th className={th}>Férié travaillé (j/h)</th>
                 <th className={th}>Dim. 3ème shift (j/h)</th>
-                <th className={th}>Total h except.</th>
+                <th className={th}>Total Over Time (h)</th>
               </tr>
             </thead>
             <tbody>
@@ -1119,7 +1119,7 @@ function UsersPage() {
       </p>
 
       <Panel title="Sauvegarde des données" icon="fa-download">
-        <p className="text-xs text-slate-400 mb-3">Télécharge une copie complète des données actuelles de cet appareil (conducteurs, congés, maladies, absences, heures exceptionnelles, utilisateurs, historique...) dans un fichier JSON. À faire avant toute migration ou changement important.</p>
+        <p className="text-xs text-slate-400 mb-3">Télécharge une copie complète des données actuelles de cet appareil (conducteurs, congés, maladies, absences, Over Time, utilisateurs, historique...) dans un fichier JSON. À faire avant toute migration ou changement important.</p>
         <button onClick={() => {
           const json = JSON.stringify(state, null, 2);
           const blob = new Blob([json], { type: "application/json" });
