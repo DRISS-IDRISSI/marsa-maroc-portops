@@ -758,6 +758,26 @@ function RapportRHPage() {
   const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
   const tdCenter = td + " text-center";
 
+  const exportExcel = () => {
+    if (tab === "feries") {
+      const headers = ["Date", "Mat", "Nom", "Prénom", "Équipe", "Type", "Heures", "Mouvements réalisés", "Commentaire"];
+      const rows = feriesReport.rows.map(r => [
+        r.record.dateDebut, r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", r.teamNom,
+        r.record.type === "FERIE_TRAVAILLE" ? "Férié travaillé" : "3ème shift dimanche", r.record.heures,
+        r.record.type === "FERIE_TRAVAILLE" ? (r.mouvements != null ? r.mouvements : "") : "",
+        r.record.type === "FERIE_TRAVAILLE" ? (r.mouvementCommentaire || r.record.commentaire || "") : (r.record.commentaire || "")
+      ]);
+      downloadCSV(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
+      return;
+    }
+    const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total h except."];
+    const rows = report.rows.map(r => [
+      r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.PRESENT, r.counts.REPOS, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE, r.counts.FORMATION,
+      r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures
+    ]);
+    downloadCSV(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
+  };
+
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
@@ -765,9 +785,12 @@ function RapportRHPage() {
           <h1 className="text-2xl font-bold text-white">Rapports</h1>
           <p className="text-slate-400 text-sm mt-0.5">Rapports mensuels à imprimer / envoyer au service RH</p>
         </div>
-        <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-          <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+            <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
+          </button>
+          <ExportExcelButton onClick={exportExcel} />
+        </div>
       </div>
 
       <div className="flex gap-2 print:hidden">

@@ -43,6 +43,35 @@ const PRINT_TD = "px-2 py-1 border-b border-slate-200 whitespace-nowrap";
 const PRINT_TD_CENTER = PRINT_TD + " text-center";
 const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
+// Export Excel des rapports — CSV avec séparateur ";" (convention Excel FR,
+// où "," est le séparateur décimal) et BOM UTF-8 pour que les accents
+// s'affichent correctement à l'ouverture dans Excel.
+function downloadCSV(filename, headers, rows) {
+  const escape = v => {
+    const s = v == null ? "" : String(v);
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [headers, ...rows].map(r => r.map(escape).join(";"));
+  const csv = "﻿" + lines.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function ExportExcelButton({ onClick }) {
+  return (
+    <button onClick={onClick} className="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
+      <i className="fas fa-file-excel mr-1.5"></i>Excel
+    </button>
+  );
+}
+
 function PrintHeader({ subtitle, count, countLabel }) {
   const generatedAt = new Date();
   return (
@@ -403,6 +432,21 @@ function PlanningMensuel() {
       })()
     : planning.validation;
 
+  const exportExcel = () => {
+    const headers = ["Mat", "Nom", "Prénom", "Équipe", ...planning.days.map(day => String(day.day).padStart(2, "0"))];
+    const rows = drivers.map(driver => {
+      const cells = planning.days.map(day => {
+        const a = day.assignments.find(x => x.driverId === driver.id);
+        if (!a) return "";
+        const meta = RTG_STATUS_META[a.status] || { code: a.status };
+        if (a.status === "PRESENT") return [a.vacation, a.zone].filter(Boolean).join("-") || meta.code;
+        return meta.code;
+      });
+      return [driver.matricule, driver.nom, driver.prenom, driver.teamId, ...cells];
+    });
+    downloadCSV(`planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.csv`, headers, rows);
+  };
+
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
@@ -410,9 +454,12 @@ function PlanningMensuel() {
           <h1 className="text-2xl font-bold text-white">Planning mensuel RTG</h1>
           <p className="text-slate-400 text-sm mt-0.5">Généré automatiquement par le moteur de planification (shift / zone / vacation / repos)</p>
         </div>
-        <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-          <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+            <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
+          </button>
+          <ExportExcelButton onClick={exportExcel} />
+        </div>
       </div>
 
       <div className="print:hidden">
@@ -658,6 +705,7 @@ function AffectationDuJour() {
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
   const [dateStr, setDateStr] = useState(RTGDate.toISO(new Date()));
+  const [shiftFilter, setShiftFilter] = useState("all");
 
   const assignments = useMemo(() => {
     try {
@@ -665,6 +713,15 @@ function AffectationDuJour() {
       return shiftRestricted ? all.filter(a => a.teamId === currentUser.teamId) : all;
     } catch (e) { return []; }
   }, [state, dateStr, shiftRestricted, currentUser]);
+
+  // Un Responsable de Shift n'a qu'une seule équipe donc qu'un seul shift
+  // pertinent ce jour-là (les 2 autres sections seraient vides) : on le
+  // détermine automatiquement plutôt que de lui proposer le sélecteur.
+  const dateObjForShift = RTGDate.parseISO(dateStr);
+  const ownTeam = shiftRestricted ? state.teams.find(t => t.id === currentUser.teamId) : null;
+  const ownShiftId = ownTeam ? ShiftRotationEngine.getTeamShiftForDate(ownTeam, dateObjForShift, state.config) : null;
+  const effectiveShiftFilter = shiftRestricted ? ownShiftId : shiftFilter;
+  const visibleShifts = effectiveShiftFilter === "all" ? state.config.shifts : state.config.shifts.filter(s => s.id === effectiveShiftFilter);
 
   const grouped = {};
   state.config.shifts.forEach(s => {
@@ -691,24 +748,65 @@ function AffectationDuJour() {
     reposCongesByShift[s.id] = assignments.filter(a => (a.status === "REPOS" || a.status === "CONGE") && teamShiftMap[a.teamId] === s.id);
   });
 
+  const exportExcel = () => {
+    const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
+    if (holiday) {
+      const headers = ["Mat", "Nom", "Prénom", "Équipe", "Mouvements réalisés", "Commentaire"];
+      const rows = presentDrivers.map(a => {
+        const rec = RTGStore.getFerieMouvements(dateStr, a.driverId);
+        return [a.matricule, a.nom, a.prenom, a.teamNom, rec ? rec.mouvements : "", rec ? rec.commentaire || "" : ""];
+      });
+      downloadCSV(`affectation-${dateStr}-jour-ferie.csv`, headers, rows);
+      return;
+    }
+    const headers = ["Shift", "Vacation", "Mat", "Nom", "Prénom", "Équipe", "Horaire", "Zone", "Statut"];
+    const rows = [];
+    visibleShifts.forEach(s => {
+      grouped[s.id].forEach(({ vacation, rows: vrows }) => {
+        vrows.forEach(a => rows.push([s.label, vacation.id, a.matricule, a.nom, a.prenom, a.teamNom, `${a.startTime}-${a.endTime}`, a.zone, "Présent"]));
+      });
+      reposCongesByShift[s.id].forEach(a => rows.push([s.label, "", a.matricule, a.nom, a.prenom, a.teamNom, "", "", a.status === "REPOS" ? "Repos" : "Congé"]));
+    });
+    if (offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3")) {
+      offRows.forEach(a => rows.push(["Shift 3", "", a.matricule, a.nom, a.prenom, a.teamNom, "", "", "OFF"]));
+    }
+    downloadCSV(`affectation-${dateStr}${suffix}.csv`, headers, rows);
+  };
+
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
         <div>
           <h1 className="text-2xl font-bold text-white">Affectation du jour</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date pour voir l'affectation détaillée des 3 shifts</p>
+          <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date, et éventuellement un shift, pour voir l'affectation détaillée</p>
         </div>
-        <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-          <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+            <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
+          </button>
+          <ExportExcelButton onClick={exportExcel} />
+        </div>
       </div>
 
-      <div className="bg-card rounded-xl border border-border p-4 flex items-end gap-3 print:hidden">
+      <div className="bg-card rounded-xl border border-border p-4 flex flex-wrap items-end gap-3 print:hidden">
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Date</label>
           <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
         </div>
         <div className="text-xs text-slate-500">{RTGDate.formatFr(RTGDate.parseISO(dateStr))}</div>
+        {!shiftRestricted && (
+          <div className="ml-auto">
+            <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Shift à afficher</label>
+            <div className="flex gap-1">
+              <button onClick={() => setShiftFilter("all")}
+                className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${shiftFilter === "all" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Tous</button>
+              {state.config.shifts.map(s => (
+                <button key={s.id} onClick={() => setShiftFilter(s.id)}
+                  className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${shiftFilter === s.id ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{s.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {holiday && (
@@ -724,7 +822,7 @@ function AffectationDuJour() {
       )}
 
       <div className="print:hidden space-y-4">
-        {state.config.shifts.map(s => (
+        {visibleShifts.map(s => (
           <div key={s.id} className="space-y-3 pb-4 border-b border-border/60 last:border-0">
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -736,7 +834,7 @@ function AffectationDuJour() {
           </div>
         ))}
 
-        {offRows.length > 0 && (
+        {offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3") && (
           <ShiftBlock title="OFF — Shift 3 dimanche" icon="fa-power-off" rows={offRows} />
         )}
       </div>
@@ -744,7 +842,7 @@ function AffectationDuJour() {
       {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de l'appli. */}
       <div className="print-report bg-white text-slate-900 rounded-xl p-0">
         <PrintHeader
-          subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "")}
+          subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "") + (effectiveShiftFilter !== "all" ? " — " + (state.config.shifts.find(s => s.id === effectiveShiftFilter) || {}).label : "")}
           count={holiday ? presentDrivers.length : assignments.length} countLabel={holiday ? "conducteur présent" : "conducteur affecté"}
         />
         {holiday ? (
@@ -755,7 +853,7 @@ function AffectationDuJour() {
           </div>
         ) : (
           <div>
-            {state.config.shifts.map(s => (
+            {visibleShifts.map(s => (
               <div key={s.id} className="mb-3">
                 <div className="text-xs font-bold uppercase tracking-wide mb-1 border-b border-slate-300 pb-1">{s.label} ({s.start} → {s.end})</div>
                 {grouped[s.id].map(({ vacation, rows }) => (
@@ -764,7 +862,7 @@ function AffectationDuJour() {
                 <ReposCongesPrintable rows={reposCongesByShift[s.id]} />
               </div>
             ))}
-            {offRows.length > 0 && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} />}
+            {offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3") && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} />}
           </div>
         )}
         <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
