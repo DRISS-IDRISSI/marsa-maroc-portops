@@ -9,11 +9,19 @@ function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault();
-    const user = RTGStore.login(username, password);
-    if (!user) setError("Identifiant ou mot de passe incorrect.");
+    setSubmitting(true);
+    setError("");
+    try {
+      const user = await RTGStore.login(username, password);
+      if (!user) setError("Identifiant ou mot de passe incorrect.");
+    } catch (err) {
+      setError("Connexion impossible — vérifiez votre connexion internet et réessayez.");
+    }
+    setSubmitting(false);
   };
 
   return (
@@ -29,20 +37,36 @@ function LoginPage() {
         {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Identifiant</label>
-          <input autoFocus className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full" value={username} onChange={e => setUsername(e.target.value)} />
+          <input autoFocus disabled={submitting} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full" value={username} onChange={e => setUsername(e.target.value)} />
         </div>
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mot de passe</label>
-          <input type="password" className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full" value={password} onChange={e => setPassword(e.target.value)} />
+          <input type="password" disabled={submitting} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full" value={password} onChange={e => setPassword(e.target.value)} />
         </div>
-        <button type="submit" className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Se connecter</button>
+        <button type="submit" disabled={submitting} className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
+          {submitting ? "Connexion..." : "Se connecter"}
+        </button>
       </form>
+    </div>
+  );
+}
+
+function AuthLoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-port px-4">
+      <div className="text-center">
+        <div className="w-16 h-16 mx-auto rounded-lg bg-white flex items-center justify-center p-2 mb-4 animate-pulse">
+          <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="max-w-full max-h-full object-contain" />
+        </div>
+        <p className="text-sm text-slate-400">Chargement...</p>
+      </div>
     </div>
   );
 }
 
 function AuthGate({ children }) {
   const state = useRtgState();
+  if (!state.authChecked || state.loading) return <AuthLoadingScreen />;
   const currentUser = state.users.find(u => u.id === state.currentUserId) || null;
   if (!currentUser) return <LoginPage />;
   return children;

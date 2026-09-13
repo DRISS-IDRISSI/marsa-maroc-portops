@@ -1,64 +1,48 @@
 // ==========================================
-// RTG DRIVER PLANNER — Store (persistance localStorage)
-// Le projet n'a pas de backend : ce module est la seule source de vérité
-// pour les données RTG (conducteurs, équipes, congés, maladies, historique,
-// modifications manuelles). Il expose une API get/set/subscribe simple afin
-// de pouvoir être remplacé plus tard par un vrai backend sans changer les
-// moteurs métier ni les pages qui consomment RTGStore.get().
+// RTG DRIVER PLANNER — Store (Supabase : PostgreSQL + Auth + RLS)
+// Remplace l'ancienne persistance localStorage : les données et
+// l'authentification vivent maintenant dans Supabase (voir supabase/schema.sql
+// pour les tables et les politiques RLS). L'API exposée par RTGStore
+// (get/set/subscribe/addDriver/addConge/login...) reste identique à avant
+// pour ne rien changer aux moteurs métier ni aux pages qui la consomment —
+// seule l'intérieur de ce fichier change.
+//
+// Principe : au chargement (ou après connexion), on récupère toutes les
+// tables Supabase UNE FOIS dans un objet `state` en mémoire, identique dans
+// sa forme à l'ancien objet localStorage. Les pages continuent de lire cet
+// objet de façon synchrone (RTGStore.get()) comme avant. Chaque action
+// (ajouter un congé, modifier un conducteur...) écrit dans Supabase PUIS met
+// à jour cette copie en mémoire et notifie les abonnés — d'où un léger délai
+// réseau (normal, contrairement à l'ancien localStorage instantané) avant de
+// voir le résultat, RLS oblige la vraie source de vérité à être la base.
 // ==========================================
 
-const RTG_STORAGE_KEY = "rtg_planner_data_v1";
+const RTG_AUTH_EMAIL_DOMAIN = "@rtg-planner.local";
 
-function rtgCloneSeed() {
-  return JSON.parse(JSON.stringify(RTG_SEED));
-}
-
-function rtgLoadInitialState() {
-  try {
-    const raw = localStorage.getItem(RTG_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const seed = rtgCloneSeed();
-      if (parsed.dataVersion !== seed.dataVersion) {
-        // Le roster/la référence a changé depuis la dernière visite (nouvelle liste de
-        // conducteurs, matricules corrigés...) : les anciennes données en cache ne
-        // correspondent plus (elles référencent d'anciens IDs de conducteurs), donc on
-        // repart du nouveau seed plutôt que de les fusionner.
-        rtgPersist(seed);
-        return seed;
-      }
-      // Même version : on fusionne pour ne pas perdre les modifications manuelles de
-      // l'utilisateur (congés/repos édités, etc.) tout en complétant les clés que le
-      // seed aurait pu ajouter depuis.
-      return Object.assign(seed, parsed);
-    }
-  } catch (e) {
-    console.warn("RTGStore: lecture localStorage impossible, réinitialisation.", e);
-  }
-  const seeded = rtgCloneSeed();
-  rtgPersist(seeded);
-  return seeded;
-}
-
-function rtgPersist(state) {
-  try {
-    localStorage.setItem(RTG_STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.warn("RTGStore: écriture localStorage impossible.", e);
-  }
+function rtgEmptyState() {
+  return {
+    dataVersion: 11,
+    drivers: [], teams: [], config: RTG_CONFIG,
+    conges: [], maladies: [], absences: [],
+    heuresExceptionnelles: [], feriesMouvements: [],
+    users: [], currentUserId: null,
+    manualOverrides: {}, auditLog: [],
+    // `loading` : chargement des données en cours (au démarrage ou après
+    // connexion) ; `authChecked` : la vérification de session initiale est
+    // terminée (permet à AuthGate de ne pas afficher l'écran de connexion
+    // avant même d'avoir su si une session existait déjà).
+    loading: true, authChecked: false
+  };
 }
 
 const RTGStore = (function () {
-  let state = rtgLoadInitialState();
+  let state = rtgEmptyState();
   let listeners = [];
 
-  function get() {
-    return state;
-  }
+  function get() { return state; }
 
   function set(updater) {
     state = typeof updater === "function" ? updater(state) : updater;
-    rtgPersist(state);
     listeners.slice().forEach(fn => fn(state));
   }
 
@@ -78,56 +62,185 @@ const RTGStore = (function () {
     return u ? u.nom : "Système";
   }
 
-  function addAuditEntry(entry) {
-    set(s => Object.assign({}, s, {
-      auditLog: [Object.assign({
-        id: "audit_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-        date: new Date().toISOString(),
-        utilisateur: currentUserLabel()
-      }, entry), ...s.auditLog]
-    }));
+  // ---------- Correspondance lignes Supabase (snake_case) <-> état (camelCase) ----------
+
+  function mapDriverRow(r) {
+    return {
+      id: r.id, matricule: r.matricule, nom: r.nom, prenom: r.prenom, teamId: r.team_id,
+      initialShift: r.initial_shift, initialZone: r.initial_zone, initialVacation: r.initial_vacation,
+      statut: r.statut, dateEntree: r.date_entree, dateSortie: r.date_sortie,
+      observation: r.observation || "", actif: r.actif, motifDepart: r.motif_depart
+    };
+  }
+  function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
+  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, actif: r.actif }; }
+  function mapRecordRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
+  function mapHeureRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, heures: r.heures, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
+  function mapFerieMvtRow(r) { return { id: r.id, date: r.date, driverId: r.driver_id, mouvements: r.mouvements, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at, updatedAt: r.updated_at }; }
+  function mapOverrideRow(r) { return { shift: r.shift, vacation: r.vacation, zone: r.zone, status: r.status, startTime: r.start_time, endTime: r.end_time, motif: r.motif, details: r.details, createdAt: r.created_at, updatedAt: r.updated_at }; }
+  function mapAuditRow(r) { return { id: r.id, date: r.date, utilisateur: r.utilisateur, driverId: r.driver_id, matricule: r.matricule, action: r.action, details: r.details }; }
+
+  // ---------- Chargement complet depuis Supabase ----------
+
+  async function loadAll() {
+    const [
+      teamsRes, driversRes, profilesRes, congesRes, maladiesRes, absencesRes,
+      heuresRes, feriesRes, overridesRes, auditRes
+    ] = await Promise.all([
+      sb.from("teams").select("*"),
+      sb.from("drivers").select("*").order("matricule"),
+      sb.from("profiles").select("*"),
+      sb.from("conges").select("*"),
+      sb.from("maladies").select("*"),
+      sb.from("absences").select("*"),
+      sb.from("heures_exceptionnelles").select("*"),
+      sb.from("feries_mouvements").select("*"),
+      sb.from("manual_overrides").select("*"),
+      sb.from("audit_log").select("*").order("date", { ascending: false }).limit(500)
+    ]);
+
+    const manualOverrides = {};
+    (overridesRes.data || []).forEach(r => { manualOverrides[r.date + "_" + r.driver_id] = mapOverrideRow(r); });
+
+    return {
+      teams: (teamsRes.data || []).map(mapTeamRow),
+      drivers: (driversRes.data || []).map(mapDriverRow),
+      users: (profilesRes.data || []).map(mapProfileRow),
+      conges: (congesRes.data || []).map(mapRecordRow),
+      maladies: (maladiesRes.data || []).map(mapRecordRow),
+      absences: (absencesRes.data || []).map(mapRecordRow),
+      heuresExceptionnelles: (heuresRes.data || []).map(mapHeureRow),
+      feriesMouvements: (feriesRes.data || []).map(mapFerieMvtRow),
+      manualOverrides: manualOverrides,
+      auditLog: (auditRes.data || []).map(mapAuditRow)
+    };
   }
 
+  // Recharge tout depuis Supabase (utile après une action externe, ou pour
+  // un futur bouton "Actualiser"). Conserve la config statique (RTG_CONFIG).
+  async function refreshAll() {
+    const data = await loadAll();
+    set(s => Object.assign({}, s, data, { loading: false }));
+  }
+
+  // ---------- Authentification (Supabase Auth) ----------
+  //
+  // Chaque "identifiant" applicatif correspond à un email technique
+  // <identifiant>@rtg-planner.local dans Supabase Auth — l'écran de
+  // connexion continue de ne demander qu'un identifiant + mot de passe.
+  // Les rôles/permissions sont contrôlés côté base (RLS), pas seulement par
+  // ce que l'interface choisit d'afficher.
+
+  async function login(username, password) {
+    const email = (username || "").trim().toLowerCase() + RTG_AUTH_EMAIL_DOMAIN;
+    const { data, error } = await sb.auth.signInWithPassword({ email: email, password: password });
+    if (error || !data.user) return null;
+
+    const loaded = await loadAll();
+    const me = loaded.users.find(u => u.id === data.user.id);
+    if (!me || me.actif === false) {
+      await sb.auth.signOut();
+      return null;
+    }
+    set(s => Object.assign({}, s, loaded, { currentUserId: me.id, loading: false, authChecked: true }));
+    return me;
+  }
+
+  async function logout() {
+    await sb.auth.signOut();
+    set(() => Object.assign(rtgEmptyState(), { loading: false, authChecked: true }));
+  }
+
+  // Restaure une session existante au chargement de la page (l'utilisateur
+  // reste connecté après un rafraîchissement, contrairement à l'ancien
+  // système où "être connecté" n'était qu'un id posé dans localStorage).
+  async function initAuth() {
+    try {
+      const { data } = await sb.auth.getSession();
+      if (data.session && data.session.user) {
+        const loaded = await loadAll();
+        const me = loaded.users.find(u => u.id === data.session.user.id);
+        if (me && me.actif !== false) {
+          set(s => Object.assign({}, s, loaded, { currentUserId: me.id, loading: false, authChecked: true }));
+          return;
+        }
+        await sb.auth.signOut();
+      }
+    } catch (e) {
+      console.warn("RTGStore: vérification de session impossible.", e);
+    }
+    set(s => Object.assign({}, s, { loading: false, authChecked: true }));
+  }
+  initAuth();
+
+  // Repart d'un état vide et relance la vérification de session — conservé
+  // pour compatibilité (n'est pas branché à un bouton dans l'interface).
   function resetToSeed() {
-    try { localStorage.removeItem(RTG_STORAGE_KEY); } catch (e) {}
-    state = rtgLoadInitialState();
-    listeners.slice().forEach(fn => fn(state));
+    set(() => rtgEmptyState());
+    initAuth();
+  }
+
+  // ---------- Audit ----------
+
+  async function addAuditEntry(entry) {
+    const row = {
+      date: new Date().toISOString(),
+      utilisateur: currentUserLabel(),
+      driver_id: entry.driverId || null,
+      matricule: entry.matricule || null,
+      action: entry.action,
+      details: entry.details || null
+    };
+    const { data, error } = await sb.from("audit_log").insert(row).select().single();
+    if (!error && data) {
+      set(s => Object.assign({}, s, { auditLog: [mapAuditRow(data), ...s.auditLog] }));
+    }
   }
 
   // ---------- Conducteurs (§28) ----------
 
   function isMatriculeTaken(matricule, excludeDriverId) {
-    return state.drivers.some(d => d.matricule === matricule && d.id !== excludeDriverId);
+    return state.drivers.some(d => d.matricule.toLowerCase() === matricule.toLowerCase() && d.id !== excludeDriverId);
   }
 
-  function addDriver(input) {
+  async function addDriver(input) {
     const team = state.teams.find(t => t.id === input.teamId);
-    const driver = {
+    const row = {
       id: input.teamId + "_" + input.matricule,
-      matricule: input.matricule,
-      nom: input.nom,
-      prenom: input.prenom,
-      teamId: input.teamId,
-      initialShift: team ? team.shiftCycle[0] : null,
-      initialZone: input.initialZone || state.config.zones[0],
-      initialVacation: input.initialVacation || "V1",
-      statut: "PRESENT",
-      dateEntree: input.dateEntree || RTGDate.toISO(new Date()),
-      dateSortie: null,
-      observation: input.observation || "",
-      actif: true
+      matricule: input.matricule, nom: input.nom, prenom: input.prenom, team_id: input.teamId,
+      initial_shift: team ? team.shiftCycle[0] : null,
+      initial_zone: input.initialZone || state.config.zones[0],
+      initial_vacation: input.initialVacation || "V1",
+      statut: "PRESENT", date_entree: input.dateEntree || RTGDate.toISO(new Date()),
+      date_sortie: null, observation: input.observation || "", actif: true
     };
+    const { data, error } = await sb.from("drivers").insert(row).select().single();
+    if (error) { console.error(error); throw error; }
+    const driver = mapDriverRow(data);
     set(s => Object.assign({}, s, { drivers: [...s.drivers, driver] }));
     addAuditEntry({ driverId: driver.id, matricule: driver.matricule, action: "Création conducteur", details: driver.nom + " " + driver.prenom + " — " + (team ? team.nom : driver.teamId) });
     return driver;
   }
 
-  function updateDriver(driverId, patch) {
-    let before = null;
-    set(s => {
-      before = s.drivers.find(d => d.id === driverId);
-      return Object.assign({}, s, { drivers: s.drivers.map(d => d.id === driverId ? Object.assign({}, d, patch) : d) });
-    });
+  async function updateDriver(driverId, patch) {
+    const before = state.drivers.find(d => d.id === driverId);
+    const dbPatch = {};
+    if ("matricule" in patch) dbPatch.matricule = patch.matricule;
+    if ("nom" in patch) dbPatch.nom = patch.nom;
+    if ("prenom" in patch) dbPatch.prenom = patch.prenom;
+    if ("teamId" in patch) dbPatch.team_id = patch.teamId;
+    if ("initialZone" in patch) dbPatch.initial_zone = patch.initialZone;
+    if ("initialVacation" in patch) dbPatch.initial_vacation = patch.initialVacation;
+    if ("dateEntree" in patch) dbPatch.date_entree = patch.dateEntree;
+    if ("dateSortie" in patch) dbPatch.date_sortie = patch.dateSortie;
+    if ("observation" in patch) dbPatch.observation = patch.observation;
+    if ("actif" in patch) dbPatch.actif = patch.actif;
+    if ("motifDepart" in patch) dbPatch.motif_depart = patch.motifDepart;
+
+    const { data, error } = await sb.from("drivers").update(dbPatch).eq("id", driverId).select().single();
+    if (error) { console.error(error); throw error; }
+    const updated = mapDriverRow(data);
+    set(s => Object.assign({}, s, { drivers: s.drivers.map(d => d.id === driverId ? updated : d) }));
     if (before) {
       addAuditEntry({ driverId: driverId, matricule: before.matricule, action: "Modification conducteur", details: Object.keys(patch).map(k => k + ": " + before[k] + " → " + patch[k]).join(", ") });
     }
@@ -135,37 +248,51 @@ const RTGStore = (function () {
 
   // motif (départ) : "RETRAITE", "CHANGEMENT_POSTE" ou "AGENT_SUSPENDU" (arrêt
   // de travail) — voir DEPART_MOTIF_LABELS (pages2.js) pour les libellés.
-  function setDriverActive(driverId, actif, motif) {
-    updateDriver(driverId, { actif: actif, dateSortie: actif ? null : RTGDate.toISO(new Date()), motifDepart: actif ? null : (motif || "") });
+  async function setDriverActive(driverId, actif, motif) {
+    await updateDriver(driverId, { actif: actif, dateSortie: actif ? null : RTGDate.toISO(new Date()), motifDepart: actif ? null : (motif || "") });
     const d = state.drivers.find(dr => dr.id === driverId);
     addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: actif ? "Réactivation conducteur" : "Départ conducteur", details: actif ? "" : (motif || "") });
   }
 
-  // ---------- Congés / Maladies / Absences (§13-15) — API générique ----------
+  // ---------- Congés / Maladies / Absences / Heures exceptionnelles — API générique ----------
 
-  function addRecord(listKey, input, auditAction) {
-    const record = Object.assign({
-      id: listKey + "_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-      createdAt: new Date().toISOString(),
-      utilisateur: currentUserLabel()
-    }, input);
+  function recordRowMapper(table) { return table === "heures_exceptionnelles" ? mapHeureRow : mapRecordRow; }
+
+  async function addRecord(table, listKey, input, auditAction) {
+    const row = {
+      driver_id: input.driverId, date_debut: input.dateDebut, date_fin: input.dateFin,
+      commentaire: input.commentaire || "", utilisateur: currentUserLabel()
+    };
+    if ("type" in input) row.type = input.type;
+    if ("heures" in input) row.heures = input.heures;
+    const { data, error } = await sb.from(table).insert(row).select().single();
+    if (error) { console.error(error); throw error; }
+    const record = recordRowMapper(table)(data);
     set(s => Object.assign({}, s, { [listKey]: [...s[listKey], record] }));
     const d = state.drivers.find(dr => dr.id === input.driverId);
     addAuditEntry({ driverId: input.driverId, matricule: d ? d.matricule : "", action: auditAction, details: input.dateDebut + " → " + input.dateFin + (input.commentaire ? " (" + input.commentaire + ")" : "") });
     return record;
   }
 
-  function updateRecord(listKey, id, patch, auditAction) {
-    set(s => Object.assign({}, s, { [listKey]: s[listKey].map(r => r.id === id ? Object.assign({}, r, patch) : r) }));
-    const r = state[listKey].find(rec => rec.id === id);
-    if (r) {
-      const d = state.drivers.find(dr => dr.id === r.driverId);
-      addAuditEntry({ driverId: r.driverId, matricule: d ? d.matricule : "", action: auditAction, details: "" });
-    }
+  async function updateRecord(table, listKey, id, patch, auditAction) {
+    const dbPatch = {};
+    if ("dateDebut" in patch) dbPatch.date_debut = patch.dateDebut;
+    if ("dateFin" in patch) dbPatch.date_fin = patch.dateFin;
+    if ("type" in patch) dbPatch.type = patch.type;
+    if ("heures" in patch) dbPatch.heures = patch.heures;
+    if ("commentaire" in patch) dbPatch.commentaire = patch.commentaire;
+    const { data, error } = await sb.from(table).update(dbPatch).eq("id", id).select().single();
+    if (error) { console.error(error); throw error; }
+    const updated = recordRowMapper(table)(data);
+    set(s => Object.assign({}, s, { [listKey]: s[listKey].map(r => r.id === id ? updated : r) }));
+    const d = state.drivers.find(dr => dr.id === updated.driverId);
+    addAuditEntry({ driverId: updated.driverId, matricule: d ? d.matricule : "", action: auditAction, details: "" });
   }
 
-  function deleteRecord(listKey, id, auditAction) {
+  async function deleteRecord(table, listKey, id, auditAction) {
     const r = state[listKey].find(rec => rec.id === id);
+    const { error } = await sb.from(table).delete().eq("id", id);
+    if (error) { console.error(error); throw error; }
     set(s => Object.assign({}, s, { [listKey]: s[listKey].filter(rec => rec.id !== id) }));
     if (r) {
       const d = state.drivers.find(dr => dr.id === r.driverId);
@@ -173,35 +300,39 @@ const RTGStore = (function () {
     }
   }
 
-  function addConge(input) { return addRecord("conges", input, "Ajout congé"); }
-  function updateConge(id, patch) { return updateRecord("conges", id, patch, "Modification congé"); }
-  function deleteConge(id) { return deleteRecord("conges", id, "Suppression congé"); }
+  function addConge(input) { return addRecord("conges", "conges", input, "Ajout congé"); }
+  function updateConge(id, patch) { return updateRecord("conges", "conges", id, patch, "Modification congé"); }
+  function deleteConge(id) { return deleteRecord("conges", "conges", id, "Suppression congé"); }
 
-  function addMaladie(input) { return addRecord("maladies", input, "Ajout maladie"); }
-  function updateMaladie(id, patch) { return updateRecord("maladies", id, patch, "Modification maladie"); }
-  function deleteMaladie(id) { return deleteRecord("maladies", id, "Suppression maladie"); }
+  function addMaladie(input) { return addRecord("maladies", "maladies", input, "Ajout maladie"); }
+  function updateMaladie(id, patch) { return updateRecord("maladies", "maladies", id, patch, "Modification maladie"); }
+  function deleteMaladie(id) { return deleteRecord("maladies", "maladies", id, "Suppression maladie"); }
 
-  function addAbsence(input) { return addRecord("absences", input, input.type === "FORMATION" ? "Ajout formation" : "Ajout absence"); }
-  function updateAbsence(id, patch) { return updateRecord("absences", id, patch, "Modification absence/formation"); }
-  function deleteAbsence(id) { return deleteRecord("absences", id, "Suppression absence/formation"); }
+  function addAbsence(input) { return addRecord("absences", "absences", input, input.type === "FORMATION" ? "Ajout formation" : "Ajout absence"); }
+  function updateAbsence(id, patch) { return updateRecord("absences", "absences", id, patch, "Modification absence/formation"); }
+  function deleteAbsence(id) { return deleteRecord("absences", "absences", id, "Suppression absence/formation"); }
 
   // ---------- Heures exceptionnelles : doublage / férié travaillé / dimanche S3 (§29) ----------
 
   const HEURE_EXCEPTIONNELLE_LABELS = { DOUBLAGE: "Ajout doublage", FERIE_TRAVAILLE: "Ajout jour férié travaillé", DIMANCHE_S3: "Ajout 3ème shift dimanche" };
 
-  function addHeureExceptionnelle(input) { return addRecord("heuresExceptionnelles", input, HEURE_EXCEPTIONNELLE_LABELS[input.type] || "Ajout heures exceptionnelles"); }
-  function updateHeureExceptionnelle(id, patch) { return updateRecord("heuresExceptionnelles", id, patch, "Modification heures exceptionnelles"); }
-  function deleteHeureExceptionnelle(id) { return deleteRecord("heuresExceptionnelles", id, "Suppression heures exceptionnelles"); }
+  function addHeureExceptionnelle(input) { return addRecord("heures_exceptionnelles", "heuresExceptionnelles", input, HEURE_EXCEPTIONNELLE_LABELS[input.type] || "Ajout heures exceptionnelles"); }
+  function updateHeureExceptionnelle(id, patch) { return updateRecord("heures_exceptionnelles", "heuresExceptionnelles", id, patch, "Modification heures exceptionnelles"); }
+  function deleteHeureExceptionnelle(id) { return deleteRecord("heures_exceptionnelles", "heuresExceptionnelles", id, "Suppression heures exceptionnelles"); }
 
   // ---------- Affectations manuelles / remplacement (§26-27) ----------
 
-  function setManualOverride(isoDate, driverId, override, auditAction, auditDetails) {
+  async function setManualOverride(isoDate, driverId, override, auditAction, auditDetails) {
+    const row = {
+      date: isoDate, driver_id: driverId,
+      shift: override.shift, vacation: override.vacation, zone: override.zone, status: override.status,
+      start_time: override.startTime, end_time: override.endTime, motif: auditAction || null, details: auditDetails || null,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await sb.from("manual_overrides").upsert(row, { onConflict: "date,driver_id" }).select().single();
+    if (error) { console.error(error); throw error; }
     const key = isoDate + "_" + driverId;
-    set(s => Object.assign({}, s, {
-      manualOverrides: Object.assign({}, s.manualOverrides, {
-        [key]: Object.assign({}, override, { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-      })
-    }));
+    set(s => Object.assign({}, s, { manualOverrides: Object.assign({}, s.manualOverrides, { [key]: mapOverrideRow(data) }) }));
     const d = state.drivers.find(dr => dr.id === driverId);
     addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: auditAction || "Modification affectation", details: isoDate + (auditDetails ? " — " + auditDetails : "") });
   }
@@ -212,81 +343,85 @@ const RTGStore = (function () {
     return state.feriesMouvements.find(f => f.date === isoDate && f.driverId === driverId) || null;
   }
 
-  function setFerieMouvements(isoDate, driverId, mouvements, commentaire) {
-    const existing = getFerieMouvements(isoDate, driverId);
-    const d = state.drivers.find(dr => dr.id === driverId);
+  async function setFerieMouvements(isoDate, driverId, mouvements, commentaire) {
+    const row = { date: isoDate, driver_id: driverId, mouvements: mouvements, commentaire: commentaire, utilisateur: currentUserLabel(), updated_at: new Date().toISOString() };
+    const { data, error } = await sb.from("feries_mouvements").upsert(row, { onConflict: "date,driver_id" }).select().single();
+    if (error) { console.error(error); throw error; }
+    const record = mapFerieMvtRow(data);
     set(s => {
-      if (existing) {
-        return Object.assign({}, s, {
-          feriesMouvements: s.feriesMouvements.map(f => f.id === existing.id
-            ? Object.assign({}, f, { mouvements: mouvements, commentaire: commentaire, updatedAt: new Date().toISOString(), utilisateur: currentUserLabel() })
-            : f)
-        });
-      }
-      const record = {
-        id: "ferie_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-        date: isoDate, driverId: driverId, mouvements: mouvements, commentaire: commentaire,
-        createdAt: new Date().toISOString(), utilisateur: currentUserLabel()
-      };
-      return Object.assign({}, s, { feriesMouvements: [...s.feriesMouvements, record] });
+      const existingIdx = s.feriesMouvements.findIndex(f => f.date === isoDate && f.driverId === driverId);
+      const list = existingIdx === -1 ? [...s.feriesMouvements, record] : s.feriesMouvements.map(f => f.id === record.id ? record : f);
+      return Object.assign({}, s, { feriesMouvements: list });
     });
+    const d = state.drivers.find(dr => dr.id === driverId);
     addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: "Mouvements jour férié", details: isoDate + " — " + mouvements + " mouvement(s)" });
   }
 
   // ---------- Utilisateurs / authentification (§30) ----------
   //
-  // Pas de backend : ces comptes filtrent l'accès dans l'interface (qui voit/
-  // modifie quoi), ce n'est PAS une sécurité réelle — n'importe qui inspectant
-  // le stockage local du navigateur peut lire les mots de passe et les rôles.
-  // Suffisant pour organiser l'accès dans un cadre de confiance (poste
-  // partagé au bureau), pas pour protéger contre un utilisateur malveillant.
+  // Les comptes et rôles vivent maintenant dans Supabase Auth + la table
+  // `profiles`, protégés par RLS — plus de mots de passe en clair dans le
+  // navigateur. Limite technique à connaître : créer un NOUVEL utilisateur
+  // (signup) est possible depuis le navigateur avec la clé publique, mais
+  // changer le mot de passe d'un AUTRE utilisateur déjà existant ne l'est
+  // pas (il faut la clé secrète, que cette appli n'expose jamais) — un admin
+  // doit alors le faire directement dans le tableau de bord Supabase
+  // (Authentication > Users > sélectionner le compte > réinitialiser).
 
   function isUsernameTaken(username, excludeUserId) {
     return state.users.some(u => u.username.toLowerCase() === username.toLowerCase() && u.id !== excludeUserId);
   }
 
-  function login(username, password) {
-    const user = state.users.find(u =>
-      u.actif !== false &&
-      u.username.toLowerCase() === (username || "").trim().toLowerCase() &&
-      u.password === password
-    );
-    if (!user) return null;
-    set(s => Object.assign({}, s, { currentUserId: user.id }));
-    return user;
-  }
+  async function addUser(input) {
+    const email = input.username.trim().toLowerCase() + RTG_AUTH_EMAIL_DOMAIN;
+    const { data: authData, error: authError } = await sbAdmin.auth.signUp({ email: email, password: input.password });
+    if (authError || !authData.user) { console.error(authError); throw authError || new Error("Création du compte impossible."); }
 
-  function logout() {
-    set(s => Object.assign({}, s, { currentUserId: null }));
-  }
-
-  function addUser(input) {
-    const user = {
-      id: "u_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-      username: input.username.trim(),
-      password: input.password,
-      nom: input.nom.trim(),
-      role: input.role,
-      teamId: input.role === "RESPONSABLE_SHIFT" ? input.teamId : null,
-      actif: true
+    const row = {
+      id: authData.user.id, username: input.username.trim(), nom: input.nom.trim(), role: input.role,
+      team_id: input.role === "RESPONSABLE_SHIFT" ? input.teamId : null, actif: true
     };
+    const { data, error } = await sb.from("profiles").insert(row).select().single();
+    if (error) { console.error(error); throw error; }
+    const user = mapProfileRow(data);
     set(s => Object.assign({}, s, { users: [...s.users, user] }));
     addAuditEntry({ action: "Création utilisateur", details: user.nom + " (" + user.username + ") — " + user.role });
     return user;
   }
 
-  function updateUser(userId, patch) {
-    set(s => Object.assign({}, s, { users: s.users.map(u => u.id === userId ? Object.assign({}, u, patch) : u) }));
+  async function updateUser(userId, patch) {
+    const dbPatch = {};
+    if ("username" in patch) dbPatch.username = patch.username;
+    if ("nom" in patch) dbPatch.nom = patch.nom;
+    if ("role" in patch) dbPatch.role = patch.role;
+    if ("teamId" in patch) dbPatch.team_id = patch.teamId;
+    if ("actif" in patch) dbPatch.actif = patch.actif;
+
+    if (patch.password) {
+      if (userId === state.currentUserId) {
+        const { error } = await sb.auth.updateUser({ password: patch.password });
+        if (error) { console.error(error); throw error; }
+      } else {
+        throw new Error("Impossible de changer le mot de passe d'un autre utilisateur depuis l'application — à faire dans Supabase (Authentication > Users > réinitialiser).");
+      }
+    }
+
+    const { data, error } = await sb.from("profiles").update(dbPatch).eq("id", userId).select().single();
+    if (error) { console.error(error); throw error; }
+    const updated = mapProfileRow(data);
+    set(s => Object.assign({}, s, { users: s.users.map(u => u.id === userId ? updated : u) }));
     addAuditEntry({ action: "Modification utilisateur", details: userId });
   }
 
-  function setUserActive(userId, actif) {
-    updateUser(userId, { actif: actif });
+  async function setUserActive(userId, actif) {
+    await updateUser(userId, { actif: actif });
     if (!actif && state.currentUserId === userId) logout();
   }
 
-  function deleteUser(userId) {
+  async function deleteUser(userId) {
     const u = state.users.find(x => x.id === userId);
+    const { error } = await sb.from("profiles").delete().eq("id", userId);
+    if (error) { console.error(error); throw error; }
     set(s => Object.assign({}, s, { users: s.users.filter(x => x.id !== userId) }));
     if (state.currentUserId === userId) logout();
     addAuditEntry({ action: "Suppression utilisateur", details: u ? u.nom + " (" + u.username + ")" : userId });
@@ -294,16 +429,22 @@ const RTGStore = (function () {
 
   // ---------- Équipes : renommer le shift/l'équipe (§30) ----------
 
-  function updateTeam(teamId, patch) {
+  async function updateTeam(teamId, patch) {
     const before = state.teams.find(t => t.id === teamId);
-    set(s => Object.assign({}, s, { teams: s.teams.map(t => t.id === teamId ? Object.assign({}, t, patch) : t) }));
+    const dbPatch = {};
+    if ("nom" in patch) dbPatch.nom = patch.nom;
+    if ("shiftCycle" in patch) dbPatch.shift_cycle = patch.shiftCycle;
+    const { data, error } = await sb.from("teams").update(dbPatch).eq("id", teamId).select().single();
+    if (error) { console.error(error); throw error; }
+    const updated = mapTeamRow(data);
+    set(s => Object.assign({}, s, { teams: s.teams.map(t => t.id === teamId ? updated : t) }));
     if (before) {
       addAuditEntry({ action: "Renommage équipe/shift", details: before.nom + " → " + (patch.nom || before.nom) });
     }
   }
 
   return {
-    get, set, subscribe, addAuditEntry, resetToSeed,
+    get, set, subscribe, addAuditEntry, resetToSeed, refreshAll,
     isMatriculeTaken, addDriver, updateDriver, setDriverActive,
     addConge, updateConge, deleteConge,
     addMaladie, updateMaladie, deleteMaladie,

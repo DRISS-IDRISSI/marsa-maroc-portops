@@ -71,7 +71,9 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
 
-  const submit = () => {
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
     if (!form.matricule.trim() || !form.nom.trim() || !form.prenom.trim()) {
       setError("Matricule, nom et prénom sont obligatoires.");
       return;
@@ -82,12 +84,18 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
     }
     const teamId = lockedTeamId || form.teamId;
     const payload = Object.assign({}, form, { teamId: teamId, matricule: form.matricule.trim(), nom: form.nom.trim().toUpperCase(), prenom: form.prenom.trim().toUpperCase() });
-    if (editingId) {
-      RTGStore.updateDriver(editingId, payload);
-    } else {
-      RTGStore.addDriver(payload);
+    setSaving(true);
+    try {
+      if (editingId) {
+        await RTGStore.updateDriver(editingId, payload);
+      } else {
+        await RTGStore.addDriver(payload);
+      }
+      onSaved();
+    } catch (err) {
+      setError("Erreur d'enregistrement : " + (err && err.message ? err.message : "réessayez."));
+      setSaving(false);
     }
-    onSaved();
   };
 
   return (
@@ -121,8 +129,8 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
         <div className="sm:col-span-2"><label className={LABEL_CLS}>Observation</label><input className={FIELD_CLS} value={form.observation} onChange={e => setForm(f => Object.assign({}, f, { observation: e.target.value }))} /></div>
       </div>
       <div className="flex gap-2">
-        <button onClick={submit} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">{editingId ? "Enregistrer" : "Créer le conducteur"}</button>
-        <button onClick={onCancel} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+        <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : (editingId ? "Enregistrer" : "Créer le conducteur")}</button>
+        <button onClick={onCancel} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
       </div>
     </div>
   );
@@ -1018,8 +1026,9 @@ function emptyUserForm() {
 function UserForm({ state, initial, editingId, onCancel, onSaved }) {
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.nom.trim() || !form.username.trim()) { setError("Nom et identifiant sont obligatoires."); return; }
     if (!editingId && !form.password) { setError("Mot de passe obligatoire à la création."); return; }
     if (RTGStore.isUsernameTaken(form.username.trim(), editingId)) { setError("Cet identifiant est déjà utilisé."); return; }
@@ -1028,12 +1037,18 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
     const payload = { nom: form.nom.trim(), username: form.username.trim(), role: form.role, teamId: form.role === "RESPONSABLE_SHIFT" ? form.teamId : null };
     if (form.password) payload.password = form.password;
 
-    if (editingId) {
-      RTGStore.updateUser(editingId, payload);
-    } else {
-      RTGStore.addUser(payload);
+    setSaving(true);
+    try {
+      if (editingId) {
+        await RTGStore.updateUser(editingId, payload);
+      } else {
+        await RTGStore.addUser(payload);
+      }
+      onSaved();
+    } catch (err) {
+      setError("Erreur d'enregistrement : " + (err && err.message ? err.message : "réessayez."));
+      setSaving(false);
     }
-    onSaved();
   };
 
   return (
@@ -1062,8 +1077,8 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
         )}
       </div>
       <div className="flex gap-2">
-        <button onClick={submit} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">{editingId ? "Enregistrer" : "Créer l'utilisateur"}</button>
-        <button onClick={onCancel} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+        <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : (editingId ? "Enregistrer" : "Créer l'utilisateur")}</button>
+        <button onClick={onCancel} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
       </div>
     </div>
   );
