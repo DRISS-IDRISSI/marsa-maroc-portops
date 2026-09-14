@@ -62,18 +62,14 @@ const PlanningEngine = {
       return { driver: driver, driverId: driver.id, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime };
     });
 
-    // Passe 1.5 (Shift 1 uniquement) : règle métier stricte "jamais plus de
-    // présents en V1 qu'en V2" pour ce shift. Le biais de placement des repos
-    // (RestDayEngine.restDayLabelBiasByShift) y pousse déjà fortement, mais ne
-    // peut pas le garantir à 100% certains jours à cause d'autres contraintes
-    // prioritaires (espacement, blocs qui ne se séparent jamais, quota mensuel).
-    // Correction ponctuelle, seulement si ça arrive : on bascule en REPOS le
-    // nombre minimal de conducteurs déjà présents en V1 ce jour-là pour
-    // rétablir V1 ≤ V2 — un repos exceptionnel pour cette personne et ce jour
-    // précis seulement (jamais une hausse générale du quota mensuel de tous).
-    // Priorité de choix : conducteurs qui ont pris le MOINS de repos ce mois-ci
-    // (équité), puis pour qui ce jour n'est pas adjacent à un repos déjà pris
-    // (évite de créer 2 repos consécutifs quand c'est possible de l'éviter).
+    // Passe 1.5 (Shift 1 uniquement) : règle métier "les deux vacations doivent
+    // être égales, ou à défaut V1 ne dépasse V2 que d'UN seul conducteur au
+    // maximum" — décision explicite de l'exploitant : PAS de correction
+    // automatique (pas de repos ajouté, pas de changement de vacation silencieux).
+    // On se contente de SIGNALER (vacationBalanceAlert) le ou les conducteurs en
+    // excédent en V1 : l'appli les met en évidence (couleur distincte) pour que
+    // le responsable de shift lui demande, ce jour-là, de passer exceptionnellement
+    // en V2 — une décision humaine, pas automatique.
     const byTeamS1 = {};
     base.forEach(b => {
       if (b.status !== "PRESENT" || b.shift !== "S1" || !b.vacation || !b.team) return;
@@ -84,22 +80,9 @@ const PlanningEngine = {
       const g = byTeamS1[teamId];
       const excess = g.V1.length - g.V2.length;
       if (excess <= 0) return;
-      const month = date.getUTCMonth() + 1, year = date.getUTCFullYear(), dom = date.getUTCDate();
-      const withMeta = g.V1.map(b => {
-        const restDays = RestDayEngine.getRestDaysForMonth(b.driver, month, year, state, teams);
-        const adjacent = restDays.indexOf(dom - 1) !== -1 || restDays.indexOf(dom + 1) !== -1;
-        return { b: b, restCount: restDays.length, adjacent: adjacent };
-      }).sort((x, y) => (x.adjacent === y.adjacent ? 0 : x.adjacent ? 1 : -1) || x.restCount - y.restCount);
-      for (let i = 0; i < excess; i++) {
-        const b = withMeta[i].b;
-        b.status = "REPOS";
-        b.shift = null; b.vacation = null; b.zone = null; b.startTime = null; b.endTime = null;
-        // Marqueur : ce repos est un ajout ponctuel pour équilibrer V1/V2, pas un
-        // repos "normal" du quota mensuel — ValidationEngine l'exclut donc du
-        // contrôle "nombre de repos = quota attendu" pour ne pas le signaler à
-        // tort comme une anomalie.
-        b.restCorrection = "equilibrage_V1_V2";
-      }
+      // Déterministe (par matricule) pour rester stable si on rafraîchit la page.
+      const flagged = g.V1.slice().sort((a, b) => String(a.driver.matricule).localeCompare(String(b.driver.matricule))).slice(-excess);
+      flagged.forEach(b => { b.vacationBalanceAlert = true; });
     });
 
     // Passe 2 : répartition équitable des zones par créneau (shift + vacation) —
@@ -148,7 +131,7 @@ const PlanningEngine = {
         zone: zone,
         status: finalStatus,
         source: source,
-        restCorrection: override ? null : (b.restCorrection || null),
+        vacationBalanceAlert: override ? false : !!b.vacationBalanceAlert,
         createdAt: override && override.createdAt ? override.createdAt : null,
         updatedAt: override && override.updatedAt ? override.updatedAt : null
       };

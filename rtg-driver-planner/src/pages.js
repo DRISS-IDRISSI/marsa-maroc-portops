@@ -258,12 +258,13 @@ function ShiftBlock({ title, icon, rows }) {
             </thead>
             <tbody>
               {rows.map(a => (
-                <tr key={a.driverId} className="border-b border-border/50">
+                <tr key={a.driverId} className={`border-b border-border/50 ${a.vacationBalanceAlert ? "bg-red-500/10" : ""}`}
+                  title={a.vacationBalanceAlert ? "Cette vacation dépasse l'autre d'un conducteur — à faire passer exceptionnellement en V2 si possible." : undefined}>
                   <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
-                  <td className="py-1.5 pr-3 text-white font-medium">{a.nom}</td>
+                  <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-300" : "text-white"}`}>{a.nom}{a.vacationBalanceAlert && <i className="fas fa-triangle-exclamation ml-1.5 text-red-400" title="Vacation en surnombre"></i>}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
-                  <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-marine-600/20 text-marine-300">{a.vacation}</span></td>
+                  <td className="py-1.5 pr-3"><span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-300 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span></td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime}–{a.endTime}</td>
                   <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{a.zone}</span></td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-emerald-400">{a.status}</td>
@@ -621,9 +622,9 @@ function ShiftBlockPrintable({ title, rows }) {
           </thead>
           <tbody>
             {rows.map(a => (
-              <tr key={a.driverId}>
+              <tr key={a.driverId} style={a.vacationBalanceAlert ? { color: "#b91c1c" } : undefined}>
                 <td className={PRINT_TD}>{a.matricule}</td>
-                <td className={PRINT_TD + " font-medium"}>{a.nom}</td>
+                <td className={PRINT_TD + " font-medium"}>{a.nom}{a.vacationBalanceAlert ? " (*)" : ""}</td>
                 <td className={PRINT_TD}>{a.prenom}</td>
                 <td className={PRINT_TD}>{a.teamNom}</td>
                 <td className={PRINT_TD_CENTER}>{a.vacation}</td>
