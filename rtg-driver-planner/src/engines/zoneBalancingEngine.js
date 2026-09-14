@@ -42,7 +42,7 @@ const ZoneBalancingEngine = {
     if (n < 8) {
       if (others.length === 0) return;
       ordered.forEach((e, i) => { e.zone = others[i % others.length]; });
-      return;
+      return; // toujours 1 conducteur par zone ici (n <= 7 pour 7 zones B-H) : jamais de doublon à numéroter.
     }
 
     const base = Math.floor(n / zoneList.length);
@@ -59,5 +59,20 @@ const ZoneBalancingEngine = {
       ordered[idx].zone = others[r % others.length];
       idx++;
     }
+
+    // Numérotation des doublons : à partir de 8 présents, une même zone peut
+    // recevoir plusieurs conducteurs (ex. 2 en zone B). Pour les distinguer sur
+    // le terrain, chaque occurrence d'une zone occupée par PLUSIEURS conducteurs
+    // reçoit un préfixe "01"/"02"/... (ex. "01B" et "02B") — une zone occupée par
+    // un seul conducteur garde son simple code lettre (ex. "C"), sans préfixe.
+    const countByZone = {};
+    ordered.forEach(e => { countByZone[e.zone] = (countByZone[e.zone] || 0) + 1; });
+    const seenByZone = {};
+    ordered.forEach(e => {
+      if (countByZone[e.zone] > 1) {
+        seenByZone[e.zone] = (seenByZone[e.zone] || 0) + 1;
+        e.zone = String(seenByZone[e.zone]).padStart(2, "0") + e.zone;
+      }
+    });
   }
 };
