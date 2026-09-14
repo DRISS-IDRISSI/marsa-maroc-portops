@@ -515,6 +515,67 @@ const RestDayEngine = {
       results[driver.id] = chosen.sort((a, b) => a - b);
     });
 
+    // Post-passe (Shift 1 uniquement) : essaie de RÉÉQUILIBRER V1/V2 en
+    // DÉPLAÇANT des repos déjà attribués (jamais en ajouter) — quota-neutre
+    // pour chaque conducteur. Idée de l'exploitant : sur un jour où le bloc
+    // actuellement en V1 est en déficit face à V2, faire revenir un conducteur
+    // de ce bloc en échangeant son repos de CE jour contre un autre jour où
+    // son bloc affiche V2 et où V2 a alors assez d'excédent pour absorber la
+    // perte sans devenir lui-même déficitaire. Respecte toujours l'espacement
+    // (jamais 2 repos consécutifs) et le plafond quotidien de l'équipe.
+    if (team) {
+      const s1Days = [];
+      for (let d = 1; d <= dim; d++) if (dayShift[d] === "S1") s1Days.push(d);
+
+      const presenceOnDay = day => {
+        const counts = { V1: 0, V2: 0 };
+        teamDrivers.forEach(dr => {
+          if ((results[dr.id] || []).indexOf(day) !== -1) return;
+          const label = VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state);
+          if (label === "V1" || label === "V2") counts[label]++;
+        });
+        return counts;
+      };
+      const totalRestingOnDay = day => teamDrivers.filter(dr => (results[dr.id] || []).indexOf(day) !== -1).length;
+
+      let improved = true, safety = 0;
+      while (improved && safety < 200) {
+        improved = false;
+        safety++;
+        for (const day of s1Days) {
+          const counts = presenceOnDay(day);
+          if (counts.V1 >= counts.V2 - 1) continue; // pas de déficit significatif
+
+          const restingV1 = teamDrivers.filter(dr => {
+            if ((results[dr.id] || []).indexOf(day) === -1) return false;
+            return VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state) === "V1";
+          });
+
+          let swapped = false;
+          for (const dr of restingV1) {
+            const currentDays = results[dr.id] || [];
+            const restDaysWithoutDay = currentDays.filter(d => d !== day);
+            const candidateDays = this.getCandidatesForDriver(dr, month, year, state, team)
+              .filter(d => currentDays.indexOf(d) === -1 && d !== day);
+            const swapTarget = candidateDays.find(cd => {
+              if (VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, cd), state) !== "V2") return false;
+              const c = presenceOnDay(cd);
+              if (!(c.V2 - 1 > c.V1)) return false;
+              if (restDaysWithoutDay.indexOf(cd - 1) !== -1 || restDaysWithoutDay.indexOf(cd + 1) !== -1) return false;
+              if (totalRestingOnDay(cd) + 1 > maxPerDay) return false;
+              return true;
+            });
+            if (swapTarget === undefined) continue;
+            results[dr.id] = restDaysWithoutDay.concat([swapTarget]).sort((a, b) => a - b);
+            swapped = true;
+            improved = true;
+            break;
+          }
+          if (swapped) break; // recommence le scan : les effectifs du jour ont changé.
+        }
+      }
+    }
+
     this._teamCache[key] = results;
     return results;
   },
