@@ -29,9 +29,11 @@ const RTG_CONFIG = {
   // Poids de préférence pour le placement des repos, par jour de la semaine
   // (indices Lundi=0 ... Dimanche=6) : plus le poids est élevé, plus le jour est
   // privilégié pour y placer un repos (car charge de travail plus faible).
-  // Lundi/Mardi = charge faible en début de semaine, Mercredi-Vendredi = pic de
-  // charge (à éviter pour les repos), Dimanche = charge la plus faible.
-  restDayWeightByDow: [3, 3, 1, 1, 1, 2, 4],
+  // Règle "Lundi/Mardi = charge faible" annulée sur demande explicite : ces deux
+  // jours ont maintenant la même charge que Mercredi-Vendredi. Seules exceptions
+  // conservées : Samedi (si Shift 2 cette semaine-là, via
+  // restDayWeightSaturdayShift2 ci-dessous) et Dimanche, charge la plus faible.
+  restDayWeightByDow: [1, 1, 1, 1, 1, 2, 4],
   // Le samedi, si l'équipe est sur le SHIFT 2 cette semaine-là, la charge est
   // plus faible que d'habitude : ce poids remplace celui de restDayWeightByDow[5].
   restDayWeightSaturdayShift2: 4,
