@@ -9,12 +9,18 @@ const ValidationEngine = {
   validateMonth(days, state) {
     const anomalies = [];
     const reposCount = {};
-    state.drivers.forEach(d => { reposCount[d.id] = 0; });
+    const correctedReposCount = {};
+    state.drivers.forEach(d => { reposCount[d.id] = 0; correctedReposCount[d.id] = 0; });
 
     days.forEach(day => {
       day.assignments.forEach(a => {
         if (a.status === "REPOS") {
           reposCount[a.driverId] = (reposCount[a.driverId] || 0) + 1;
+          // Repos ajouté ponctuellement par PlanningEngine pour respecter la
+          // règle "V1 ≤ V2" sur le Shift 1 (voir planningEngine.js, Passe 1.5) :
+          // ce n'est pas un repos du quota mensuel normal, donc exclu du
+          // contrôle "nombre de repos = quota attendu" ci-dessous.
+          if (a.restCorrection) correctedReposCount[a.driverId] = (correctedReposCount[a.driverId] || 0) + 1;
         }
 
         if (a.status === "PRESENT") {
@@ -42,7 +48,7 @@ const ValidationEngine = {
       const month = first.getUTCMonth() + 1;
       const year = first.getUTCFullYear();
       state.drivers.filter(d => d.actif !== false).forEach(d => {
-        const c = reposCount[d.id] || 0;
+        const c = (reposCount[d.id] || 0) - (correctedReposCount[d.id] || 0);
         const congeDays = RestDayEngine.countCongeDaysInMonth(d, month, year, state);
         const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
         const attendu = Math.max(0, state.config.reposMensuel - reduction);
