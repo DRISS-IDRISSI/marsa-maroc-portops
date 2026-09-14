@@ -35,7 +35,7 @@ const RTG_CONFIG = {
   // Le samedi, si l'équipe est sur le SHIFT 2 cette semaine-là, la charge est
   // plus faible que d'habitude : ce poids remplace celui de restDayWeightByDow[5].
   restDayWeightSaturdayShift2: 4,
-  // Charge de travail par shift (§ note métier) : Shift 1 = 30% (10%+20%),
+  // Charge de travail par shift (§ note métier) : Shift 1 = 30% (13.5%+16.5%),
   // Shift 2 = 50% (25%+25%), Shift 3 = 20% (12%+8%). Le poids de placement des
   // repos est inversement proportionnel à cette charge : plus la charge du
   // shift est faible, plus il est privilégié pour y placer des repos (donc
@@ -43,7 +43,7 @@ const RTG_CONFIG = {
   // charge. Ce facteur se combine (multiplication) avec restDayWeightByDow.
   restDayWeightByShift: { S1: 1, S2: 0.6, S3: 1.5 },
   // Charge de travail par VACATION à l'intérieur de chaque shift (§ note métier,
-  // sur 100) : Shift 1 = 10% (V1) / 20% (V2), Shift 2 = 25% / 25%, Shift 3 = 12%
+  // sur 100) : Shift 1 = 13.5% (V1) / 16.5% (V2), Shift 2 = 25% / 25%, Shift 3 = 12%
   // (V1) / 8% (V2). NE définit PAS l'appartenance à un bloc (driver.initialVacation
   // reste fixe, un bloc ne se sépare jamais — §9-10) : sert uniquement à biaiser,
   // à l'intérieur d'un shift, le placement des repos selon le LABEL de vacation
@@ -54,7 +54,7 @@ const RTG_CONFIG = {
   // vers la vacation à charge plus élevée (ex. Shift 3 : plus de présents en V1
   // qu'en V2, conformément à 12% contre 8%).
   restDayLabelBiasByShift: {
-    S1: { V1: 10, V2: 20 },
+    S1: { V1: 13.5, V2: 16.5 },
     S2: { V1: 25, V2: 25 },
     S3: { V1: 12, V2: 8 }
   },
