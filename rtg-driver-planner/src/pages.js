@@ -259,7 +259,7 @@ function ShiftBlock({ title, icon, rows }) {
             <tbody>
               {rows.map(a => (
                 <tr key={a.driverId} className={`border-b border-border/50 ${a.vacationBalanceAlert ? "bg-red-500/10" : ""}`}
-                  title={a.vacationBalanceAlert ? "Cette vacation dépasse l'autre d'un conducteur — à faire passer exceptionnellement en V2 si possible." : undefined}>
+                  title={a.vacationBalanceAlert ? "Cette vacation reste en excédent par rapport à l'autre — à faire passer exceptionnellement dans l'autre vacation si possible." : undefined}>
                   <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
                   <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-300" : "text-white"}`}>{a.nom}{a.vacationBalanceAlert && <i className="fas fa-triangle-exclamation ml-1.5 text-red-400" title="Vacation en surnombre"></i>}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>

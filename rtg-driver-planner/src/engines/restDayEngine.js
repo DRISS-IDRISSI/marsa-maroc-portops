@@ -599,6 +599,10 @@ const RestDayEngine = {
     const corrections = {}; // { "<driverId>_<day>": true }
     const flags = {}; // { "<driverId>_<day>": true }
     if (team) {
+      // Écart toléré (dans un sens ou dans l'autre) avant repos exceptionnel /
+      // signalement : jusqu'à 2 conducteurs d'écart, décision explicite de
+      // l'exploitant (auparavant 1).
+      const MAX_TOLERATED_EXCESS = 2;
       const rebalanceShifts = ["S1", "S3"];
       const isAdjacentInResults = (driverId, day) => {
         const days = results[driverId] || [];
@@ -616,11 +620,9 @@ const RestDayEngine = {
         const excessLabel = diff > 0 ? "V1" : (diff < 0 ? "V2" : null);
         if (!excessLabel) continue;
         let excess = Math.abs(diff);
-        if (excess <= 1) {
-          if (excess === 1) {
-            const last = presentByLabel[excessLabel].slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule))).slice(-1)[0];
-            if (last) flags[last.id + "_" + day] = true;
-          }
+        if (excess <= MAX_TOLERATED_EXCESS) {
+          const toFlag = presentByLabel[excessLabel].slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule))).slice(-excess);
+          toFlag.forEach(dr => { flags[dr.id + "_" + day] = true; });
           continue;
         }
 
@@ -637,7 +639,7 @@ const RestDayEngine = {
           return { dr: dr, restCount: restCount, eligible: restCount < attendu + 1 && !isAdjacentInResults(dr.id, day) };
         });
         const eligiblePool = withMeta.filter(x => x.eligible).sort((x, y) => x.restCount - y.restCount);
-        const need = excess - 1;
+        const need = excess - MAX_TOLERATED_EXCESS;
         const toConvert = eligiblePool.slice(0, need);
         const convertedIds = new Set(toConvert.map(x => x.dr.id));
         toConvert.forEach(x => {
