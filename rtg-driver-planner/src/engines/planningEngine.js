@@ -44,12 +44,21 @@ const PlanningEngine = {
     const teams = state.teams;
 
     // Passe 1 : statut + shift/vacation/zone "naturels" (rotation individuelle),
-    // avant toute affectation manuelle.
+    // avant toute affectation manuelle. Le rééquilibrage V1/V2 (Shift 1 et
+    // Shift 3 — règle métier : les deux vacations doivent être égales, ou à
+    // défaut l'une ne dépasse l'autre que d'UN SEUL conducteur, toléré et
+    // signalé) est calculé UNE FOIS pour tout le mois dans RestDayEngine (voir
+    // son en-tête) plutôt que jour par jour ici, pour que les décisions restent
+    // cohérentes sur tout le mois (repos exceptionnels jamais dupliqués pour un
+    // même conducteur, jamais 2 jours consécutifs) — ici on ne fait QUE lire ce
+    // résultat déjà calculé.
+    const month = date.getUTCMonth() + 1, year = date.getUTCFullYear(), dom = date.getUTCDate();
     const base = state.drivers.filter(d => d.actif !== false).map(driver => {
       const team = teams.find(t => t.id === driver.teamId);
       const status = this.getDailyStatus(driver, date, state, teams);
 
       let shift = null, vacation = null, zone = null, startTime = null, endTime = null;
+      let vacationBalanceAlert = false, restCorrection = null;
       if (status === "PRESENT" && team) {
         shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
         vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
@@ -57,65 +66,14 @@ const PlanningEngine = {
         const vacDefs = state.config.vacations[shift] || [];
         const vacDef = vacDefs.find(v => v.id === vacation);
         if (vacDef) { startTime = vacDef.start; endTime = vacDef.end; }
+        if (shift === "S1" || shift === "S3") {
+          vacationBalanceAlert = RestDayEngine.hasVacationBalanceAlert(driver, month, year, state, teams, dom);
+        }
+      } else if (status === "REPOS") {
+        restCorrection = RestDayEngine.isVacationBalanceCorrection(driver, month, year, state, teams, dom) ? "equilibrage_V1_V2" : null;
       }
 
-      return { driver: driver, driverId: driver.id, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime };
-    });
-
-    // Passe 1.5 (Shift 1 uniquement) : règle métier "les deux vacations doivent
-    // être égales, ou à défaut V1 ne dépasse V2 que d'UN seul conducteur au
-    // maximum". Deux leviers, dans cet ordre :
-    //  1. Repos exceptionnel flexible : un conducteur dont le quota mensuel
-    //     n'est pas déjà au maximum toléré (quota attendu + 1, donc jusqu'à 7
-    //     s'il n'a pas beaucoup de congés ce mois-ci, moins s'il en a beaucoup
-    //     — la réduction existante par tranche de congés s'applique toujours)
-    //     peut être basculé en repos ce jour précis pour réduire l'excédent.
-    //  2. S'il ne reste QU'UN SEUL conducteur en excédent après ce lever (ou
-    //     que personne n'est éligible à un repos en plus), on le TOLÈRE tel
-    //     quel mais on le SIGNALE (vacationBalanceAlert, couleur distincte) —
-    //     décision humaine : demander à ce conducteur de passer exceptionnellement
-    //     en V2 reste au responsable de shift, pas automatisé.
-    const byTeamS1 = {};
-    base.forEach(b => {
-      if (b.status !== "PRESENT" || b.shift !== "S1" || !b.vacation || !b.team) return;
-      const g = (byTeamS1[b.team.id] = byTeamS1[b.team.id] || { V1: [], V2: [] });
-      g[b.vacation].push(b);
-    });
-    const month = date.getUTCMonth() + 1, year = date.getUTCFullYear(), dom = date.getUTCDate();
-    Object.keys(byTeamS1).forEach(teamId => {
-      const g = byTeamS1[teamId];
-      let excess = g.V1.length - g.V2.length;
-      if (excess <= 0) return;
-
-      if (excess > 1) {
-        const withMeta = g.V1.map(b => {
-          const restDays = RestDayEngine.getRestDaysForMonth(b.driver, month, year, state, teams);
-          const congeDays = RestDayEngine.countCongeDaysInMonth(b.driver, month, year, state);
-          const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
-          const attendu = Math.max(0, state.config.reposMensuel - reduction);
-          const adjacent = restDays.indexOf(dom - 1) !== -1 || restDays.indexOf(dom + 1) !== -1;
-          return { b: b, restCount: restDays.length, eligible: restDays.length < attendu + 1, adjacent: adjacent };
-        });
-        const eligiblePool = withMeta.filter(x => x.eligible)
-          .sort((x, y) => (x.adjacent === y.adjacent ? 0 : x.adjacent ? 1 : -1) || x.restCount - y.restCount);
-        const need = excess - 1;
-        const toConvert = eligiblePool.slice(0, need);
-        const convertedSet = new Set(toConvert.map(x => x.b));
-        toConvert.forEach(x => {
-          x.b.status = "REPOS";
-          x.b.shift = null; x.b.vacation = null; x.b.zone = null; x.b.startTime = null; x.b.endTime = null;
-          // Marqueur : repos ponctuel pour équilibrer V1/V2, pas un repos normal
-          // du quota mensuel — ValidationEngine l'exclut du contrôle de quota.
-          x.b.restCorrection = "equilibrage_V1_V2";
-        });
-        g.V1 = g.V1.filter(b => !convertedSet.has(b));
-        excess -= toConvert.length;
-      }
-
-      if (excess <= 0) return;
-      // Déterministe (par matricule) pour rester stable si on rafraîchit la page.
-      const flagged = g.V1.slice().sort((a, b) => String(a.driver.matricule).localeCompare(String(b.driver.matricule))).slice(-excess);
-      flagged.forEach(b => { b.vacationBalanceAlert = true; });
+      return { driver: driver, driverId: driver.id, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime, vacationBalanceAlert: vacationBalanceAlert, restCorrection: restCorrection };
     });
 
     // Passe 2 : répartition équitable des zones par créneau (shift + vacation) —

@@ -57,10 +57,12 @@ const LABEL_BIAS_EXPONENT = 2;
 const RestDayEngine = {
   _cache: {},
   _teamCache: {},
+  _extraCache: {},
 
   clearCache() {
     this._cache = {};
     this._teamCache = {};
+    this._extraCache = {};
   },
 
   countCongeDaysInMonth(driver, month, year, state) {
@@ -515,17 +517,20 @@ const RestDayEngine = {
       results[driver.id] = chosen.sort((a, b) => a - b);
     });
 
-    // Post-passe (Shift 1 uniquement) : essaie de RÉÉQUILIBRER V1/V2 en
+    // Post-passe (Shift 1 et Shift 3) : essaie de RÉÉQUILIBRER V1/V2 en
     // DÉPLAÇANT des repos déjà attribués (jamais en ajouter) — quota-neutre
-    // pour chaque conducteur. Idée de l'exploitant : sur un jour où le bloc
-    // actuellement en V1 est en déficit face à V2, faire revenir un conducteur
-    // de ce bloc en échangeant son repos de CE jour contre un autre jour où
-    // son bloc affiche V2 et où V2 a alors assez d'excédent pour absorber la
-    // perte sans devenir lui-même déficitaire. Respecte toujours l'espacement
-    // (jamais 2 repos consécutifs) et le plafond quotidien de l'équipe.
+    // pour chaque conducteur. Idée de l'exploitant : sur un jour où un bloc
+    // est en déficit face à l'autre (dans un sens OU dans l'autre — un même
+    // shift peut basculer d'un excès à l'autre d'un jour à l'autre), faire
+    // revenir un conducteur du bloc en déficit en échangeant son repos de CE
+    // jour contre un autre jour où son bloc affiche l'autre label ET où ce
+    // label a alors assez d'excédent pour absorber la perte sans devenir
+    // lui-même déficitaire. Respecte toujours l'espacement (jamais 2 repos
+    // consécutifs) et le plafond quotidien de l'équipe.
     if (team) {
-      const s1Days = [];
-      for (let d = 1; d <= dim; d++) if (dayShift[d] === "S1") s1Days.push(d);
+      const rebalanceShifts = ["S1", "S3"];
+      const rebalanceDays = [];
+      for (let d = 1; d <= dim; d++) if (rebalanceShifts.indexOf(dayShift[d]) !== -1) rebalanceDays.push(d);
 
       const presenceOnDay = day => {
         const counts = { V1: 0, V2: 0 };
@@ -539,28 +544,30 @@ const RestDayEngine = {
       const totalRestingOnDay = day => teamDrivers.filter(dr => (results[dr.id] || []).indexOf(day) !== -1).length;
 
       let improved = true, safety = 0;
-      while (improved && safety < 200) {
+      while (improved && safety < 400) {
         improved = false;
         safety++;
-        for (const day of s1Days) {
+        for (const day of rebalanceDays) {
           const counts = presenceOnDay(day);
-          if (counts.V1 >= counts.V2 - 1) continue; // pas de déficit significatif
+          const deficitLabel = counts.V1 < counts.V2 - 1 ? "V1" : (counts.V2 < counts.V1 - 1 ? "V2" : null);
+          if (!deficitLabel) continue; // pas de déficit significatif dans aucun sens
+          const surplusLabel = deficitLabel === "V1" ? "V2" : "V1";
 
-          const restingV1 = teamDrivers.filter(dr => {
+          const restingDeficit = teamDrivers.filter(dr => {
             if ((results[dr.id] || []).indexOf(day) === -1) return false;
-            return VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state) === "V1";
+            return VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state) === deficitLabel;
           });
 
           let swapped = false;
-          for (const dr of restingV1) {
+          for (const dr of restingDeficit) {
             const currentDays = results[dr.id] || [];
             const restDaysWithoutDay = currentDays.filter(d => d !== day);
             const candidateDays = this.getCandidatesForDriver(dr, month, year, state, team)
               .filter(d => currentDays.indexOf(d) === -1 && d !== day);
             const swapTarget = candidateDays.find(cd => {
-              if (VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, cd), state) !== "V2") return false;
+              if (VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, cd), state) !== surplusLabel) return false;
               const c = presenceOnDay(cd);
-              if (!(c.V2 - 1 > c.V1)) return false;
+              if (!(c[surplusLabel] - 1 > c[deficitLabel])) return false;
               if (restDaysWithoutDay.indexOf(cd - 1) !== -1 || restDaysWithoutDay.indexOf(cd + 1) !== -1) return false;
               if (totalRestingOnDay(cd) + 1 > maxPerDay) return false;
               return true;
@@ -576,8 +583,100 @@ const RestDayEngine = {
       }
     }
 
+    // Post-passe 2 (Shift 1 et Shift 3) : quand l'échange ci-dessus ne suffit
+    // pas (plus assez de jours candidats pour absorber tout l'écart), règle
+    // métier "les deux vacations doivent être égales, ou à défaut l'une ne
+    // dépasse l'autre que d'UN SEUL conducteur au maximum" — dans les deux
+    // sens. Traité ICI (une seule passe, jours dans l'ordre chronologique,
+    // sur TOUT le mois d'un coup) plutôt que jour par jour dans PlanningEngine :
+    // ça permet de savoir combien de repos ponctuels ont déjà été ajoutés à un
+    // conducteur PLUS TÔT dans le mois avant d'en ajouter un autre — sans ça,
+    // deux jours différents pouvaient chacun choisir le même conducteur sans le
+    // savoir, dépassant le plafond toléré et créant parfois 2 repos consécutifs.
+    // Repos ajoutés (jamais plus que quota attendu + 1 par conducteur) puis, si
+    // ça ne suffit toujours pas, le dernier conducteur en excédent est toléré
+    // mais signalé (vacationBalanceAlert) — décision humaine, pas automatique.
+    const corrections = {}; // { "<driverId>_<day>": true }
+    const flags = {}; // { "<driverId>_<day>": true }
+    if (team) {
+      const rebalanceShifts = ["S1", "S3"];
+      const isAdjacentInResults = (driverId, day) => {
+        const days = results[driverId] || [];
+        return days.indexOf(day - 1) !== -1 || days.indexOf(day + 1) !== -1;
+      };
+      for (let day = 1; day <= dim; day++) {
+        if (rebalanceShifts.indexOf(dayShift[day]) === -1) continue;
+        const presentByLabel = { V1: [], V2: [] };
+        teamDrivers.forEach(dr => {
+          if ((results[dr.id] || []).indexOf(day) !== -1) return;
+          const label = VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state);
+          if (label === "V1" || label === "V2") presentByLabel[label].push(dr);
+        });
+        const diff = presentByLabel.V1.length - presentByLabel.V2.length;
+        const excessLabel = diff > 0 ? "V1" : (diff < 0 ? "V2" : null);
+        if (!excessLabel) continue;
+        let excess = Math.abs(diff);
+        if (excess <= 1) {
+          if (excess === 1) {
+            const last = presentByLabel[excessLabel].slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule))).slice(-1)[0];
+            if (last) flags[last.id + "_" + day] = true;
+          }
+          continue;
+        }
+
+        const withMeta = presentByLabel[excessLabel].map(dr => {
+          const restCount = (results[dr.id] || []).length;
+          const congeDays = this.countCongeDaysInMonth(dr, month, year, state);
+          const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
+          const attendu = Math.max(0, state.config.reposMensuel - reduction);
+          // L'adjacence (jamais 2 repos consécutifs) fait partie de l'éligibilité
+          // elle-même, pas d'un simple tri : ce repos ponctuel est un "bonus", pas
+          // un repos obligatoire, donc il ne doit JAMAIS être celui qui casse cette
+          // règle — s'il n'y a personne d'éligible sans adjacence, on tolère et
+          // signale l'excédent restant (plus bas) plutôt que de forcer un repos.
+          return { dr: dr, restCount: restCount, eligible: restCount < attendu + 1 && !isAdjacentInResults(dr.id, day) };
+        });
+        const eligiblePool = withMeta.filter(x => x.eligible).sort((x, y) => x.restCount - y.restCount);
+        const need = excess - 1;
+        const toConvert = eligiblePool.slice(0, need);
+        const convertedIds = new Set(toConvert.map(x => x.dr.id));
+        toConvert.forEach(x => {
+          results[x.dr.id] = (results[x.dr.id] || []).concat([day]).sort((a, b) => a - b);
+          corrections[x.dr.id + "_" + day] = true;
+        });
+        excess -= toConvert.length;
+        if (excess <= 0) continue;
+
+        const remaining = presentByLabel[excessLabel].filter(dr => !convertedIds.has(dr.id));
+        const last = remaining.slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule))).slice(-excess);
+        last.forEach(dr => { flags[dr.id + "_" + day] = true; });
+      }
+    }
+
     this._teamCache[key] = results;
+    this._extraCache[key] = { corrections: corrections, flags: flags };
     return results;
+  },
+
+  // Popule this._extraCache[key] (appelé depuis getTeamRestDays) — utilisé par
+  // PlanningEngine pour savoir si le statut REPOS d'un conducteur, un jour
+  // donné, vient d'un repos ponctuel d'équilibrage V1/V2 (à exclure du
+  // contrôle de quota mensuel), et si sa présence ce jour-là doit être
+  // signalée (excédent toléré d'UN conducteur, décision humaine).
+  isVacationBalanceCorrection(driver, month, year, state, teams, day) {
+    const team = teams.find(t => t.id === driver.teamId);
+    this.getTeamRestDays(team, month, year, state);
+    const key = (team ? team.id : "none") + "_" + year + "_" + month;
+    const extra = this._extraCache[key];
+    return !!(extra && extra.corrections[driver.id + "_" + day]);
+  },
+
+  hasVacationBalanceAlert(driver, month, year, state, teams, day) {
+    const team = teams.find(t => t.id === driver.teamId);
+    this.getTeamRestDays(team, month, year, state);
+    const key = (team ? team.id : "none") + "_" + year + "_" + month;
+    const extra = this._extraCache[key];
+    return !!(extra && extra.flags[driver.id + "_" + day]);
   },
 
   getRestDaysForMonth(driver, month, year, state, teams) {
