@@ -40,17 +40,19 @@
 // Exposant appliqué à l'inverse de la charge (%) de chaque vacation pour biaiser
 // le placement des repos entre V1/V2 (restDayLabelBiasByShift) : plus il est
 // élevé, plus la vacation à charge plus faible est poussée à avoir MOINS de
-// présents que l'autre. Valeur choisie après simulation sur un mois complet :
-// en dessous de 8, le biais sature trop tôt à cause des contraintes déjà en
-// jeu (espacement, plafond par bloc/équipe, quota mensuel) et laisse passer
-// des jours où l'ordre attendu (V1 < V2 en charge, donc moins de présents)
-// n'est pas respecté — 12 atteint le meilleur résultat possible compte tenu de
-// ces contraintes (au-delà de 8, augmenter encore l'exposant ne change plus
-// rien : les jours restants sont bloqués par ces autres règles, pas par le
-// poids du ratio). Un petit nombre de jours en écart reste possible malgré
-// tout : ce n'est pas un bug, c'est la conséquence de règles plus prioritaires
-// (jamais 2 repos consécutifs, un bloc ne se sépare jamais, quota mensuel).
-const LABEL_BIAS_EXPONENT = 12;
+// présents que l'autre.
+//
+// Une valeur élevée (12) a été testée : elle empêche bien V1 de dépasser V2 sur
+// le Shift 1, MAIS aggrave l'écart global dans l'AUTRE sens (le biais devient si
+// fort qu'il vide trop V1 certains jours — écart moyen mesuré 3.8, jusqu'à 16
+// jours/mois avec un écart > 3, contre un cas extrême observé de 4 présents en
+// V1 pour 13 en V2). Une valeur plus souple (2) donne un résultat globalement
+// bien plus équilibré (écart moyen ~2.0, 2 à 3 fois moins de jours très
+// déséquilibrés), au prix d'un compromis assumé : V1 dépasse alors V2 quelques
+// jours par mois (3 à 6), parfois de plus d'un conducteur à la fois — ces cas
+// sont signalés visuellement (PlanningEngine, vacationBalanceAlert) pour une
+// décision humaine, au lieu d'être empêchés automatiquement à tout prix.
+const LABEL_BIAS_EXPONENT = 2;
 
 const RestDayEngine = {
   _cache: {},
