@@ -7,6 +7,269 @@ function useRtgState() {
   return state;
 }
 
+// ==========================================
+// Import Excel du planning réel (Repos + Congés) — §33
+// Charge la bibliothèque SheetJS à la demande (pas au chargement de l'appli,
+// pour ne pas alourdir le PWA pour un usage occasionnel réservé à l'ADMIN/
+// RESPONSABLE) et transforme un fichier "PLANNING_MENSUEL_RTG..." (même
+// format que les plannings réels fournis par l'exploitant : une feuille
+// "SHIFT <équipe>" avec une ligne d'en-tête de dates et, par conducteur, un
+// code par jour — "R" = repos, "C"/"CG" = congé, "M" = maladie) en repos
+// manuels + périodes de congé importables via RTGStore.
+// ==========================================
+let _xlsxLoadPromise = null;
+function loadXlsxLib() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (_xlsxLoadPromise) return _xlsxLoadPromise;
+  _xlsxLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js";
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => reject(new Error("Impossible de charger la bibliothèque de lecture Excel (connexion internet requise)."));
+    document.head.appendChild(script);
+  });
+  return _xlsxLoadPromise;
+}
+
+const IMPORT_REPOS_CODES = ["R"];
+const IMPORT_CONGE_CODES = ["C", "CG", "CONGE", "CONGÉ"];
+const IMPORT_MALADIE_CODES = ["M", "MALADIE"];
+
+// Fusionne une liste de jours du mois en plages de jours consécutifs —
+// ex. [1,2,3,7,8] -> [[1,3],[7,8]] — pour créer le minimum de périodes de
+// congé (comme le fait un usager via la page Congés).
+function mergeConsecutiveDays(days) {
+  const sorted = Array.from(new Set(days)).sort((a, b) => a - b);
+  const ranges = [];
+  let start = null, prev = null;
+  sorted.forEach(d => {
+    if (start === null) { start = d; prev = d; return; }
+    if (d === prev + 1) { prev = d; return; }
+    ranges.push([start, prev]);
+    start = d; prev = d;
+  });
+  if (start !== null) ranges.push([start, prev]);
+  return ranges;
+}
+
+function parseRepoCongeExcel(workbook, drivers, month, year) {
+  const XLSX = window.XLSX;
+  const sheetName = workbook.SheetNames.find(n => /^shift/i.test(n.trim())) || workbook.SheetNames[0];
+  const ws = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+
+  // Repère la ligne d'en-tête : celle qui contient le plus de cellules-dates
+  // correspondant au mois/année ciblés (le fichier réel couvre plusieurs mois
+  // sur la même feuille).
+  let headerRowIdx = -1, dayColumns = [];
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
+    const cols = [];
+    (rows[i] || []).forEach((cell, colIdx) => {
+      if (cell instanceof Date && cell.getFullYear() === year && (cell.getMonth() + 1) === month) {
+        cols.push({ day: cell.getDate(), colIdx: colIdx });
+      }
+    });
+    if (cols.length > dayColumns.length) { dayColumns = cols; headerRowIdx = i; }
+  }
+  if (headerRowIdx === -1 || dayColumns.length === 0) {
+    throw new Error("Impossible de trouver les colonnes de dates pour " + RAPPORT_MOIS_LABELS_P[month - 1] + " " + year + " dans la feuille « " + sheetName + " ».");
+  }
+  const seenDays = {};
+  dayColumns = dayColumns.filter(c => {
+    if (seenDays[c.day]) return false;
+    seenDays[c.day] = true;
+    return true;
+  }).sort((a, b) => a.day - b.day);
+
+  const byMatricule = {};
+  drivers.forEach(d => { byMatricule[String(d.matricule).trim().toUpperCase()] = d; });
+
+  const reposByDriver = {};
+  const congeByDriver = {};
+  const maladieCount = {};
+  const unknownCodes = [];
+  const unmatchedMatricules = new Set();
+  const matchedDriverIds = new Set();
+
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const matCell = row[0];
+    const nomCell = row[1];
+    if (typeof nomCell === "string" && /NOMBRE DE PRESENT|Vacation/i.test(nomCell)) continue;
+    if (matCell === null || matCell === undefined || String(matCell).trim() === "") continue;
+    const key = String(matCell).trim().toUpperCase();
+    const driver = byMatricule[key];
+    if (!driver) { unmatchedMatricules.add(String(matCell).trim()); continue; }
+    matchedDriverIds.add(driver.id);
+    dayColumns.forEach(({ day, colIdx }) => {
+      const raw = row[colIdx];
+      if (raw === null || raw === undefined) return;
+      const code = String(raw).trim().toUpperCase();
+      if (code === "") return;
+      if (IMPORT_REPOS_CODES.indexOf(code) !== -1) {
+        (reposByDriver[driver.id] = reposByDriver[driver.id] || []).push(day);
+      } else if (IMPORT_CONGE_CODES.indexOf(code) !== -1) {
+        (congeByDriver[driver.id] = congeByDriver[driver.id] || []).push(day);
+      } else if (IMPORT_MALADIE_CODES.indexOf(code) !== -1) {
+        maladieCount[driver.id] = (maladieCount[driver.id] || 0) + 1;
+      } else {
+        unknownCodes.push({ matricule: driver.matricule, day: day, code: code });
+      }
+    });
+  }
+
+  const congeRanges = [];
+  Object.keys(congeByDriver).forEach(driverId => {
+    mergeConsecutiveDays(congeByDriver[driverId]).forEach(([start, end]) => {
+      congeRanges.push({
+        driverId: driverId,
+        dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)),
+        dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end))
+      });
+    });
+  });
+
+  const reposDays = [];
+  Object.keys(reposByDriver).forEach(driverId => {
+    reposByDriver[driverId].forEach(day => {
+      reposDays.push({ driverId: driverId, iso: RTGDate.toISO(RTGDate.makeDate(year, month, day)) });
+    });
+  });
+
+  return {
+    sheetName: sheetName,
+    matchedCount: matchedDriverIds.size,
+    unmatchedMatricules: Array.from(unmatchedMatricules),
+    congeRanges: congeRanges,
+    reposDays: reposDays,
+    maladieIgnoredCount: Object.keys(maladieCount).reduce((sum, k) => sum + maladieCount[k], 0),
+    unknownCodes: unknownCodes
+  };
+}
+
+function ImportPlanningModal({ team, month, year, drivers, state, planning, onClose }) {
+  const [step, setStep] = useState("pick");
+  const [error, setError] = useState("");
+  const [parsed, setParsed] = useState(null);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [applyResult, setApplyResult] = useState(null);
+
+  const handleFile = async file => {
+    setStep("parsing");
+    setError("");
+    try {
+      await loadXlsxLib();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array", cellDates: true });
+      setParsed(parseRepoCongeExcel(wb, drivers, month, year));
+      setStep("preview");
+    } catch (e) {
+      setError(e.message || String(e));
+      setStep("error");
+    }
+  };
+
+  // Ne force un repos manuel que si le planning actuellement calculé ce
+  // jour-là n'est pas déjà REPOS, et jamais par-dessus une donnée fixe déjà
+  // en place (congé/maladie/absence/formation/férié) — on ne veut jamais
+  // faire disparaître une information déjà correcte dans l'appli.
+  const reposToApply = useMemo(() => {
+    if (!parsed || !planning) return [];
+    return parsed.reposDays.filter(({ driverId, iso }) => {
+      const day = planning.days.find(d => d.iso === iso);
+      const a = day && day.assignments.find(x => x.driverId === driverId);
+      if (!a) return true;
+      if (a.status === "REPOS") return false;
+      if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "FERIE"].indexOf(a.status) !== -1) return false;
+      return true;
+    });
+  }, [parsed, planning]);
+
+  const congesToApply = useMemo(() => {
+    if (!parsed) return [];
+    return parsed.congeRanges.filter(r => !state.conges.some(c => c.driverId === r.driverId && c.dateDebut === r.dateDebut && c.dateFin === r.dateFin));
+  }, [parsed, state.conges]);
+
+  const apply = async () => {
+    setStep("applying");
+    const total = congesToApply.length + reposToApply.length;
+    setProgress({ done: 0, total: total });
+    let done = 0, congeErrors = 0, reposErrors = 0;
+    for (const r of congesToApply) {
+      try {
+        await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: "Import Excel — planning réel" });
+      } catch (e) { console.error(e); congeErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    for (const r of reposToApply) {
+      try {
+        await RTGStore.setManualOverride(r.iso, r.driverId, { status: "REPOS", shift: null, vacation: null, zone: null, startTime: null, endTime: null }, "Import planning réel (Excel)", team.nom + " — " + r.iso);
+      } catch (e) { console.error(e); reposErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    setApplyResult({ congesCreated: congesToApply.length - congeErrors, reposApplied: reposToApply.length - reposErrors, congeErrors: congeErrors, reposErrors: reposErrors });
+    setStep("done");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={step === "applying" ? undefined : onClose}>
+      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-white font-semibold text-sm">Importer Repos &amp; Congés depuis Excel</h3>
+          {step !== "applying" && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
+        </div>
+        <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}</p>
+
+        {step === "pick" && (
+          <div>
+            <p className="text-xs text-slate-400 mb-3">Sélectionnez le fichier Excel (.xlsx) du planning réel : les repos (« R ») seront forcés manuellement et les congés (« C ») créés comme périodes de congé, uniquement pour les conducteurs de cette équipe et ce mois.</p>
+            <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-300" />
+          </div>
+        )}
+
+        {step === "parsing" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Analyse du fichier…</p>}
+
+        {step === "error" && (
+          <div>
+            <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
+            <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Réessayer</button>
+          </div>
+        )}
+
+        {step === "preview" && parsed && (
+          <div className="space-y-3 text-xs text-slate-300">
+            <p>Feuille utilisée : <span className="text-white">{parsed.sheetName}</span></p>
+            <p>{parsed.matchedCount} conducteur(s) de l'équipe reconnu(s) dans le fichier.</p>
+            {parsed.unmatchedMatricules.length > 0 && (
+              <p className="text-amber-400">Matricules non reconnus dans cette équipe : {parsed.unmatchedMatricules.join(", ")}</p>
+            )}
+            <p><span className="text-white font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
+            <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length ? " (" + (parsed.reposDays.length - reposToApply.length) + " déjà correct(s) ou en conflit avec une donnée existante, ignoré(s))" : ""}.</p>
+            {parsed.maladieIgnoredCount > 0 && <p className="text-slate-500">{parsed.maladieIgnoredCount} jour(s) « Maladie » présents dans le fichier — non importés (non demandé).</p>}
+            {parsed.unknownCodes.length > 0 && (
+              <p className="text-amber-400">Codes non reconnus ignorés : {parsed.unknownCodes.slice(0, 8).map(u => u.matricule + "/j" + u.day + "=" + u.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}</p>
+            )}
+            <div className="flex gap-2 pt-2">
+              <button onClick={apply} disabled={congesToApply.length === 0 && reposToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
+              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        )}
+
+        {step === "applying" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Application en cours… {progress.done}/{progress.total}</p>}
+
+        {step === "done" && applyResult && (
+          <div className="space-y-2 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{applyResult.congesCreated} congé(s) créé(s), {applyResult.reposApplied} repos forcé(s).</p>
+            {(applyResult.congeErrors > 0 || applyResult.reposErrors > 0) && <p className="text-red-300">{applyResult.congeErrors + applyResult.reposErrors} erreur(s) — voir la console.</p>}
+            <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Fermer</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Utilisateur connecté (§30) — null si personne n'est connecté (AuthGate
 // affiche alors l'écran de connexion à la place de l'appli).
 function useCurrentUser() {
@@ -611,6 +874,11 @@ function PlanningMensuel() {
   // pas (§32) — RESPONSABLE_SHIFT reste de toute façon cantonné à sa
   // propre équipe via effectiveTeamId/lockTeam ci-dessous.
   const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"].indexOf(currentUser.role) !== -1;
+  // L'import Excel modifie potentiellement des dizaines d'affectations d'un
+  // coup : réservé à l'ADMIN/RESPONSABLE (pas au RESPONSABLE_SHIFT), à la
+  // différence de l'édition case par case ci-dessus.
+  const canBulkImport = !!currentUser && ["ADMIN", "RESPONSABLE"].indexOf(currentUser.role) !== -1;
+  const [showImport, setShowImport] = useState(false);
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -654,6 +922,11 @@ function PlanningMensuel() {
           <p className="text-slate-400 text-sm mt-0.5">Généré automatiquement par le moteur de planification (shift / zone / vacation / repos)</p>
         </div>
         <div className="flex gap-2">
+          {canBulkImport && effectiveTeamId !== "all" && (
+            <button onClick={() => setShowImport(true)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700">
+              <i className="fas fa-file-import mr-1.5"></i>Importer Excel
+            </button>
+          )}
           <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
             <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
           </button>
@@ -661,9 +934,21 @@ function PlanningMensuel() {
         </div>
       </div>
 
+      {canBulkImport && effectiveTeamId === "all" && (
+        <p className="text-[11px] text-slate-500 print:hidden">Sélectionnez une équipe précise pour importer un planning réel (Repos/Congés) depuis Excel.</p>
+      )}
+
       <div className="print:hidden">
         <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={effectiveTeamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} lockTeam={shiftRestricted} />
       </div>
+
+      {showImport && effectiveTeamId !== "all" && (
+        <ImportPlanningModal
+          team={state.teams.find(t => t.id === effectiveTeamId)}
+          month={month} year={year} drivers={drivers} state={state} planning={planning}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       <div className="print:hidden">
         <ValidationBanner validation={validation} />
