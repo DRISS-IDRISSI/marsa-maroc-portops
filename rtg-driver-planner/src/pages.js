@@ -52,9 +52,31 @@ function mergeConsecutiveDays(days) {
   return ranges;
 }
 
-function parseRepoCongeExcel(workbook, drivers, month, year) {
+// Normalise pour comparer un nom d'équipe à un nom de feuille sans être
+// sensible aux accents/casse/espaces multiples (ex. "GR EDDAOUIDI" doit
+// correspondre à la feuille "SHIFT GR EDDAOUIDI").
+function normalizeForMatch(s) {
+  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+}
+
+function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   const XLSX = window.XLSX;
-  const sheetName = workbook.SheetNames.find(n => /^shift/i.test(n.trim())) || workbook.SheetNames[0];
+  // Un fichier peut couvrir une seule équipe (une seule feuille "SHIFT ...")
+  // ou les 3 shifts à la fois (une feuille "SHIFT <équipe>" par équipe) :
+  // dans ce second cas, on sélectionne précisément celle de l'équipe en
+  // cours d'import — jamais juste "la première feuille SHIFT trouvée".
+  const shiftSheets = workbook.SheetNames.filter(n => /^shift/i.test(n.trim()));
+  const teamKey = normalizeForMatch(teamNom);
+  let sheetName;
+  if (shiftSheets.length <= 1) {
+    sheetName = shiftSheets[0] || workbook.SheetNames[0];
+  } else {
+    const matches = shiftSheets.filter(n => teamKey && normalizeForMatch(n).indexOf(teamKey) !== -1);
+    if (matches.length !== 1) {
+      throw new Error("Ce fichier contient plusieurs feuilles \"SHIFT ...\" (" + shiftSheets.join(", ") + ") et aucune ne correspond clairement à l'équipe « " + teamNom + " ». Vérifiez le nom de l'équipe ou le fichier.");
+    }
+    sheetName = matches[0];
+  }
   const ws = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
 
@@ -196,7 +218,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       await loadXlsxLib();
       const buf = await file.arrayBuffer();
       const wb = window.XLSX.read(buf, { type: "array", cellDates: true });
-      setParsed(parseRepoCongeExcel(wb, drivers, month, year));
+      setParsed(parseRepoCongeExcel(wb, drivers, month, year, team.nom));
       setStep("preview");
     } catch (e) {
       setError(e.message || String(e));
