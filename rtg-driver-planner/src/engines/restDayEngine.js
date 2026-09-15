@@ -632,10 +632,12 @@ const RestDayEngine = {
           const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
           const attendu = Math.max(0, state.config.reposMensuel - reduction);
           // L'adjacence (jamais 2 repos consécutifs) fait partie de l'éligibilité
-          // elle-même, pas d'un simple tri : ce repos ponctuel est un "bonus", pas
-          // un repos obligatoire, donc il ne doit JAMAIS être celui qui casse cette
-          // règle — s'il n'y a personne d'éligible sans adjacence, on tolère et
-          // signale l'excédent restant (plus bas) plutôt que de forcer un repos.
+          // elle-même, pas d'un simple tri, et n'est JAMAIS relâchée ici : donnée
+          // réelle vérifiée (planning manuel fourni par l'exploitant, septembre
+          // 2026) — 0 occurrence de 2 repos consécutifs sur tout le mois. Ce
+          // repos ponctuel est un "bonus", pas un repos obligatoire ; s'il n'y a
+          // personne d'éligible sans casser cette règle, l'excédent restant est
+          // toléré et signalé (plus bas) plutôt que forcé.
           return { dr: dr, restCount: restCount, eligible: restCount < attendu + 1 && !isAdjacentInResults(dr.id, day) };
         });
         const eligiblePool = withMeta.filter(x => x.eligible).sort((x, y) => x.restCount - y.restCount);
