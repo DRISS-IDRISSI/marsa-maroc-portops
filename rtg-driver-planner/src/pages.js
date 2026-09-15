@@ -81,8 +81,39 @@ function parseRepoCongeExcel(workbook, drivers, month, year) {
     return true;
   }).sort((a, b) => a.day - b.day);
 
-  const byMatricule = {};
-  drivers.forEach(d => { byMatricule[String(d.matricule).trim().toUpperCase()] = d; });
+  // Le matricule affiché dans l'appli n'est pas toujours écrit à l'identique
+  // dans le fichier Excel réel de l'exploitant (préfixes différents — ex.
+  // appli "A00913" / fichier "913", appli "J05183" / fichier "JO5183") : on
+  // tente d'abord une correspondance exacte, puis par la partie numérique du
+  // matricule (chiffres uniquement, zéros de tête ignorés), puis en dernier
+  // recours par nom+prénom — chaque conducteur n'est apparié qu'une fois.
+  const normalizeNumeric = m => {
+    if (m === null || m === undefined) return null;
+    const digits = String(m).replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, "");
+    return digits === "" ? null : digits;
+  };
+  const normalizeName = (nom, prenom) => (String(nom || "") + " " + String(prenom || ""))
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .trim().toUpperCase().replace(/\s+/g, " ");
+
+  const byMatricule = {}, byNumeric = {}, byName = {};
+  drivers.forEach(d => {
+    byMatricule[String(d.matricule).trim().toUpperCase()] = d;
+    const num = normalizeNumeric(d.matricule);
+    if (num) (byNumeric[num] = byNumeric[num] || []).push(d);
+    const nameKey = normalizeName(d.nom, d.prenom);
+    if (nameKey.trim()) byName[nameKey] = d;
+  });
+
+  const matchDriver = (matRaw, nomRaw, prenomRaw) => {
+    const exact = byMatricule[String(matRaw).trim().toUpperCase()];
+    if (exact) return { driver: exact, via: "matricule" };
+    const num = normalizeNumeric(matRaw);
+    if (num && byNumeric[num] && byNumeric[num].length === 1) return { driver: byNumeric[num][0], via: "numérique" };
+    const nameKey = normalizeName(nomRaw, prenomRaw);
+    if (nameKey.trim() && byName[nameKey]) return { driver: byName[nameKey], via: "nom" };
+    return null;
+  };
 
   const reposByDriver = {};
   const congeByDriver = {};
@@ -90,16 +121,19 @@ function parseRepoCongeExcel(workbook, drivers, month, year) {
   const unknownCodes = [];
   const unmatchedMatricules = new Set();
   const matchedDriverIds = new Set();
+  const fallbackMatches = [];
 
   for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i] || [];
     const matCell = row[0];
     const nomCell = row[1];
+    const prenomCell = row[2];
     if (typeof nomCell === "string" && /NOMBRE DE PRESENT|Vacation/i.test(nomCell)) continue;
     if (matCell === null || matCell === undefined || String(matCell).trim() === "") continue;
-    const key = String(matCell).trim().toUpperCase();
-    const driver = byMatricule[key];
-    if (!driver) { unmatchedMatricules.add(String(matCell).trim()); continue; }
+    const found = matchDriver(matCell, nomCell, prenomCell);
+    if (!found) { unmatchedMatricules.add(String(matCell).trim() + (nomCell ? " (" + nomCell + ")" : "")); continue; }
+    const driver = found.driver;
+    if (found.via !== "matricule") fallbackMatches.push({ matriculeFichier: String(matCell).trim(), matriculeAppli: driver.matricule, nom: driver.nom, prenom: driver.prenom, via: found.via });
     matchedDriverIds.add(driver.id);
     dayColumns.forEach(({ day, colIdx }) => {
       const raw = row[colIdx];
@@ -140,6 +174,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year) {
     sheetName: sheetName,
     matchedCount: matchedDriverIds.size,
     unmatchedMatricules: Array.from(unmatchedMatricules),
+    fallbackMatches: fallbackMatches,
     congeRanges: congeRanges,
     reposDays: reposDays,
     maladieIgnoredCount: Object.keys(maladieCount).reduce((sum, k) => sum + maladieCount[k], 0),
@@ -242,6 +277,9 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             <p>{parsed.matchedCount} conducteur(s) de l'équipe reconnu(s) dans le fichier.</p>
             {parsed.unmatchedMatricules.length > 0 && (
               <p className="text-amber-400">Matricules non reconnus dans cette équipe : {parsed.unmatchedMatricules.join(", ")}</p>
+            )}
+            {parsed.fallbackMatches.length > 0 && (
+              <p className="text-sky-300">Matricule différent mais conducteur reconnu par {parsed.fallbackMatches[0].via === "nom" ? "nom" : "numéro"} : {parsed.fallbackMatches.map(f => f.nom + " " + f.prenom + " (fichier " + f.matriculeFichier + " → appli " + f.matriculeAppli + ")").join(", ")}</p>
             )}
             <p><span className="text-white font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
             <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length ? " (" + (parsed.reposDays.length - reposToApply.length) + " déjà correct(s) ou en conflit avec une donnée existante, ignoré(s))" : ""}.</p>
