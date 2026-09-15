@@ -16,11 +16,14 @@ const ValidationEngine = {
       day.assignments.forEach(a => {
         if (a.status === "REPOS") {
           reposCount[a.driverId] = (reposCount[a.driverId] || 0) + 1;
-          // Repos ajouté ponctuellement par PlanningEngine pour équilibrer V1/V2
-          // sur le Shift 1 (voir planningEngine.js, Passe 1.5) : exclu du
-          // contrôle "nombre de repos = quota attendu" ci-dessous, car ce n'est
-          // pas un repos normal du quota mensuel.
-          if (a.restCorrection) correctedReposCount[a.driverId] = (correctedReposCount[a.driverId] || 0) + 1;
+          // Exclus du contrôle "nombre de repos = quota attendu" ci-dessous,
+          // car ce n'est pas un repos normal généré par la formule du quota
+          // mensuel : soit un repos ajouté ponctuellement par PlanningEngine
+          // pour équilibrer V1/V2 (a.restCorrection), soit un repos forcé
+          // manuellement par un ADMIN/RESPONSABLE — case par case ou en bloc
+          // via l'import Excel du planning réel — qui fait autorité sur la
+          // formule théorique.
+          if (a.restCorrection || a.source === "MANUAL") correctedReposCount[a.driverId] = (correctedReposCount[a.driverId] || 0) + 1;
         }
 
         if (a.status === "PRESENT") {
