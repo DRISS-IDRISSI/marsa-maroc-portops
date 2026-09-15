@@ -152,6 +152,10 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     const prenomCell = row[2];
     if (typeof nomCell === "string" && /NOMBRE DE PRESENT|Vacation/i.test(nomCell)) continue;
     if (matCell === null || matCell === undefined || String(matCell).trim() === "") continue;
+    // Sous les blocs de conducteurs, certains fichiers ajoutent une légende
+    // ("LÉGENDE" / "Case vide" / "R" / "C" / "M" / "Note ..." en colonne A) :
+    // un vrai matricule contient toujours au moins un chiffre, pas ces libellés.
+    if (!/\d/.test(String(matCell))) continue;
     const found = matchDriver(matCell, nomCell, prenomCell);
     if (!found) { unmatchedMatricules.add(String(matCell).trim() + (nomCell ? " (" + nomCell + ")" : "")); continue; }
     const driver = found.driver;

@@ -200,6 +200,52 @@ function Topbar() {
 }
 
 // ==========================================
+// Détection de nouvelle version (§34) — cette appli est une SPA à page
+// unique : naviguer entre les pages ne recharge JAMAIS le JS, donc un onglet
+// resté ouvert continue de tourner sur l'ancien code même après un nouveau
+// déploiement. version.json est régénéré à CHAQUE déploiement (SHA du commit,
+// voir le workflow GitHub Actions) et rechargé sans cache pour détecter ça.
+// ==========================================
+const RTG_LOADED_VERSION = { current: null };
+
+function UpdateBanner() {
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      fetch("version.json", { cache: "no-store" })
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+          if (!data || !data.version || cancelled) return;
+          if (RTG_LOADED_VERSION.current === null) {
+            RTG_LOADED_VERSION.current = data.version;
+          } else if (data.version !== RTG_LOADED_VERSION.current) {
+            setUpdateAvailable(true);
+          }
+        })
+        .catch(() => {});
+    };
+    check();
+    const interval = setInterval(check, 5 * 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { cancelled = true; clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
+  }, []);
+
+  if (!updateAvailable) return null;
+  return (
+    <div className="print:hidden bg-sky-600 text-white text-xs sm:text-sm px-4 py-2 flex items-center justify-center gap-3 flex-wrap">
+      <i className="fas fa-circle-info"></i>
+      <span>Une nouvelle version de l'application est disponible.</span>
+      <button onClick={() => window.location.reload()} className="px-3 py-1 rounded bg-white text-sky-700 font-semibold hover:bg-sky-50">
+        Recharger
+      </button>
+    </div>
+  );
+}
+
+// ==========================================
 // Layout
 // ==========================================
 function Layout({ children }) {
@@ -207,6 +253,7 @@ function Layout({ children }) {
     <div className="flex min-h-screen bg-port print:bg-white">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
+        <UpdateBanner />
         <Topbar />
         <main className="flex-1 p-4 lg:p-6 overflow-auto print:p-0">
           <div className="max-w-7xl mx-auto print:max-w-none">
