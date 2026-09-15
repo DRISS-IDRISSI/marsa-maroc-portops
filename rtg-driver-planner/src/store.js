@@ -69,7 +69,8 @@ const RTGStore = (function () {
       id: r.id, matricule: r.matricule, nom: r.nom, prenom: r.prenom, teamId: r.team_id,
       initialShift: r.initial_shift, initialZone: r.initial_zone, initialVacation: r.initial_vacation,
       statut: r.statut, dateEntree: r.date_entree, dateSortie: r.date_sortie,
-      observation: r.observation || "", actif: r.actif, motifDepart: r.motif_depart
+      observation: r.observation || "", actif: r.actif, motifDepart: r.motif_depart,
+      ordreAffichage: r.ordre_affichage
     };
   }
   function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
@@ -248,6 +249,7 @@ const RTGStore = (function () {
     if ("observation" in patch) dbPatch.observation = patch.observation;
     if ("actif" in patch) dbPatch.actif = patch.actif;
     if ("motifDepart" in patch) dbPatch.motif_depart = patch.motifDepart;
+    if ("ordreAffichage" in patch) dbPatch.ordre_affichage = patch.ordreAffichage;
 
     const { data, error } = await sb.from("drivers").update(dbPatch).eq("id", driverId).select().single();
     if (error) { console.error(error); throw error; }

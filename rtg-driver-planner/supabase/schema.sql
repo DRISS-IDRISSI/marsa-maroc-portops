@@ -47,6 +47,11 @@ create table if not exists drivers (
   actif boolean not null default true,
   -- motif de départ : RETRAITE / CHANGEMENT_POSTE / AGENT_SUSPENDU (voir DEPART_MOTIF_LABELS, pages2.js)
   motif_depart text,
+  -- Ordre d'affichage dans le Planning mensuel (§35) : rempli automatiquement
+  -- par l'import Excel du planning réel (ordre des lignes du fichier), pour
+  -- que l'appli et le fichier de l'exploitant se comparent ligne à ligne.
+  -- NULL = pas encore importé, ce conducteur reste affiché après les autres.
+  ordre_affichage integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

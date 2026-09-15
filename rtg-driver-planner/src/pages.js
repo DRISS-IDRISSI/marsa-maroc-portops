@@ -145,6 +145,11 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   const unmatchedMatricules = new Set();
   const matchedDriverIds = new Set();
   const fallbackMatches = [];
+  // Ordre des lignes du fichier (par conducteur) — pour pouvoir réafficher
+  // le Planning mensuel de l'appli dans le même ordre que le fichier réel
+  // et faciliter la comparaison ligne à ligne.
+  const orderByDriver = {};
+  let orderCounter = 0;
 
   for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i] || [];
@@ -162,6 +167,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     const driver = found.driver;
     if (found.via !== "matricule") fallbackMatches.push({ matriculeFichier: String(matCell).trim(), matriculeAppli: driver.matricule, nom: driver.nom, prenom: driver.prenom, via: found.via });
     matchedDriverIds.add(driver.id);
+    orderByDriver[driver.id] = orderCounter++;
     dayColumns.forEach(({ day, colIdx }) => {
       const raw = row[colIdx];
       // Case vide = "Conducteur présent" (légende du fichier réel) : à
@@ -217,6 +223,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     congeRanges: congeRanges,
     reposDays: reposDays,
     presentDays: presentDays,
+    orderByDriver: orderByDriver,
     maladieIgnoredCount: Object.keys(maladieCount).reduce((sum, k) => sum + maladieCount[k], 0),
     unknownCodes: unknownCodes
   };
@@ -288,11 +295,24 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     });
   }, [parsed, planning]);
 
+  // Réordonne les conducteurs de l'appli dans le même ordre que les lignes
+  // du fichier, pour comparer facilement le Planning mensuel affiché avec
+  // le fichier réel ligne à ligne.
+  const orderCorrectionsToApply = useMemo(() => {
+    if (!parsed) return [];
+    return Object.keys(parsed.orderByDriver)
+      .map(driverId => ({ driverId: driverId, ordre: parsed.orderByDriver[driverId] }))
+      .filter(({ driverId, ordre }) => {
+        const d = drivers.find(x => x.id === driverId);
+        return d && d.ordreAffichage !== ordre;
+      });
+  }, [parsed, drivers]);
+
   const apply = async () => {
     setStep("applying");
-    const total = congesToApply.length + reposToApply.length + presenceCorrectionsToApply.length;
+    const total = congesToApply.length + reposToApply.length + presenceCorrectionsToApply.length + orderCorrectionsToApply.length;
     setProgress({ done: 0, total: total });
-    let done = 0, congeErrors = 0, reposErrors = 0, presenceErrors = 0;
+    let done = 0, congeErrors = 0, reposErrors = 0, presenceErrors = 0, orderErrors = 0;
     for (const r of congesToApply) {
       try {
         await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: "Import Excel — planning réel" });
@@ -323,11 +343,18 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       } catch (e) { console.error(e); presenceErrors++; }
       done++; setProgress({ done: done, total: total });
     }
+    for (const r of orderCorrectionsToApply) {
+      try {
+        await RTGStore.updateDriver(r.driverId, { ordreAffichage: r.ordre });
+      } catch (e) { console.error(e); orderErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
     setApplyResult({
       congesCreated: congesToApply.length - congeErrors,
       reposApplied: reposToApply.length - reposErrors,
       presenceCorrected: presenceCorrectionsToApply.length - presenceErrors,
-      congeErrors: congeErrors, reposErrors: reposErrors, presenceErrors: presenceErrors
+      orderUpdated: orderCorrectionsToApply.length - orderErrors,
+      congeErrors: congeErrors, reposErrors: reposErrors, presenceErrors: presenceErrors, orderErrors: orderErrors
     });
     setStep("done");
   };
@@ -370,12 +397,13 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             <p><span className="text-white font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
             <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length ? " (" + (parsed.reposDays.length - reposToApply.length) + " déjà correct(s) ou en conflit avec une donnée existante, ignoré(s))" : ""}.</p>
             <p><span className="text-white font-semibold">{presenceCorrectionsToApply.length}</span> repos générés automatiquement par l'algorithme seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
+            <p><span className="text-white font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>
             {parsed.maladieIgnoredCount > 0 && <p className="text-slate-500">{parsed.maladieIgnoredCount} jour(s) « Maladie » présents dans le fichier — non importés (non demandé).</p>}
             {parsed.unknownCodes.length > 0 && (
               <p className="text-amber-400">Codes non reconnus ignorés : {parsed.unknownCodes.slice(0, 8).map(u => u.matricule + "/j" + u.day + "=" + u.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}</p>
             )}
             <div className="flex gap-2 pt-2">
-              <button onClick={apply} disabled={congesToApply.length === 0 && reposToApply.length === 0 && presenceCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
+              <button onClick={apply} disabled={congesToApply.length === 0 && reposToApply.length === 0 && presenceCorrectionsToApply.length === 0 && orderCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
               <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
             </div>
           </div>
@@ -385,8 +413,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "done" && applyResult && (
           <div className="space-y-2 text-xs">
-            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{applyResult.congesCreated} congé(s) créé(s), {applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence).</p>
-            {(applyResult.congeErrors > 0 || applyResult.reposErrors > 0 || applyResult.presenceErrors > 0) && <p className="text-red-300">{applyResult.congeErrors + applyResult.reposErrors + applyResult.presenceErrors} erreur(s) — voir la console.</p>}
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{applyResult.congesCreated} congé(s) créé(s), {applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
+            {(applyResult.congeErrors > 0 || applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-300">{applyResult.congeErrors + applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
             <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Fermer</button>
           </div>
         )}
@@ -1012,7 +1040,20 @@ function PlanningMensuel() {
 
   const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
-  const drivers = useMemo(() => state.drivers.filter(d => d.actif !== false && (effectiveTeamId === "all" || d.teamId === effectiveTeamId)), [state.drivers, effectiveTeamId]);
+  // Trie par ordreAffichage (rempli par l'import Excel — §35) pour que la
+  // grille se compare ligne à ligne avec le fichier réel de l'exploitant ;
+  // les conducteurs sans ordre défini restent à la fin, dans leur ordre
+  // d'origine (tri stable).
+  const drivers = useMemo(() => state.drivers
+    .filter(d => d.actif !== false && (effectiveTeamId === "all" || d.teamId === effectiveTeamId))
+    .slice()
+    .sort((a, b) => {
+      const oa = a.ordreAffichage, ob = b.ordreAffichage;
+      if (oa == null && ob == null) return 0;
+      if (oa == null) return 1;
+      if (ob == null) return -1;
+      return oa - ob;
+    }), [state.drivers, effectiveTeamId]);
 
   const validation = shiftRestricted
     ? (() => {
