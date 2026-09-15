@@ -349,6 +349,22 @@ const RTGStore = (function () {
     addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: auditAction || "Modification affectation", details: isoDate + (auditDetails ? " — " + auditDetails : "") });
   }
 
+  // Annule une affectation manuelle : le conducteur revient à l'affectation
+  // automatique calculée par le moteur pour ce jour-là.
+  async function deleteManualOverride(isoDate, driverId, auditDetails) {
+    const key = isoDate + "_" + driverId;
+    if (!state.manualOverrides[key]) return;
+    const { error } = await sb.from("manual_overrides").delete().eq("date", isoDate).eq("driver_id", driverId);
+    if (error) { console.error(error); throw error; }
+    set(s => {
+      const manualOverrides = Object.assign({}, s.manualOverrides);
+      delete manualOverrides[key];
+      return Object.assign({}, s, { manualOverrides: manualOverrides });
+    });
+    const d = state.drivers.find(dr => dr.id === driverId);
+    addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: "Annulation affectation manuelle", details: isoDate + (auditDetails ? " — " + auditDetails : "") });
+  }
+
   // ---------- Mouvements réalisés un jour férié, PAR CONDUCTEUR PRÉSENT (§31) ----------
 
   function getFerieMouvements(isoDate, driverId) {
@@ -462,7 +478,7 @@ const RTGStore = (function () {
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
     addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
-    setManualOverride,
+    setManualOverride, deleteManualOverride,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
     updateTeam,

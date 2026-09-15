@@ -177,7 +177,7 @@ function ValidationBanner({ validation }) {
   );
 }
 
-function Cell({ assignment, detailLevel }) {
+function Cell({ assignment, detailLevel, onEdit }) {
   if (!assignment) return <td className="border border-border/60 bg-surface/40"></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
   let text = meta.code;
@@ -187,51 +187,197 @@ function Cell({ assignment, detailLevel }) {
     if (detailLevel === "zone" && assignment.zone) parts.push(assignment.zone);
     text = parts.length ? parts.join("/") : meta.code;
   }
+  const isManual = assignment.source === "MANUAL";
+  const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
   return (
-    <td className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className}`} title={assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label}>
+    <td
+      className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${isManual ? "ring-1 ring-inset ring-sky-400" : ""} ${onEdit ? "cursor-pointer hover:brightness-125" : ""}`}
+      title={title}
+      onClick={onEdit}
+    >
       {text}
     </td>
   );
 }
 
-function PlanningGrid({ planning, drivers, detailLevel, config }) {
+// Case cliquable + modale de modification manuelle du planning (§32) — permet
+// à l'ADMIN / RESPONSABLE / RESPONSABLE_SHIFT de forcer le statut/vacation/zone
+// d'un conducteur pour un jour donné, notamment pour équilibrer à la main les
+// vacations V1/V2 quand l'algorithme automatique ne suffit pas.
+const EDITABLE_STATUSES = ["PRESENT", "REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "OFF"];
+
+function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }) {
+  const [status, setStatus] = useState(assignment.status);
+  const [vacation, setVacation] = useState(assignment.vacation || "V1");
+  const [zone, setZone] = useState(assignment.zone || config.zones[0]);
+  const [saving, setSaving] = useState(false);
+  const isManual = assignment.source === "MANUAL";
+
+  const team = teams.find(t => t.id === driver.teamId);
+  const shift = assignment.shift || (team ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(iso), config) : null);
+  const vacDefs = shift ? (config.vacations[shift] || []) : [];
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      let override;
+      if (status === "PRESENT") {
+        const vacDef = vacDefs.find(v => v.id === vacation);
+        override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
+      } else {
+        override = { status: status, shift: null, vacation: null, zone: null, startTime: null, endTime: null };
+      }
+      await RTGStore.setManualOverride(iso, driver.id, override, "Modification manuelle du planning", "équilibrage V1/V2 le " + iso);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetToAuto = async () => {
+    setSaving(true);
+    try {
+      await RTGStore.deleteManualOverride(iso, driver.id, "le " + iso);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="mb-3">
+          <div className="text-white font-semibold text-sm">{driver.matricule} — {driver.nom} {driver.prenom}</div>
+          <div className="text-xs text-slate-500">{RTGDate.formatFr(RTGDate.parseISO(iso))}{isManual ? " · déjà modifié manuellement" : ""}</div>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className={LABEL_CLS}>Statut</label>
+            <select className={FIELD_CLS} value={status} onChange={e => setStatus(e.target.value)}>
+              {EDITABLE_STATUSES.map(s => <option key={s} value={s}>{(RTG_STATUS_META[s] || {}).label || s}</option>)}
+            </select>
+          </div>
+          {status === "PRESENT" && (
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className={LABEL_CLS}>Vacation</label>
+                <select className={FIELD_CLS} value={vacation} onChange={e => setVacation(e.target.value)}>
+                  {vacDefs.map(v => <option key={v.id} value={v.id}>{v.id} ({v.start}-{v.end})</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className={LABEL_CLS}>Zone</label>
+                <select className={FIELD_CLS} value={zone} onChange={e => setZone(e.target.value)}>
+                  {config.zones.map(z => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+        <p className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mt-3">
+          <i className="fas fa-triangle-exclamation mr-1.5"></i>Cette modification remplace l'affectation automatique pour ce conducteur, ce jour-là uniquement.
+        </p>
+        <div className="flex gap-2 mt-4">
+          <button disabled={saving} onClick={save} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Enregistrer</button>
+          {isManual && <button disabled={saving} onClick={resetToAuto} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white disabled:opacity-50">Revenir à l'auto</button>}
+          <button disabled={saving} onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white ml-auto disabled:opacity-50">Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Table d'un seul groupe de vacation (V1 ou V2) au sein d'une équipe — mêmes
+// colonnes que le modèle Excel réel fourni (bloc de conducteurs suivi d'une
+// ligne "Nombre de présent" par jour), avec cellules cliquables si l'usager
+// a le droit de modifier le planning à la main (§32).
+function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell }) {
+  return (
+    <div className="mb-4 last:mb-0">
+      <div className="text-[11px] font-bold text-orange-400 uppercase tracking-wider mb-1.5 px-0.5">{label} <span className="text-slate-500 font-normal normal-case">({drivers.length} conducteur{drivers.length > 1 ? "s" : ""})</span></div>
+      {drivers.length === 0 ? (
+        <p className="text-xs text-slate-500 italic px-0.5 mb-2">Aucun conducteur dans ce groupe.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="border-collapse text-xs w-full">
+            <thead>
+              <tr className="bg-surface">
+                <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10">Mat</th>
+                <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>
+                <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>
+                {planning.days.map(day => {
+                  const holiday = HolidayEngine.getHoliday(day.iso, config);
+                  return (
+                    <th key={day.iso} className={`border border-border/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
+                      {String(day.day).padStart(2, "0")}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {drivers.map(driver => (
+                <tr key={driver.id} className="hover:bg-marine-600/10">
+                  <td className="sticky left-0 bg-card border border-border/60 px-2 py-1.5 text-slate-300 z-10">{driver.matricule}</td>
+                  <td className="sticky left-14 bg-card border border-border/60 px-2 py-1.5 text-white font-medium z-10">{driver.nom}</td>
+                  <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
+                  {planning.days.map(day => {
+                    const a = day.assignments.find(x => x.driverId === driver.id);
+                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} />;
+                  })}
+                </tr>
+              ))}
+              <tr className="bg-surface/70 font-bold">
+                <td className="sticky left-0 bg-surface/70 border border-border/60 px-2 py-1.5 text-slate-300 z-10" colSpan="1">—</td>
+                <td className="sticky left-14 bg-surface/70 border border-border/60 px-2 py-1.5 text-white z-10" colSpan="1">Nombre de présent</td>
+                <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5"></td>
+                {planning.days.map(day => {
+                  const count = drivers.reduce((n, driver) => {
+                    const a = day.assignments.find(x => x.driverId === driver.id);
+                    return n + (a && a.status === "PRESENT" ? 1 : 0);
+                  }, 0);
+                  return <td key={day.iso} className="border border-border/60 text-center text-[11px] text-white px-1 py-1.5">{count}</td>;
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }) {
+  const [editing, setEditing] = useState(null);
+  const onEditCell = canEdit ? (driver, iso, assignment) => assignment && setEditing({ driver: driver, iso: iso, assignment: assignment }) : undefined;
+
+  const teamIds = teams.filter(t => drivers.some(d => d.teamId === t.id)).map(t => t.id);
+
   return (
     <div>
       <p className="sm:hidden text-[11px] text-slate-500 mb-1.5"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir tous les jours</p>
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="border-collapse text-xs w-full">
-          <thead>
-            <tr className="bg-surface">
-              <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10">Mat</th>
-              <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>
-              <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>
-              <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-slate-300">Équipe</th>
-              {planning.days.map(day => {
-                const holiday = HolidayEngine.getHoliday(day.iso, config);
-                return (
-                  <th key={day.iso} className={`border border-border/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
-                    {String(day.day).padStart(2, "0")}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {drivers.map(driver => (
-              <tr key={driver.id} className="hover:bg-marine-600/10">
-                <td className="sticky left-0 bg-card border border-border/60 px-2 py-1.5 text-slate-300 z-10">{driver.matricule}</td>
-                <td className="sticky left-14 bg-card border border-border/60 px-2 py-1.5 text-white font-medium z-10">{driver.nom}</td>
-                <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
-                <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-center text-slate-400">{driver.teamId}</td>
-                {planning.days.map(day => {
-                  const a = day.assignments.find(x => x.driverId === driver.id);
-                  return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} />;
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {canEdit && (
+        <p className="text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg px-3 py-2 mb-3">
+          <i className="fas fa-pen mr-1.5"></i>Cliquez sur une case pour modifier manuellement l'affectation d'un conducteur et équilibrer les vacations.
+        </p>
+      )}
+      {teamIds.map(teamId => {
+        const team = teams.find(t => t.id === teamId);
+        const teamDrivers = drivers.filter(d => d.teamId === teamId);
+        const v1 = teamDrivers.filter(d => d.initialVacation !== "V2");
+        const v2 = teamDrivers.filter(d => d.initialVacation === "V2");
+        return (
+          <div key={teamId} className="mb-6 last:mb-0">
+            {teamIds.length > 1 && <h3 className="text-white font-semibold text-sm mb-2">{team ? team.nom : teamId}</h3>}
+            <VacationGroupTable label="Vacation 1" drivers={v1} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} />
+            <VacationGroupTable label="Vacation 2" drivers={v2} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} />
+          </div>
+        );
+      })}
+      {editing && (
+        <AssignmentEditModal driver={editing.driver} iso={editing.iso} assignment={editing.assignment} config={config} teams={teams} onClose={() => setEditing(null)} />
+      )}
     </div>
   );
 }
@@ -459,6 +605,12 @@ function PlanningMensuel() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // ADMIN, RESPONSABLE (Exploitation) et RESPONSABLE_SHIFT peuvent forcer
+  // manuellement une affectation depuis cette grille, notamment pour
+  // équilibrer à la main les vacations V1/V2 quand l'algorithme ne suffit
+  // pas (§32) — RESPONSABLE_SHIFT reste de toute façon cantonné à sa
+  // propre équipe via effectiveTeamId/lockTeam ci-dessous.
+  const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"].indexOf(currentUser.role) !== -1;
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -518,7 +670,7 @@ function PlanningMensuel() {
       </div>
 
       <div className="print:hidden">
-        <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} />
+        <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} teams={state.teams} canEdit={canEditPlanning} />
       </div>
 
       <div className="bg-card rounded-xl border border-border p-4 print:hidden">
