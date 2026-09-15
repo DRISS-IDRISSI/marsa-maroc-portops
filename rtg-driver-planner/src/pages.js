@@ -139,6 +139,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
 
   const reposByDriver = {};
   const congeByDriver = {};
+  const presentByDriver = {};
   const maladieCount = {};
   const unknownCodes = [];
   const unmatchedMatricules = new Set();
@@ -163,9 +164,14 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     matchedDriverIds.add(driver.id);
     dayColumns.forEach(({ day, colIdx }) => {
       const raw = row[colIdx];
-      if (raw === null || raw === undefined) return;
+      // Case vide = "Conducteur présent" (légende du fichier réel) : à
+      // rapprocher du statut calculé par le moteur pour annuler un repos
+      // que l'algorithme aurait généré à tort ce jour-là (voir plus bas).
+      if (raw === null || raw === undefined || String(raw).trim() === "") {
+        (presentByDriver[driver.id] = presentByDriver[driver.id] || []).push(day);
+        return;
+      }
       const code = String(raw).trim().toUpperCase();
-      if (code === "") return;
       if (IMPORT_REPOS_CODES.indexOf(code) !== -1) {
         (reposByDriver[driver.id] = reposByDriver[driver.id] || []).push(day);
       } else if (IMPORT_CONGE_CODES.indexOf(code) !== -1) {
@@ -196,6 +202,13 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     });
   });
 
+  const presentDays = [];
+  Object.keys(presentByDriver).forEach(driverId => {
+    presentByDriver[driverId].forEach(day => {
+      presentDays.push({ driverId: driverId, iso: RTGDate.toISO(RTGDate.makeDate(year, month, day)) });
+    });
+  });
+
   return {
     sheetName: sheetName,
     matchedCount: matchedDriverIds.size,
@@ -203,6 +216,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     fallbackMatches: fallbackMatches,
     congeRanges: congeRanges,
     reposDays: reposDays,
+    presentDays: presentDays,
     maladieIgnoredCount: Object.keys(maladieCount).reduce((sum, k) => sum + maladieCount[k], 0),
     unknownCodes: unknownCodes
   };
@@ -251,11 +265,28 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     return parsed.congeRanges.filter(r => !state.conges.some(c => c.driverId === r.driverId && c.dateDebut === r.dateDebut && c.dateFin === r.dateFin));
   }, [parsed, state.conges]);
 
+  // Case vide dans le fichier réel = conducteur présent ce jour-là : si le
+  // moteur avait de son côté généré un repos automatique ce même jour, ce
+  // repos est erroné au regard du planning réel et doit être annulé (remis
+  // en présence, avec le shift/vacation/zone naturels de la rotation) —
+  // sinon l'import ne fait qu'AJOUTER des repos sans jamais retirer ceux que
+  // l'algorithme a placés à tort, ce qui fait exploser le quota de repos et
+  // les anomalies. On ne touche jamais un jour à statut fixe (congé/maladie/
+  // absence/formation/férié) : seul un REPOS auto est corrigé.
+  const presenceCorrectionsToApply = useMemo(() => {
+    if (!parsed || !planning) return [];
+    return parsed.presentDays.filter(({ driverId, iso }) => {
+      const day = planning.days.find(d => d.iso === iso);
+      const a = day && day.assignments.find(x => x.driverId === driverId);
+      return a && a.status === "REPOS" && a.source !== "MANUAL";
+    });
+  }, [parsed, planning]);
+
   const apply = async () => {
     setStep("applying");
-    const total = congesToApply.length + reposToApply.length;
+    const total = congesToApply.length + reposToApply.length + presenceCorrectionsToApply.length;
     setProgress({ done: 0, total: total });
-    let done = 0, congeErrors = 0, reposErrors = 0;
+    let done = 0, congeErrors = 0, reposErrors = 0, presenceErrors = 0;
     for (const r of congesToApply) {
       try {
         await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: "Import Excel — planning réel" });
@@ -268,7 +299,25 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       } catch (e) { console.error(e); reposErrors++; }
       done++; setProgress({ done: done, total: total });
     }
-    setApplyResult({ congesCreated: congesToApply.length - congeErrors, reposApplied: reposToApply.length - reposErrors, congeErrors: congeErrors, reposErrors: reposErrors });
+    for (const r of presenceCorrectionsToApply) {
+      try {
+        const date = RTGDate.parseISO(r.iso);
+        const driver = drivers.find(d => d.id === r.driverId);
+        const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
+        const vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
+        const zone = ZoneRotationEngine.getZoneForDate(driver, date, state, state.teams);
+        const vacDef = (state.config.vacations[shift] || []).find(v => v.id === vacation);
+        const override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
+        await RTGStore.setManualOverride(r.iso, r.driverId, override, "Import planning réel (Excel)", "repos auto annulé (présent réel) — " + team.nom + " — " + r.iso);
+      } catch (e) { console.error(e); presenceErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    setApplyResult({
+      congesCreated: congesToApply.length - congeErrors,
+      reposApplied: reposToApply.length - reposErrors,
+      presenceCorrected: presenceCorrectionsToApply.length - presenceErrors,
+      congeErrors: congeErrors, reposErrors: reposErrors, presenceErrors: presenceErrors
+    });
     setStep("done");
   };
 
@@ -309,12 +358,13 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             )}
             <p><span className="text-white font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
             <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length ? " (" + (parsed.reposDays.length - reposToApply.length) + " déjà correct(s) ou en conflit avec une donnée existante, ignoré(s))" : ""}.</p>
+            <p><span className="text-white font-semibold">{presenceCorrectionsToApply.length}</span> repos générés automatiquement par l'algorithme seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
             {parsed.maladieIgnoredCount > 0 && <p className="text-slate-500">{parsed.maladieIgnoredCount} jour(s) « Maladie » présents dans le fichier — non importés (non demandé).</p>}
             {parsed.unknownCodes.length > 0 && (
               <p className="text-amber-400">Codes non reconnus ignorés : {parsed.unknownCodes.slice(0, 8).map(u => u.matricule + "/j" + u.day + "=" + u.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}</p>
             )}
             <div className="flex gap-2 pt-2">
-              <button onClick={apply} disabled={congesToApply.length === 0 && reposToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
+              <button onClick={apply} disabled={congesToApply.length === 0 && reposToApply.length === 0 && presenceCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
               <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
             </div>
           </div>
@@ -324,8 +374,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "done" && applyResult && (
           <div className="space-y-2 text-xs">
-            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{applyResult.congesCreated} congé(s) créé(s), {applyResult.reposApplied} repos forcé(s).</p>
-            {(applyResult.congeErrors > 0 || applyResult.reposErrors > 0) && <p className="text-red-300">{applyResult.congeErrors + applyResult.reposErrors} erreur(s) — voir la console.</p>}
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{applyResult.congesCreated} congé(s) créé(s), {applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence).</p>
+            {(applyResult.congeErrors > 0 || applyResult.reposErrors > 0 || applyResult.presenceErrors > 0) && <p className="text-red-300">{applyResult.congeErrors + applyResult.reposErrors + applyResult.presenceErrors} erreur(s) — voir la console.</p>}
             <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Fermer</button>
           </div>
         )}
