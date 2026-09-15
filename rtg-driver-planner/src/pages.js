@@ -278,7 +278,13 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     return parsed.presentDays.filter(({ driverId, iso }) => {
       const day = planning.days.find(d => d.iso === iso);
       const a = day && day.assignments.find(x => x.driverId === driverId);
-      return a && a.status === "REPOS" && a.source !== "MANUAL";
+      if (!a) return false;
+      if (a.status === "REPOS" && a.source !== "MANUAL") return true;
+      // Répare une correction précédente laissée sans zone par un bug déjà
+      // corrigé (voir historique) : un import déjà passé par ici a pu créer
+      // une correction manuelle PRESENT sans zone valide.
+      if (a.status === "PRESENT" && a.source === "MANUAL" && !a.zone) return true;
+      return false;
     });
   }, [parsed, planning]);
 
