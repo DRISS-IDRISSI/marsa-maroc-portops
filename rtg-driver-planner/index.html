@@ -3,18 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marsa Maroc PortOps — TCE & TC3</title>
+    <title>RTG Driver Planner — Marsa Maroc</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0B1426">
+    <link rel="icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="RTG Planner">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <!-- react-router-dom@6's UMD bundle no longer bundles its own router core: it needs
-         @remix-run/router and react-router loaded as globals first, or the router throws
-         on mount. -->
+    <!-- react-router-dom@6's UMD bundle needs @remix-run/router and react-router loaded
+         as globals first, or the router throws on mount. -->
     <script src="https://unpkg.com/@remix-run/router@1/dist/router.umd.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-router@6/dist/umd/react-router.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-router-dom@6/dist/umd/react-router-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -34,13 +40,48 @@
     ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0B1426}::-webkit-scrollbar-thumb{background:#243555;border-radius:3px}
     .fade-in{animation:fadeIn .3s ease}@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
     .pulse-dot{animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    @media print {
+      @page { size: landscape; margin: 10mm; }
+      body { background: #fff !important; }
+    }
+    /* Blocs dédiés aux rapports imprimables (Planning mensuel, Affectation du
+       jour) : masqués à l'écran, affichés uniquement à l'impression / export
+       PDF. Règles explicites (plutôt que les utilitaires Tailwind hidden/print:block)
+       car l'ordre d'injection du CDN Tailwind ne garantit pas leur priorité. */
+    .print-report { display: none; }
+    @media print {
+      .print-report { display: block !important; }
+    }
     </style>
 </head>
 <body class="min-h-screen">
     <div id="root"></div>
+    <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="src/data.js"></script>
+    <script src="src/supabaseClient.js"></script>
+    <script src="src/store.js"></script>
+    <script src="src/engines/dateUtils.js"></script>
+    <script src="src/engines/shiftRotationEngine.js"></script>
+    <script src="src/engines/absenceEngine.js"></script>
+    <script src="src/engines/exceptionEngine.js"></script>
+    <script src="src/engines/restDayEngine.js"></script>
+    <script src="src/engines/vacationRotationEngine.js"></script>
+    <script src="src/engines/zoneRotationEngine.js"></script>
+    <script src="src/engines/zoneBalancingEngine.js"></script>
+    <script src="src/engines/planningEngine.js"></script>
+    <script src="src/engines/validationEngine.js"></script>
+    <script src="src/engines/replacementEngine.js"></script>
+    <script src="src/engines/holidayEngine.js"></script>
     <script src="src/components.js" type="text/babel"></script>
     <script src="src/pages.js" type="text/babel"></script>
+    <script src="src/pages2.js" type="text/babel"></script>
     <script src="src/app.js" type="text/babel"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("sw.js").catch(() => {});
+        });
+      }
+    </script>
 </body>
 </html>
