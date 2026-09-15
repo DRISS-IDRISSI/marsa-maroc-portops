@@ -305,7 +305,12 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         const driver = drivers.find(d => d.id === r.driverId);
         const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
         const vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
-        const zone = ZoneRotationEngine.getZoneForDate(driver, date, state, state.teams);
+        // getZoneForDate renvoie null si le statut AUTO du jour (avant cette
+        // correction) n'est pas déjà PRESENT — ce qui est justement le cas ici
+        // (REPOS auto qu'on est en train de corriger). getExpectedZoneForDate
+        // calcule la zone qu'aurait le conducteur s'il travaillait ce jour-là,
+        // indépendamment de son statut réel — exactement ce qu'il faut ici.
+        const zone = ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
         const vacDef = (state.config.vacations[shift] || []).find(v => v.id === vacation);
         const override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
         await RTGStore.setManualOverride(r.iso, r.driverId, override, "Import planning réel (Excel)", "repos auto annulé (présent réel) — " + team.nom + " — " + r.iso);
