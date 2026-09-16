@@ -747,8 +747,9 @@ function ValidationBanner({ validation }) {
   );
 }
 
-function Cell({ assignment, detailLevel, onEdit }) {
-  if (!assignment) return <td className="border border-border/60 bg-surface/40"></td>;
+function Cell({ assignment, detailLevel, onEdit, weekStart }) {
+  const weekStartCls = weekStart ? "border-l-2 border-l-orange-500/70" : "";
+  if (!assignment) return <td className={`border border-border/60 bg-surface/40 ${weekStartCls}`}></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
   let text = meta.code;
   if (assignment.status === "PRESENT" && detailLevel !== "code") {
@@ -761,7 +762,7 @@ function Cell({ assignment, detailLevel, onEdit }) {
   const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
   return (
     <td
-      className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${isManual ? "ring-1 ring-inset ring-sky-400" : ""} ${onEdit ? "cursor-pointer hover:brightness-125" : ""}`}
+      className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${isManual ? "ring-1 ring-inset ring-sky-400" : ""} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
       title={title}
       onClick={onEdit}
     >
@@ -878,8 +879,9 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                 <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>
                 {planning.days.map(day => {
                   const holiday = HolidayEngine.getHoliday(day.iso, config);
+                  const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
                   return (
-                    <th key={day.iso} className={`border border-border/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"}`} title={holiday ? holiday.label : undefined}>
+                    <th key={day.iso} className={`border border-border/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"} ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`} title={holiday ? holiday.label : undefined}>
                       {String(day.day).padStart(2, "0")}
                     </th>
                   );
@@ -894,7 +896,8 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
                   {planning.days.map(day => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
-                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} />;
+                    const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
+                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} weekStart={weekStart} />;
                   })}
                 </tr>
               ))}
@@ -907,7 +910,8 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                     const a = day.assignments.find(x => x.driverId === driver.id);
                     return n + (a && a.status === "PRESENT" ? 1 : 0);
                   }, 0);
-                  return <td key={day.iso} className="border border-border/60 text-center text-[11px] text-white px-1 py-1.5">{count}</td>;
+                  const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
+                  return <td key={day.iso} className={`border border-border/60 text-center text-[11px] text-white px-1 py-1.5 ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`}>{count}</td>;
                 })}
               </tr>
             </tbody>
