@@ -235,6 +235,19 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   const [parsed, setParsed] = useState(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [applyResult, setApplyResult] = useState(null);
+  const [resetResult, setResetResult] = useState(null);
+
+  const doReset = async () => {
+    setStep("resetting");
+    try {
+      const result = await RTGStore.resetImportedRestData(team.id, month, year);
+      setResetResult(result);
+      setStep("resetDone");
+    } catch (e) {
+      setError(e.message || String(e));
+      setStep("error");
+    }
+  };
 
   const handleFile = async file => {
     setStep("parsing");
@@ -315,13 +328,13 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     let done = 0, congeErrors = 0, reposErrors = 0, presenceErrors = 0, orderErrors = 0;
     for (const r of congesToApply) {
       try {
-        await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: "Import Excel — planning réel" });
+        await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: RTG_IMPORT_CONGE_COMMENT });
       } catch (e) { console.error(e); congeErrors++; }
       done++; setProgress({ done: done, total: total });
     }
     for (const r of reposToApply) {
       try {
-        await RTGStore.setManualOverride(r.iso, r.driverId, { status: "REPOS", shift: null, vacation: null, zone: null, startTime: null, endTime: null }, "Import planning réel (Excel)", team.nom + " — " + r.iso);
+        await RTGStore.setManualOverride(r.iso, r.driverId, { status: "REPOS", shift: null, vacation: null, zone: null, startTime: null, endTime: null }, RTG_IMPORT_OVERRIDE_MOTIF, team.nom + " — " + r.iso);
       } catch (e) { console.error(e); reposErrors++; }
       done++; setProgress({ done: done, total: total });
     }
@@ -339,7 +352,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         const zone = ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
         const vacDef = (state.config.vacations[shift] || []).find(v => v.id === vacation);
         const override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
-        await RTGStore.setManualOverride(r.iso, r.driverId, override, "Import planning réel (Excel)", "repos auto annulé (présent réel) — " + team.nom + " — " + r.iso);
+        await RTGStore.setManualOverride(r.iso, r.driverId, override, RTG_IMPORT_OVERRIDE_MOTIF, "repos auto annulé (présent réel) — " + team.nom + " — " + r.iso);
       } catch (e) { console.error(e); presenceErrors++; }
       done++; setProgress({ done: done, total: total });
     }
@@ -360,11 +373,11 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={step === "applying" ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
       <div className="bg-card border border-border rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold text-sm">Importer Repos &amp; Congés depuis Excel</h3>
-          {step !== "applying" && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
+          {["applying", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
         </div>
         <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}</p>
 
@@ -372,6 +385,32 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           <div>
             <p className="text-xs text-slate-400 mb-3">Sélectionnez le fichier Excel (.xlsx) du planning réel : les repos (« R ») seront forcés manuellement et les congés (« C ») créés comme périodes de congé, uniquement pour les conducteurs de cette équipe et ce mois.</p>
             <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-300" />
+            <div className="mt-4 pt-3 border-t border-border">
+              <button onClick={() => setStep("resetConfirm")} className="text-[11px] text-red-400 hover:text-red-300 underline">
+                Réinitialiser les repos/congés déjà importés pour cette équipe et ce mois
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "resetConfirm" && (
+          <div className="space-y-3">
+            <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+              <i className="fas fa-triangle-exclamation mr-1.5"></i>Ceci supprime tous les repos forcés et congés créés par un import Excel pour <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}, pour repartir d'une base propre avant de réimporter. Les autres modifications (Remplacement, édition manuelle case par case sans import, congés saisis normalement) ne sont pas touchées.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={doReset} className="px-4 py-2 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700">Confirmer la suppression</button>
+              <button onClick={() => setStep("pick")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        )}
+
+        {step === "resetting" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Suppression en cours…</p>}
+
+        {step === "resetDone" && resetResult && (
+          <div className="space-y-2 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{resetResult.overridesDeleted} affectation(s) et {resetResult.congesDeleted} congé(s) supprimé(s).</p>
+            <button onClick={() => setStep("pick")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Importer maintenant</button>
           </div>
         )}
 
