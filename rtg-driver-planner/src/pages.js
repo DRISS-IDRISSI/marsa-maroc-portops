@@ -148,7 +148,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   const reposByDriver = {};
   const congeByDriver = {};
   const presentByDriver = {};
-  const maladieCount = {};
+  const maladieByDriver = {};
   const unknownCodes = [];
   const unmatchedMatricules = new Set();
   const matchedDriverIds = new Set();
@@ -191,7 +191,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
       } else if (IMPORT_CONGE_CODES.indexOf(code) !== -1) {
         (congeByDriver[driver.id] = congeByDriver[driver.id] || []).push(day);
       } else if (IMPORT_MALADIE_CODES.indexOf(code) !== -1) {
-        maladieCount[driver.id] = (maladieCount[driver.id] || 0) + 1;
+        (maladieByDriver[driver.id] = maladieByDriver[driver.id] || []).push(day);
       } else {
         unknownCodes.push({ matricule: driver.matricule, day: day, code: code });
       }
@@ -202,6 +202,17 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   Object.keys(congeByDriver).forEach(driverId => {
     mergeConsecutiveDays(congeByDriver[driverId]).forEach(([start, end]) => {
       congeRanges.push({
+        driverId: driverId,
+        dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)),
+        dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end))
+      });
+    });
+  });
+
+  const maladieRanges = [];
+  Object.keys(maladieByDriver).forEach(driverId => {
+    mergeConsecutiveDays(maladieByDriver[driverId]).forEach(([start, end]) => {
+      maladieRanges.push({
         driverId: driverId,
         dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)),
         dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end))
@@ -238,10 +249,10 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     unmatchedMatricules: Array.from(unmatchedMatricules),
     fallbackMatches: fallbackMatches,
     congeRanges: congeRanges,
+    maladieRanges: maladieRanges,
     reposDays: reposDays,
     presentDays: presentDays,
     orderByDriver: orderByDriver,
-    maladieIgnoredCount: Object.keys(maladieCount).reduce((sum, k) => sum + maladieCount[k], 0),
     unknownCodes: unknownCodes
   };
 }
@@ -251,6 +262,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   const [error, setError] = useState("");
   const [parsed, setParsed] = useState(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [congeResult, setCongeResult] = useState(null);
   const [applyResult, setApplyResult] = useState(null);
   const [resetResult, setResetResult] = useState(null);
 
@@ -301,6 +313,11 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     if (!parsed) return [];
     return parsed.congeRanges.filter(r => !state.conges.some(c => c.driverId === r.driverId && c.dateDebut === r.dateDebut && c.dateFin === r.dateFin));
   }, [parsed, state.conges]);
+
+  const maladiesToApply = useMemo(() => {
+    if (!parsed) return [];
+    return parsed.maladieRanges.filter(r => !state.maladies.some(m => m.driverId === r.driverId && m.dateDebut === r.dateDebut && m.dateFin === r.dateFin));
+  }, [parsed, state.maladies]);
 
   // Case vide dans le fichier réel = conducteur présent ce jour-là : si
   // l'appli a de son côté un repos ce même jour (auto OU déjà forcé
@@ -394,17 +411,46 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       });
   }, [parsed, drivers]);
 
-  const apply = async () => {
-    setStep("applying");
-    const total = congesToApply.length + reposToApply.length + presenceCorrectionsToApply.length + orderCorrectionsToApply.length;
+  // Congés ET maladies sont créés dans une étape à part, AVANT de calculer
+  // les repos à forcer : RestDayEngine (placement automatique des repos)
+  // tient compte de ces deux statuts figés pour exclure ces jours et
+  // réduire le quota mensuel du conducteur — tant qu'ils n'ont pas été
+  // effectivement écrits en base et que l'appli n'a pas recalculé le
+  // planning en conséquence, reposToApply/reposConflicts raisonnent encore
+  // sur l'ancien planning (sans eux), qui peut placer ou voir des repos
+  // automatiques à des jours qui n'existeront plus une fois pris en compte
+  // — d'où des rejets "2 repos consécutifs" fantômes ou des repos qui se
+  // replacent ailleurs (cas réel observé : SMIDI, gros congé de 13 jours,
+  // le repos du 14/09 rejeté à tort puis réapparu plus loin dans le mois).
+  // Passer par une étape séparée, avec un nouveau rendu entre les deux,
+  // garantit que le planning utilisé pour calculer les repos reflète déjà
+  // les congés/maladies de cet import.
+  const applyFixedAbsences = async () => {
+    setStep("applyingConges");
+    const total = congesToApply.length + maladiesToApply.length;
     setProgress({ done: 0, total: total });
-    let done = 0, congeErrors = 0, reposErrors = 0, presenceErrors = 0, orderErrors = 0;
+    let done = 0, congeErrors = 0, maladieErrors = 0;
     for (const r of congesToApply) {
       try {
         await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: RTG_IMPORT_CONGE_COMMENT });
       } catch (e) { console.error(e); congeErrors++; }
       done++; setProgress({ done: done, total: total });
     }
+    for (const r of maladiesToApply) {
+      try {
+        await RTGStore.addMaladie({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: RTG_IMPORT_MALADIE_COMMENT });
+      } catch (e) { console.error(e); maladieErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    setCongeResult({ congesCreated: congesToApply.length - congeErrors, maladiesCreated: maladiesToApply.length - maladieErrors, congeErrors: congeErrors, maladieErrors: maladieErrors });
+    setStep("congesApplied");
+  };
+
+  const applyRest = async () => {
+    setStep("applying");
+    const total = reposToApply.length + presenceCorrectionsToApply.length + orderCorrectionsToApply.length;
+    setProgress({ done: 0, total: total });
+    let done = 0, reposErrors = 0, presenceErrors = 0, orderErrors = 0;
     for (const r of reposToApply) {
       try {
         await RTGStore.setManualOverride(r.iso, r.driverId, { status: "REPOS", shift: null, vacation: null, zone: null, startTime: null, endTime: null }, RTG_IMPORT_OVERRIDE_MOTIF, team.nom + " — " + r.iso);
@@ -436,21 +482,20 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       done++; setProgress({ done: done, total: total });
     }
     setApplyResult({
-      congesCreated: congesToApply.length - congeErrors,
       reposApplied: reposToApply.length - reposErrors,
       presenceCorrected: presenceCorrectionsToApply.length - presenceErrors,
       orderUpdated: orderCorrectionsToApply.length - orderErrors,
-      congeErrors: congeErrors, reposErrors: reposErrors, presenceErrors: presenceErrors, orderErrors: orderErrors
+      reposErrors: reposErrors, presenceErrors: presenceErrors, orderErrors: orderErrors
     });
     setStep("done");
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "applyingConges", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
       <div className="bg-card border border-border rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold text-sm">Importer Repos &amp; Congés depuis Excel</h3>
-          {["applying", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
+          {["applying", "applyingConges", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
         </div>
         <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}</p>
 
@@ -523,6 +568,36 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
               <p className="text-sky-300">Matricule différent mais conducteur reconnu par {parsed.fallbackMatches[0].via === "nom" ? "nom" : "numéro"} : {parsed.fallbackMatches.map(f => f.nom + " " + f.prenom + " (fichier " + f.matriculeFichier + " → appli " + f.matriculeAppli + ")").join(", ")}</p>
             )}
             <p><span className="text-white font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
+            <p><span className="text-white font-semibold">{maladiesToApply.length}</span> plage(s) de maladie à créer{parsed.maladieRanges.length !== maladiesToApply.length ? " (" + (parsed.maladieRanges.length - maladiesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
+            {parsed.unknownCodes.length > 0 && (
+              <p className="text-amber-400">Codes non reconnus ignorés : {parsed.unknownCodes.slice(0, 8).map(u => u.matricule + "/j" + u.day + "=" + u.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}</p>
+            )}
+            <p className="text-slate-500">
+              <i className="fas fa-circle-info mr-1.5"></i>Congés et maladies sont créés d'abord, séparément : le calcul des repos à forcer doit se baser sur le planning déjà à jour avec ces statuts figés (ils réduisent le quota de repos et libèrent des jours), sans quoi des repos peuvent être rejetés ou mal placés à tort.
+            </p>
+            <div className="flex gap-2 pt-2">
+              {(congesToApply.length > 0 || maladiesToApply.length > 0) ? (
+                <button onClick={applyFixedAbsences} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Créer congés/maladies et continuer</button>
+              ) : (
+                <button onClick={() => setStep("previewRepos")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer</button>
+              )}
+              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        )}
+
+        {step === "applyingConges" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Création des congés/maladies en cours… {progress.done}/{progress.total}</p>}
+
+        {step === "congesApplied" && congeResult && (
+          <div className="space-y-3 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult.congesCreated} congé(s) et {congeResult.maladiesCreated} maladie(s) créé(s).</p>
+            {(congeResult.congeErrors > 0 || congeResult.maladieErrors > 0) && <p className="text-red-300">{congeResult.congeErrors + congeResult.maladieErrors} erreur(s) — voir la console.</p>}
+            <button onClick={() => setStep("previewRepos")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les repos</button>
+          </div>
+        )}
+
+        {step === "previewRepos" && parsed && (
+          <div className="space-y-3 text-xs text-slate-300">
             <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length + reposConflicts.length ? " (" + (parsed.reposDays.length - reposToApply.length - reposConflicts.length) + " déjà correct(s), ignoré(s))" : ""}.</p>
             {reposConflicts.length > 0 && (
               <p className="text-red-300">
@@ -552,12 +627,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
               </div>
             </details>
             <p><span className="text-white font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>
-            {parsed.maladieIgnoredCount > 0 && <p className="text-slate-500">{parsed.maladieIgnoredCount} jour(s) « Maladie » présents dans le fichier — non importés (non demandé).</p>}
-            {parsed.unknownCodes.length > 0 && (
-              <p className="text-amber-400">Codes non reconnus ignorés : {parsed.unknownCodes.slice(0, 8).map(u => u.matricule + "/j" + u.day + "=" + u.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}</p>
-            )}
             <div className="flex gap-2 pt-2">
-              <button onClick={apply} disabled={congesToApply.length === 0 && reposToApply.length === 0 && presenceCorrectionsToApply.length === 0 && orderCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
+              <button onClick={applyRest} disabled={reposToApply.length === 0 && presenceCorrectionsToApply.length === 0 && orderCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
               <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
             </div>
           </div>
@@ -567,8 +638,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "done" && applyResult && (
           <div className="space-y-2 text-xs">
-            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{applyResult.congesCreated} congé(s) créé(s), {applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
-            {(applyResult.congeErrors > 0 || applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-300">{applyResult.congeErrors + applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s) et " + congeResult.maladiesCreated + " maladie(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
+            {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-300">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
             <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Fermer</button>
           </div>
         )}

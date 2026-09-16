@@ -24,6 +24,7 @@ const RTG_AUTH_EMAIL_DOMAIN = "@rtg-planner.local";
 // deux restent forcément synchronisés sur le même texte exact.
 const RTG_IMPORT_OVERRIDE_MOTIF = "Import planning réel (Excel)";
 const RTG_IMPORT_CONGE_COMMENT = "Import Excel — planning réel";
+const RTG_IMPORT_MALADIE_COMMENT = "Import Excel — planning réel";
 
 function rtgEmptyState() {
   return {
@@ -394,7 +395,7 @@ const RTGStore = (function () {
   // avec des versions buguées du fichier ou de l'outil).
   async function resetImportedRestData(teamId, month, year) {
     const driverIds = state.drivers.filter(d => d.teamId === teamId).map(d => d.id);
-    if (driverIds.length === 0) return { overridesDeleted: 0, congesDeleted: 0 };
+    if (driverIds.length === 0) return { overridesDeleted: 0, congesDeleted: 0, maladiesDeleted: 0 };
     const mm = String(month).padStart(2, "0");
     const dim = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const first = year + "-" + mm + "-01";
@@ -410,11 +411,16 @@ const RTGStore = (function () {
       .gte("date_debut", first).lte("date_fin", last).select("id");
     if (congesErr) { console.error(congesErr); throw congesErr; }
 
+    const { data: maladiesData, error: maladiesErr } = await sb.from("maladies")
+      .delete().in("driver_id", driverIds).eq("commentaire", RTG_IMPORT_MALADIE_COMMENT)
+      .gte("date_debut", first).lte("date_fin", last).select("id");
+    if (maladiesErr) { console.error(maladiesErr); throw maladiesErr; }
+
     await refreshAll();
     const team = state.teams.find(t => t.id === teamId);
-    const overridesCount = (overridesData || []).length, congesCount = (congesData || []).length;
-    addAuditEntry({ action: "Réinitialisation import Excel", details: (team ? team.nom : teamId) + " — " + mm + "/" + year + " — " + overridesCount + " affectation(s) et " + congesCount + " congé(s) supprimé(s)" });
-    return { overridesDeleted: overridesCount, congesDeleted: congesCount };
+    const overridesCount = (overridesData || []).length, congesCount = (congesData || []).length, maladiesCount = (maladiesData || []).length;
+    addAuditEntry({ action: "Réinitialisation import Excel", details: (team ? team.nom : teamId) + " — " + mm + "/" + year + " — " + overridesCount + " affectation(s), " + congesCount + " congé(s) et " + maladiesCount + " maladie(s) supprimé(s)" });
+    return { overridesDeleted: overridesCount, congesDeleted: congesCount, maladiesDeleted: maladiesCount };
   }
 
   // Remise à zéro complète du planning d'une équipe pour un mois donné :
