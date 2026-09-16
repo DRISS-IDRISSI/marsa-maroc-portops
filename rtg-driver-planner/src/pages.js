@@ -525,11 +525,20 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             <p><span className="text-white font-semibold">{presenceCorrectionsToApply.length}</span> repos actuellement présents dans l'appli (auto ou déjà forcés manuellement) seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
             <details className="text-slate-500">
               <summary className="cursor-pointer hover:text-slate-300">Détail des repos détectés dans le fichier, par conducteur (vérification)</summary>
-              <div className="mt-1.5 max-h-32 overflow-y-auto space-y-0.5">
-                {parsed.reposDays.slice().sort((a, b) => a.iso.localeCompare(b.iso)).map((r, idx) => {
-                  const d = drivers.find(x => x.id === r.driverId);
-                  return <div key={idx}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {r.iso.slice(8, 10)}/{r.iso.slice(5, 7)}</div>;
-                })}
+              <div className="mt-1.5 max-h-48 overflow-y-auto space-y-0.5">
+                {(() => {
+                  const toApplyKeys = new Set(reposToApply.map(r => r.driverId + "_" + r.iso));
+                  const conflictKeys = new Set(reposConflicts.map(r => r.driverId + "_" + r.iso));
+                  return parsed.reposDays.slice().sort((a, b) => a.iso.localeCompare(b.iso)).map((r, idx) => {
+                    const d = drivers.find(x => x.id === r.driverId);
+                    const key = r.driverId + "_" + r.iso;
+                    let verdict, cls;
+                    if (conflictKeys.has(key)) { verdict = "REJETÉ (conflit 2 repos consécutifs)"; cls = "text-red-300"; }
+                    else if (toApplyKeys.has(key)) { verdict = "sera forcé"; cls = "text-emerald-400"; }
+                    else { verdict = "déjà correct, ignoré"; cls = "text-slate-500"; }
+                    return <div key={idx} className={cls}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {r.iso.slice(8, 10)}/{r.iso.slice(5, 7)} — {verdict}</div>;
+                  });
+                })()}
               </div>
             </details>
             <p><span className="text-white font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>

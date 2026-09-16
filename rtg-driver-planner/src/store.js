@@ -351,6 +351,18 @@ const RTGStore = (function () {
     };
     const { data, error } = await sb.from("manual_overrides").upsert(row, { onConflict: "date,driver_id" }).select().single();
     if (error) { console.error(error); throw error; }
+    // Garde-fou : si la ligne renvoyée par Supabase après l'upsert ne
+    // correspond pas exactement à ce qui a été demandé (date/conducteur),
+    // le signaler bruyamment plutôt que de mettre en cache silencieusement
+    // une valeur qui ne serait pas celle attendue (déjà vu : un import qui
+    // se dit réussi sans erreur, mais dont un jour précis n'apparaît jamais
+    // dans l'appli ni dans l'historique — ce garde-fou permet de vérifier si
+    // Supabase renvoie autre chose que ce qui a été envoyé).
+    if (data.date !== isoDate || data.driver_id !== driverId) {
+      const mismatch = new Error("Réponse Supabase inattendue pour l'affectation manuelle : demandé " + isoDate + "/" + driverId + ", reçu " + data.date + "/" + data.driver_id);
+      console.error(mismatch, { requested: { isoDate, driverId }, received: data });
+      throw mismatch;
+    }
     const key = isoDate + "_" + driverId;
     set(s => Object.assign({}, s, { manualOverrides: Object.assign({}, s.manualOverrides, { [key]: mapOverrideRow(data) }) }));
     const d = state.drivers.find(dr => dr.id === driverId);
