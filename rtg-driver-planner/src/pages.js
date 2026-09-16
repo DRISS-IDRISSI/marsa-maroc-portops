@@ -82,18 +82,21 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
 
   // Repère la ligne d'en-tête : celle qui contient le plus de cellules-dates
   // correspondant au mois/année ciblés (le fichier réel couvre plusieurs mois
-  // sur la même feuille).
+  // sur la même feuille). On lit le numéro de série Excel BRUT (pas de
+  // conversion cellDates de SheetJS en objets Date : sa construction interne
+  // peut introduire une ambiguïté de fuseau horaire — décalage d'un jour déjà
+  // observé en pratique) et on le convertit nous-mêmes en UTC, formule
+  // standard et déterministe (25569 = écart entre l'époque Excel et l'époque
+  // Unix, en jours).
+  const excelSerialToUTCDate = serial => new Date(Math.round((serial - 25569) * 86400 * 1000));
   let headerRowIdx = -1, dayColumns = [];
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const cols = [];
     (rows[i] || []).forEach((cell, colIdx) => {
-      // SheetJS construit ces dates en UTC (minuit UTC) à partir du numéro de
-      // série Excel : lire en heure LOCALE (getFullYear/getMonth/getDate)
-      // décale le jour d'une unité selon le fuseau horaire du navigateur —
-      // observé en pratique (repos importé un jour trop tard). Le reste de
-      // l'appli raisonne déjà en UTC (RTGDate), on fait pareil ici.
-      if (cell instanceof Date && cell.getUTCFullYear() === year && (cell.getUTCMonth() + 1) === month) {
-        cols.push({ day: cell.getUTCDate(), colIdx: colIdx });
+      if (typeof cell !== "number" || cell < 20000 || cell > 80000) return;
+      const d = excelSerialToUTCDate(cell);
+      if (d.getUTCFullYear() === year && (d.getUTCMonth() + 1) === month) {
+        cols.push({ day: d.getUTCDate(), colIdx: colIdx });
       }
     });
     if (cols.length > dayColumns.length) { dayColumns = cols; headerRowIdx = i; }
@@ -260,7 +263,11 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     try {
       await loadXlsxLib();
       const buf = await file.arrayBuffer();
-      const wb = window.XLSX.read(buf, { type: "array", cellDates: true });
+      // Pas de cellDates: true — parseRepoCongeExcel lit les numéros de série
+      // Excel bruts et les convertit lui-même en UTC (voir plus haut), pour
+      // éviter toute ambiguïté de fuseau horaire dans la conversion interne
+      // de SheetJS en objets Date.
+      const wb = window.XLSX.read(buf, { type: "array" });
       setParsed(parseRepoCongeExcel(wb, drivers, month, year, team.nom));
       setStep("preview");
     } catch (e) {
