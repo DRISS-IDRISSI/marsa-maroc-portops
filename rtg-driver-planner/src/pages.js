@@ -266,6 +266,18 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     }
   };
 
+  const doFullReset = async () => {
+    setStep("resetting");
+    try {
+      const result = await RTGStore.resetMonthPlanningToBlank(team.id, month, year);
+      setResetResult(result);
+      setStep("resetDone");
+    } catch (e) {
+      setError(e.message || String(e));
+      setStep("error");
+    }
+  };
+
   const handleFile = async file => {
     setStep("parsing");
     setError("");
@@ -436,9 +448,12 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           <div>
             <p className="text-xs text-slate-400 mb-3">Sélectionnez le fichier Excel (.xlsx) du planning réel : les repos (« R ») seront forcés manuellement et les congés (« C ») créés comme périodes de congé, uniquement pour les conducteurs de cette équipe et ce mois.</p>
             <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-300" />
-            <div className="mt-4 pt-3 border-t border-border">
-              <button onClick={() => setStep("resetConfirm")} className="text-[11px] text-red-400 hover:text-red-300 underline">
+            <div className="mt-4 pt-3 border-t border-border space-y-1.5">
+              <button onClick={() => setStep("resetConfirm")} className="block text-[11px] text-red-400 hover:text-red-300 underline">
                 Réinitialiser les repos/congés déjà importés pour cette équipe et ce mois
+              </button>
+              <button onClick={() => setStep("fullResetConfirm")} className="block text-[11px] text-red-400 hover:text-red-300 underline">
+                Remise à zéro complète du planning (repos + congés + maladies, y compris modifications manuelles) pour cette équipe et ce mois
               </button>
             </div>
           </div>
@@ -456,11 +471,23 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           </div>
         )}
 
+        {step === "fullResetConfirm" && (
+          <div className="space-y-3">
+            <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+              <i className="fas fa-triangle-exclamation mr-1.5"></i><span className="font-semibold">Action plus radicale.</span> Ceci supprime TOUTES les affectations manuelles (import Excel, équilibrage V1/V2 case par case, remplacement...), TOUS les congés et TOUTES les maladies touchant <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}. Le planning redevient entièrement calculé par l'algorithme (aucune trace manuelle) avant réimport. Utile si une modification manuelle antérieure fausse encore le résultat après une réinitialisation simple.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={doFullReset} className="px-4 py-2 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700">Confirmer la remise à zéro complète</button>
+              <button onClick={() => setStep("pick")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        )}
+
         {step === "resetting" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Suppression en cours…</p>}
 
         {step === "resetDone" && resetResult && (
           <div className="space-y-2 text-xs">
-            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{resetResult.overridesDeleted} affectation(s) et {resetResult.congesDeleted} congé(s) supprimé(s).</p>
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{resetResult.overridesDeleted} affectation(s), {resetResult.congesDeleted} congé(s){resetResult.maladiesDeleted !== undefined ? " et " + resetResult.maladiesDeleted + " maladie(s)" : ""} supprimé(s).</p>
             <button onClick={() => setStep("pick")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Importer maintenant</button>
           </div>
         )}

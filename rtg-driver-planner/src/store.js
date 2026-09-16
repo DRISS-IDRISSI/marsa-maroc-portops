@@ -405,6 +405,45 @@ const RTGStore = (function () {
     return { overridesDeleted: overridesCount, congesDeleted: congesCount };
   }
 
+  // Remise à zéro complète du planning d'une équipe pour un mois donné :
+  // supprime TOUTES les affectations manuelles (quel qu'en soit le motif —
+  // import Excel, équilibrage V1/V2 case par case, remplacement...), TOUS
+  // les congés et TOUTES les maladies qui touchent ce mois, pour repartir
+  // d'un planning entièrement recalculé par l'algorithme (aucune donnée
+  // manuelle résiduelle) avant un réimport. Plus radical que
+  // resetImportedRestData ci-dessus (qui ne touche que les données déjà
+  // taguées "import") : utile quand une modification manuelle antérieure —
+  // même hors import — fausse encore le planning après un import propre.
+  async function resetMonthPlanningToBlank(teamId, month, year) {
+    const driverIds = state.drivers.filter(d => d.teamId === teamId).map(d => d.id);
+    if (driverIds.length === 0) return { overridesDeleted: 0, congesDeleted: 0, maladiesDeleted: 0 };
+    const mm = String(month).padStart(2, "0");
+    const dim = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const first = year + "-" + mm + "-01";
+    const last = year + "-" + mm + "-" + String(dim).padStart(2, "0");
+
+    const { data: overridesData, error: overridesErr } = await sb.from("manual_overrides")
+      .delete().in("driver_id", driverIds).gte("date", first).lte("date", last).select("id");
+    if (overridesErr) { console.error(overridesErr); throw overridesErr; }
+
+    // Congé/maladie : toute période qui CHEVAUCHE le mois (pas seulement
+    // celles entièrement à l'intérieur), pour qu'aucune trace « CG »/« M »
+    // ne reste visible sur la grille de ce mois après la remise à zéro.
+    const { data: congesData, error: congesErr } = await sb.from("conges")
+      .delete().in("driver_id", driverIds).lte("date_debut", last).gte("date_fin", first).select("id");
+    if (congesErr) { console.error(congesErr); throw congesErr; }
+
+    const { data: maladiesData, error: maladiesErr } = await sb.from("maladies")
+      .delete().in("driver_id", driverIds).lte("date_debut", last).gte("date_fin", first).select("id");
+    if (maladiesErr) { console.error(maladiesErr); throw maladiesErr; }
+
+    await refreshAll();
+    const team = state.teams.find(t => t.id === teamId);
+    const overridesCount = (overridesData || []).length, congesCount = (congesData || []).length, maladiesCount = (maladiesData || []).length;
+    addAuditEntry({ action: "Remise à zéro complète du planning", details: (team ? team.nom : teamId) + " — " + mm + "/" + year + " — " + overridesCount + " affectation(s), " + congesCount + " congé(s) et " + maladiesCount + " maladie(s) supprimé(s)" });
+    return { overridesDeleted: overridesCount, congesDeleted: congesCount, maladiesDeleted: maladiesCount };
+  }
+
   // ---------- Mouvements réalisés un jour férié, PAR CONDUCTEUR PRÉSENT (§31) ----------
 
   function getFerieMouvements(isoDate, driverId) {
@@ -518,7 +557,7 @@ const RTGStore = (function () {
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
     addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
-    setManualOverride, deleteManualOverride, resetImportedRestData,
+    setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
     updateTeam,
