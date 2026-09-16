@@ -56,26 +56,35 @@
 </head>
 <body class="min-h-screen">
     <div id="root"></div>
+    <!-- Le ?v=... sur chaque script propre à l'appli force le navigateur à
+         retélécharger le fichier après un déploiement, même si son cache
+         HTTP le considère encore "frais" pour telle ou telle URL — sans ça,
+         un onglet peut se retrouver avec un mélange de fichiers d'anciennes
+         et de nouvelles versions (déjà observé : pages.js à jour mais
+         store.js encore ancien, RTGStore.xxx "n'est pas une fonction").
+         À CHAQUE modification d'un fichier src/**, incrémenter TOUS les
+         "?v=" ci-dessous (même valeur partout, ex. date + compteur) en même
+         temps que version.json. -->
     <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-    <script src="src/data.js"></script>
-    <script src="src/supabaseClient.js"></script>
-    <script src="src/store.js"></script>
-    <script src="src/engines/dateUtils.js"></script>
-    <script src="src/engines/shiftRotationEngine.js"></script>
-    <script src="src/engines/absenceEngine.js"></script>
-    <script src="src/engines/exceptionEngine.js"></script>
-    <script src="src/engines/restDayEngine.js"></script>
-    <script src="src/engines/vacationRotationEngine.js"></script>
-    <script src="src/engines/zoneRotationEngine.js"></script>
-    <script src="src/engines/zoneBalancingEngine.js"></script>
-    <script src="src/engines/planningEngine.js"></script>
-    <script src="src/engines/validationEngine.js"></script>
-    <script src="src/engines/replacementEngine.js"></script>
-    <script src="src/engines/holidayEngine.js"></script>
-    <script src="src/components.js" type="text/babel"></script>
-    <script src="src/pages.js" type="text/babel"></script>
-    <script src="src/pages2.js" type="text/babel"></script>
-    <script src="src/app.js" type="text/babel"></script>
+    <script src="src/data.js?v=20260916-0"></script>
+    <script src="src/supabaseClient.js?v=20260916-0"></script>
+    <script src="src/store.js?v=20260916-0"></script>
+    <script src="src/engines/dateUtils.js?v=20260916-0"></script>
+    <script src="src/engines/shiftRotationEngine.js?v=20260916-0"></script>
+    <script src="src/engines/absenceEngine.js?v=20260916-0"></script>
+    <script src="src/engines/exceptionEngine.js?v=20260916-0"></script>
+    <script src="src/engines/restDayEngine.js?v=20260916-0"></script>
+    <script src="src/engines/vacationRotationEngine.js?v=20260916-0"></script>
+    <script src="src/engines/zoneRotationEngine.js?v=20260916-0"></script>
+    <script src="src/engines/zoneBalancingEngine.js?v=20260916-0"></script>
+    <script src="src/engines/planningEngine.js?v=20260916-0"></script>
+    <script src="src/engines/validationEngine.js?v=20260916-0"></script>
+    <script src="src/engines/replacementEngine.js?v=20260916-0"></script>
+    <script src="src/engines/holidayEngine.js?v=20260916-0"></script>
+    <script src="src/components.js?v=20260916-0" type="text/babel"></script>
+    <script src="src/pages.js?v=20260916-0" type="text/babel"></script>
+    <script src="src/pages2.js?v=20260916-0" type="text/babel"></script>
+    <script src="src/app.js?v=20260916-0" type="text/babel"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
