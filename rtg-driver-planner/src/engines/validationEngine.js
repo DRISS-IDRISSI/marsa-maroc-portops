@@ -10,20 +10,24 @@ const ValidationEngine = {
     const anomalies = [];
     const reposCount = {};
     const correctedReposCount = {};
+    // Un conducteur ayant AU MOINS un repos manuel ce mois-ci (case par case
+    // ou import Excel du planning réel) voit tout le contrôle de quota
+    // désactivé pour lui : contrairement au repos d'équilibrage V1/V2
+    // (a.restCorrection, un bonus PONCTUEL au-dessus du quota normal, où
+    // soustraire juste ce jour-là du décompte reste pertinent), un import
+    // remplace la formule théorique par la réalité du terrain pour tout le
+    // mois — soustraire seulement les jours manuels du décompte comparerait
+    // le RESTE (repos auto uniquement) au quota complet, créant une fausse
+    // anomalie dès qu'une bonne partie des repos réels vient de l'import.
+    const hasManualRepos = {};
     state.drivers.forEach(d => { reposCount[d.id] = 0; correctedReposCount[d.id] = 0; });
 
     days.forEach(day => {
       day.assignments.forEach(a => {
         if (a.status === "REPOS") {
           reposCount[a.driverId] = (reposCount[a.driverId] || 0) + 1;
-          // Exclus du contrôle "nombre de repos = quota attendu" ci-dessous,
-          // car ce n'est pas un repos normal généré par la formule du quota
-          // mensuel : soit un repos ajouté ponctuellement par PlanningEngine
-          // pour équilibrer V1/V2 (a.restCorrection), soit un repos forcé
-          // manuellement par un ADMIN/RESPONSABLE — case par case ou en bloc
-          // via l'import Excel du planning réel — qui fait autorité sur la
-          // formule théorique.
-          if (a.restCorrection || a.source === "MANUAL") correctedReposCount[a.driverId] = (correctedReposCount[a.driverId] || 0) + 1;
+          if (a.restCorrection) correctedReposCount[a.driverId] = (correctedReposCount[a.driverId] || 0) + 1;
+          if (a.source === "MANUAL") hasManualRepos[a.driverId] = true;
         }
 
         if (a.status === "PRESENT") {
@@ -51,6 +55,7 @@ const ValidationEngine = {
       const month = first.getUTCMonth() + 1;
       const year = first.getUTCFullYear();
       state.drivers.filter(d => d.actif !== false).forEach(d => {
+        if (hasManualRepos[d.id]) return;
         const c = (reposCount[d.id] || 0) - (correctedReposCount[d.id] || 0);
         const congeDays = RestDayEngine.countCongeDaysInMonth(d, month, year, state);
         const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
