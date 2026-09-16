@@ -223,8 +223,17 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     });
   });
 
+  // Repère de vérification affiché dans l'aperçu, pour comparer visuellement
+  // les colonnes détectées à celles du fichier réel (ligne + lettre de
+  // colonne Excel) SANS attendre un import complet — sert à détecter
+  // immédiatement une éventuelle ligne d'en-tête mal choisie (ex. décalage
+  // d'un jour déjà observé en pratique sur un fichier).
+  const dayColumnsInfo = dayColumns.map(c => ({ day: c.day, col: XLSX.utils.encode_col(c.colIdx) }));
+
   return {
     sheetName: sheetName,
+    headerRowNumber: headerRowIdx + 1,
+    dayColumnsInfo: dayColumnsInfo,
     matchedCount: matchedDriverIds.size,
     unmatchedMatricules: Array.from(unmatchedMatricules),
     fallbackMatches: fallbackMatches,
@@ -281,21 +290,25 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     return parsed.congeRanges.filter(r => !state.conges.some(c => c.driverId === r.driverId && c.dateDebut === r.dateDebut && c.dateFin === r.dateFin));
   }, [parsed, state.conges]);
 
-  // Case vide dans le fichier réel = conducteur présent ce jour-là : si le
-  // moteur avait de son côté généré un repos automatique ce même jour, ce
-  // repos est erroné au regard du planning réel et doit être annulé (remis
-  // en présence, avec le shift/vacation/zone naturels de la rotation) —
-  // sinon l'import ne fait qu'AJOUTER des repos sans jamais retirer ceux que
-  // l'algorithme a placés à tort, ce qui fait exploser le quota de repos et
-  // les anomalies. On ne touche jamais un jour à statut fixe (congé/maladie/
-  // absence/formation/férié) : seul un REPOS auto est corrigé.
+  // Case vide dans le fichier réel = conducteur présent ce jour-là : si
+  // l'appli a de son côté un repos ce même jour (auto OU déjà forcé
+  // manuellement — ex. un essai laissé par une édition case-par-case
+  // antérieure, un import précédent, etc.), ce repos est erroné au regard
+  // du planning réel et doit être annulé (remis en présence, avec le
+  // shift/vacation/zone naturels de la rotation). Corriger aussi les REPOS
+  // MANUAL est nécessaire : sinon un repos isolé déjà présent sur le jour
+  // adjacent au vrai jour de repos du fichier (peu importe son origine)
+  // bloque à tort l'application du bon jour comme "2 repos consécutifs"
+  // (cas réel observé : AGUELMOUK — repos figé au 05/09 empêchait le 04/09,
+  // le vrai jour, d'être appliqué). On ne touche jamais un jour à statut
+  // fixe (congé/maladie/absence/formation/férié) : seul un REPOS est corrigé.
   const presenceCorrectionsToApply = useMemo(() => {
     if (!parsed || !planning) return [];
     return parsed.presentDays.filter(({ driverId, iso }) => {
       const day = planning.days.find(d => d.iso === iso);
       const a = day && day.assignments.find(x => x.driverId === driverId);
       if (!a) return false;
-      if (a.status === "REPOS" && a.source !== "MANUAL") return true;
+      if (a.status === "REPOS") return true;
       // Répare une correction précédente laissée sans zone par un bug déjà
       // corrigé (voir historique) : un import déjà passé par ici a pu créer
       // une correction manuelle PRESENT sans zone valide.
@@ -390,7 +403,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         const zone = ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
         const vacDef = (state.config.vacations[shift] || []).find(v => v.id === vacation);
         const override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
-        await RTGStore.setManualOverride(r.iso, r.driverId, override, RTG_IMPORT_OVERRIDE_MOTIF, "repos auto annulé (présent réel) — " + team.nom + " — " + r.iso);
+        await RTGStore.setManualOverride(r.iso, r.driverId, override, RTG_IMPORT_OVERRIDE_MOTIF, "repos annulé (présent réel) — " + team.nom + " — " + r.iso);
       } catch (e) { console.error(e); presenceErrors++; }
       done++; setProgress({ done: done, total: total });
     }
@@ -463,7 +476,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "preview" && parsed && (
           <div className="space-y-3 text-xs text-slate-300">
-            <p>Feuille utilisée : <span className="text-white">{parsed.sheetName}</span></p>
+            <p>Feuille utilisée : <span className="text-white">{parsed.sheetName}</span> (ligne d'en-tête : {parsed.headerRowNumber})</p>
+            <p className="text-slate-500">Vérification colonnes détectées — jour 1 : colonne {parsed.dayColumnsInfo[0] && parsed.dayColumnsInfo[0].col} ; jour {parsed.dayColumnsInfo.length}: colonne {parsed.dayColumnsInfo[parsed.dayColumnsInfo.length - 1] && parsed.dayColumnsInfo[parsed.dayColumnsInfo.length - 1].col}. Comparez avec le fichier Excel avant d'appliquer si un doute persiste.</p>
             <p>{parsed.matchedCount} conducteur(s) de l'équipe reconnu(s) dans le fichier.</p>
             {parsed.unmatchedMatricules.length > 0 && (
               <p className="text-amber-400">Matricules non reconnus dans cette équipe : {parsed.unmatchedMatricules.join(", ")}</p>
@@ -481,7 +495,16 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
                 }).join(", ")}{reposConflicts.length > 8 ? "…" : ""} — à vérifier manuellement.
               </p>
             )}
-            <p><span className="text-white font-semibold">{presenceCorrectionsToApply.length}</span> repos générés automatiquement par l'algorithme seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
+            <p><span className="text-white font-semibold">{presenceCorrectionsToApply.length}</span> repos actuellement présents dans l'appli (auto ou déjà forcés manuellement) seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
+            <details className="text-slate-500">
+              <summary className="cursor-pointer hover:text-slate-300">Détail des repos détectés dans le fichier, par conducteur (vérification)</summary>
+              <div className="mt-1.5 max-h-32 overflow-y-auto space-y-0.5">
+                {parsed.reposDays.slice().sort((a, b) => a.iso.localeCompare(b.iso)).map((r, idx) => {
+                  const d = drivers.find(x => x.id === r.driverId);
+                  return <div key={idx}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {r.iso.slice(8, 10)}/{r.iso.slice(5, 7)}</div>;
+                })}
+              </div>
+            </details>
             <p><span className="text-white font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>
             {parsed.maladieIgnoredCount > 0 && <p className="text-slate-500">{parsed.maladieIgnoredCount} jour(s) « Maladie » présents dans le fichier — non importés (non demandé).</p>}
             {parsed.unknownCodes.length > 0 && (
