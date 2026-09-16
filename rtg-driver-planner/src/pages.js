@@ -87,8 +87,13 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const cols = [];
     (rows[i] || []).forEach((cell, colIdx) => {
-      if (cell instanceof Date && cell.getFullYear() === year && (cell.getMonth() + 1) === month) {
-        cols.push({ day: cell.getDate(), colIdx: colIdx });
+      // SheetJS construit ces dates en UTC (minuit UTC) à partir du numéro de
+      // série Excel : lire en heure LOCALE (getFullYear/getMonth/getDate)
+      // décale le jour d'une unité selon le fuseau horaire du navigateur —
+      // observé en pratique (repos importé un jour trop tard). Le reste de
+      // l'appli raisonne déjà en UTC (RTGDate), on fait pareil ici.
+      if (cell instanceof Date && cell.getUTCFullYear() === year && (cell.getUTCMonth() + 1) === month) {
+        cols.push({ day: cell.getUTCDate(), colIdx: colIdx });
       }
     });
     if (cols.length > dayColumns.length) { dayColumns = cols; headerRowIdx = i; }
