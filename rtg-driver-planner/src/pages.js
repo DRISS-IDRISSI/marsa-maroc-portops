@@ -264,22 +264,6 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     }
   };
 
-  // Ne force un repos manuel que si le planning actuellement calculé ce
-  // jour-là n'est pas déjà REPOS, et jamais par-dessus une donnée fixe déjà
-  // en place (congé/maladie/absence/formation/férié) — on ne veut jamais
-  // faire disparaître une information déjà correcte dans l'appli.
-  const reposToApply = useMemo(() => {
-    if (!parsed || !planning) return [];
-    return parsed.reposDays.filter(({ driverId, iso }) => {
-      const day = planning.days.find(d => d.iso === iso);
-      const a = day && day.assignments.find(x => x.driverId === driverId);
-      if (!a) return true;
-      if (a.status === "REPOS") return false;
-      if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "FERIE"].indexOf(a.status) !== -1) return false;
-      return true;
-    });
-  }, [parsed, planning]);
-
   const congesToApply = useMemo(() => {
     if (!parsed) return [];
     return parsed.congeRanges.filter(r => !state.conges.some(c => c.driverId === r.driverId && c.dateDebut === r.dateDebut && c.dateFin === r.dateFin));
@@ -307,6 +291,48 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       return false;
     });
   }, [parsed, planning]);
+
+  // Ne force un repos manuel que si le planning actuellement calculé ce
+  // jour-là n'est pas déjà REPOS, et jamais par-dessus une donnée fixe déjà
+  // en place (congé/maladie/absence/formation/férié) — on ne veut jamais
+  // faire disparaître une information déjà correcte dans l'appli. Vérifie
+  // aussi qu'ajouter ce repos ne crée pas 2 repos consécutifs pour ce
+  // conducteur (règle absolue, vérifiée sur données réelles — §RestDayEngine) :
+  // les jours en conflit sont écartés, jamais appliqués silencieusement.
+  const { reposToApply, reposConflicts } = useMemo(() => {
+    if (!parsed || !planning) return { reposToApply: [], reposConflicts: [] };
+    const candidates = parsed.reposDays.filter(({ driverId, iso }) => {
+      const day = planning.days.find(d => d.iso === iso);
+      const a = day && day.assignments.find(x => x.driverId === driverId);
+      if (!a) return true;
+      if (a.status === "REPOS") return false;
+      if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "FERIE"].indexOf(a.status) !== -1) return false;
+      return true;
+    });
+
+    const finalReposDaysByDriver = {};
+    const dayOf = iso => RTGDate.parseISO(iso).getUTCDate();
+    planning.days.forEach(day => {
+      day.assignments.forEach(a => {
+        if (a.status === "REPOS") (finalReposDaysByDriver[a.driverId] = finalReposDaysByDriver[a.driverId] || new Set()).add(dayOf(day.iso));
+      });
+    });
+    presenceCorrectionsToApply.forEach(({ driverId, iso }) => {
+      if (finalReposDaysByDriver[driverId]) finalReposDaysByDriver[driverId].delete(dayOf(iso));
+    });
+    candidates.forEach(({ driverId, iso }) => {
+      (finalReposDaysByDriver[driverId] = finalReposDaysByDriver[driverId] || new Set()).add(dayOf(iso));
+    });
+
+    const toApply = [], conflicts = [];
+    candidates.forEach(item => {
+      const day = dayOf(item.iso);
+      const set = finalReposDaysByDriver[item.driverId] || new Set();
+      if (set.has(day - 1) || set.has(day + 1)) conflicts.push(item);
+      else toApply.push(item);
+    });
+    return { reposToApply: toApply, reposConflicts: conflicts };
+  }, [parsed, planning, presenceCorrectionsToApply]);
 
   // Réordonne les conducteurs de l'appli dans le même ordre que les lignes
   // du fichier, pour comparer facilement le Planning mensuel affiché avec
@@ -434,7 +460,15 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
               <p className="text-sky-300">Matricule différent mais conducteur reconnu par {parsed.fallbackMatches[0].via === "nom" ? "nom" : "numéro"} : {parsed.fallbackMatches.map(f => f.nom + " " + f.prenom + " (fichier " + f.matriculeFichier + " → appli " + f.matriculeAppli + ")").join(", ")}</p>
             )}
             <p><span className="text-white font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
-            <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length ? " (" + (parsed.reposDays.length - reposToApply.length) + " déjà correct(s) ou en conflit avec une donnée existante, ignoré(s))" : ""}.</p>
+            <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length + reposConflicts.length ? " (" + (parsed.reposDays.length - reposToApply.length - reposConflicts.length) + " déjà correct(s), ignoré(s))" : ""}.</p>
+            {reposConflicts.length > 0 && (
+              <p className="text-red-300">
+                <i className="fas fa-triangle-exclamation mr-1.5"></i>{reposConflicts.length} repos NON appliqué(s) car ils créeraient 2 repos consécutifs (règle absolue) : {reposConflicts.slice(0, 8).map(c => {
+                  const d = drivers.find(x => x.id === c.driverId);
+                  return (d ? d.nom : c.driverId) + "/" + c.iso.slice(8, 10);
+                }).join(", ")}{reposConflicts.length > 8 ? "…" : ""} — à vérifier manuellement.
+              </p>
+            )}
             <p><span className="text-white font-semibold">{presenceCorrectionsToApply.length}</span> repos générés automatiquement par l'algorithme seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
             <p><span className="text-white font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>
             {parsed.maladieIgnoredCount > 0 && <p className="text-slate-500">{parsed.maladieIgnoredCount} jour(s) « Maladie » présents dans le fichier — non importés (non demandé).</p>}
