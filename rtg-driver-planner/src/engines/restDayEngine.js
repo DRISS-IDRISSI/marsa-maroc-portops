@@ -95,6 +95,15 @@ const RestDayEngine = {
       const date = RTGDate.makeDate(year, month, d);
       const iso = RTGDate.toISO(date);
       if (AbsenceEngine.getFixedStatus(driver, iso, state)) continue;
+      // Un jour déjà couvert par une affectation manuelle (case par case ou
+      // import Excel du planning réel) est une donnée FIGÉE, quel que soit
+      // son statut — jamais un jour "libre" où cet algorithme pourrait choisir
+      // de placer (ou ne pas placer) un repos automatique. Sans cette
+      // exclusion, l'algorithme ignore totalement les repos déjà forcés
+      // manuellement et peut placer un repos AUTO juste à côté d'un repos
+      // manuel (2 repos consécutifs une fois les deux fusionnés à
+      // l'affichage — cas réel observé après import Excel).
+      if (state.manualOverrides[iso + "_" + driver.id]) continue;
       if (HolidayEngine.getHoliday(iso, state.config)) continue;
       if (team) {
         const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
@@ -133,7 +142,7 @@ const RestDayEngine = {
       const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
       if (shift !== "S1" && shift !== "S2") continue;
 
-      const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state));
+      const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state) && !state.manualOverrides[iso + "_" + dr.id]);
       const byVacation = { V1: [], V2: [] };
       available.forEach(dr => {
         const vac = VacationRotationEngine.getVacationForDate(dr, date, state);
@@ -205,15 +214,35 @@ const RestDayEngine = {
 
     const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers);
 
-    // Comptabilise TOUTES les affectations obligatoires de l'équipe dans dayUsage
-    // avant de traiter le moindre conducteur : sans ça, les premiers conducteurs de
-    // la boucle voient le compteur encore à zéro pour un dimanche dont le repos
-    // obligatoire n'a été enregistré que pour des conducteurs plus loin dans la
-    // liste, et peuvent alors choisir ce même jour par préférence, faisant
-    // largement dépasser le plafond une fois tout le monde traité.
+    // Jours où un conducteur a déjà un REPOS forcé par une affectation manuelle
+    // (case par case ou import Excel du planning réel) : à traiter exactement
+    // comme un repos obligatoire pour cet algorithme — consomme son quota,
+    // compte dans les plafonds du jour/du bloc, et bloque l'adjacence — sinon
+    // l'algorithme, totalement aveugle aux affectations manuelles, peut placer
+    // un repos AUTO juste à côté (2 repos consécutifs une fois fusionnés à
+    // l'affichage, cas réel observé après un import Excel) ou dépasser
+    // discrètement les plafonds d'un jour déjà chargé de repos manuels.
+    const manualRestByDriver = {};
     teamDrivers.forEach(driver => {
-      const mandatoryDays = mandatorySundayOff[driver.id] || new Set();
-      mandatoryDays.forEach(d => {
+      const set = new Set();
+      for (let d = 1; d <= dim; d++) {
+        const iso = RTGDate.toISO(RTGDate.makeDate(year, month, d));
+        const ov = state.manualOverrides[iso + "_" + driver.id];
+        if (ov && ov.status === "REPOS") set.add(d);
+      }
+      manualRestByDriver[driver.id] = set;
+    });
+
+    // Comptabilise TOUTES les affectations obligatoires (dimanche + manuelles)
+    // de l'équipe dans dayUsage avant de traiter le moindre conducteur : sans
+    // ça, les premiers conducteurs de la boucle voient le compteur encore à
+    // zéro pour un jour dont le repos obligatoire/manuel n'a été enregistré
+    // que pour des conducteurs plus loin dans la liste, et peuvent alors
+    // choisir ce même jour par préférence, faisant largement dépasser le
+    // plafond une fois tout le monde traité.
+    teamDrivers.forEach(driver => {
+      const fixedDays = new Set([...(mandatorySundayOff[driver.id] || []), ...manualRestByDriver[driver.id]]);
+      fixedDays.forEach(d => {
         dayUsage[d] = (dayUsage[d] || 0) + 1;
         bumpGroupUsage(d, driver.initialVacation);
       });
@@ -293,10 +322,10 @@ const RestDayEngine = {
       const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
       const quota = Math.max(0, state.config.reposMensuel - reduction);
 
-      const mandatoryDays = mandatorySundayOff[driver.id] || new Set();
+      const fixedDays = new Set([...(mandatorySundayOff[driver.id] || []), ...manualRestByDriver[driver.id]]);
       const chosen = [];
       const used = new Set();
-      mandatoryDays.forEach(d => {
+      fixedDays.forEach(d => {
         chosen.push(d);
         used.add(d);
       });
@@ -555,6 +584,10 @@ const RestDayEngine = {
 
           const restingDeficit = teamDrivers.filter(dr => {
             if ((results[dr.id] || []).indexOf(day) === -1) return false;
+            // Jamais déplacer un repos déjà figé par une affectation manuelle
+            // (import Excel du planning réel, ou case par case) : seuls les
+            // repos placés par CET algorithme peuvent être rééquilibrés.
+            if ((manualRestByDriver[dr.id] || new Set()).has(day)) return false;
             return VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state) === deficitLabel;
           });
 
