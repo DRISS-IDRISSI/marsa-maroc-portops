@@ -178,6 +178,16 @@ function DriversPage() {
   const [editingId, setEditingId] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
 
+  // Ouvre directement l'historique du conducteur visé par ?open=<matricule>
+  // (lien "Nom" depuis le Planning mensuel ou l'Affectation du jour) — une
+  // seule fois, dès que le conducteur correspondant est chargé.
+  const openMatricule = useMemo(() => new URLSearchParams(loc.search).get("open"), [loc.search]);
+  useEffect(() => {
+    if (!openMatricule) return;
+    const d = state.drivers.find(dr => dr.matricule === openMatricule);
+    if (d) setHistoryFor(d.id);
+  }, [openMatricule, state.drivers]);
+
   const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams;
 
   const drivers = useMemo(() => {

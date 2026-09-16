@@ -935,6 +935,8 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
 // ligne "Nombre de présent" par jour), avec cellules cliquables si l'usager
 // a le droit de modifier le planning à la main (§32).
 function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell }) {
+  const nav = useNavigate();
+  const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   return (
     <div className="mb-4 last:mb-0">
       <div className="text-[11px] font-bold text-orange-400 uppercase tracking-wider mb-1.5 px-0.5">{label} <span className="text-slate-500 font-normal normal-case">({drivers.length} conducteur{drivers.length > 1 ? "s" : ""})</span></div>
@@ -963,7 +965,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
               {drivers.map(driver => (
                 <tr key={driver.id} className="hover:bg-marine-600/10">
                   <td className="sticky left-0 bg-card border border-border/60 px-2 py-1.5 text-slate-300 z-10">{driver.matricule}</td>
-                  <td className="sticky left-14 bg-card border border-border/60 px-2 py-1.5 text-white font-medium z-10">{driver.nom}</td>
+                  <td className="sticky left-14 bg-card border border-border/60 px-2 py-1.5 text-white font-medium z-10"><button onClick={() => goToDriver(driver.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{driver.nom}</button></td>
                   <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
                   {planning.days.map(day => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
@@ -1028,6 +1030,8 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
 }
 
 function ShiftBlock({ title, icon, rows }) {
+  const nav = useNavigate();
+  const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   return (
     <div className="bg-card rounded-xl border border-border p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -1052,7 +1056,10 @@ function ShiftBlock({ title, icon, rows }) {
                 <tr key={a.driverId} className={`border-b border-border/50 ${a.vacationBalanceAlert ? "bg-red-500/10" : ""}`}
                   title={a.vacationBalanceAlert ? "Cette vacation reste en excédent par rapport à l'autre — à faire passer exceptionnellement dans l'autre vacation si possible." : undefined}>
                   <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
-                  <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-300" : "text-white"}`}>{a.nom}{a.vacationBalanceAlert && <i className="fas fa-triangle-exclamation ml-1.5 text-red-400" title="Vacation en surnombre"></i>}</td>
+                  <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-300" : "text-white"}`}>
+                    <button onClick={() => goToDriver(a.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{a.nom}</button>
+                    {a.vacationBalanceAlert && <i className="fas fa-triangle-exclamation ml-1.5 text-red-400" title="Vacation en surnombre"></i>}
+                  </td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
                   <td className="py-1.5 pr-3"><span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-300 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span></td>
@@ -1506,6 +1513,8 @@ function FerieMouvementsPrintable({ dateStr, presentDrivers }) {
 // en congé reste rattaché au shift de son équipe ce jour-là, même s'il n'est
 // pas affecté) — demandé explicitement en plus des conducteurs présents.
 function ReposCongesBlock({ rows }) {
+  const nav = useNavigate();
+  const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   return (
     <div className="bg-card rounded-xl border border-border p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -1530,7 +1539,7 @@ function ReposCongesBlock({ rows }) {
                 return (
                   <tr key={a.driverId} className="border-b border-border/50">
                     <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
-                    <td className="py-1.5 pr-3 text-white font-medium">{a.nom}</td>
+                    <td className="py-1.5 pr-3 text-white font-medium"><button onClick={() => goToDriver(a.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{a.nom}</button></td>
                     <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
                     <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
                     <td className="py-1.5 pr-3"><span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span></td>
