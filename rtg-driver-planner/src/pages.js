@@ -342,7 +342,17 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       const day = planning.days.find(d => d.iso === iso);
       const a = day && day.assignments.find(x => x.driverId === driverId);
       if (!a) return true;
-      if (a.status === "REPOS") return false;
+      // Un REPOS déjà MANUEL sur ce jour est définitivement figé — inutile
+      // de le réécrire. Un REPOS simplement AUTO qui tombe par coïncidence
+      // sur le bon jour n'est PAS un statut figé : le quota mensuel du
+      // conducteur est recalculé dynamiquement, et écrire d'autres repos ou
+      // congés manuels ailleurs dans son mois peut faire disparaître ce
+      // repos auto (le quota se retrouvant déjà satisfait par les jours
+      // manuels) — déjà observé en pratique (AGUELMOUK : le 04/09, auto-
+      // correct au moment de l'aperçu, redevenait "Travail" une fois les
+      // autres jours du mois forcés). Il faut donc le figer en MANUEL lui
+      // aussi, même s'il est "déjà correct" à cet instant précis.
+      if (a.status === "REPOS" && a.source === "MANUAL") return false;
       if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "FERIE"].indexOf(a.status) !== -1) return false;
       return true;
     });
