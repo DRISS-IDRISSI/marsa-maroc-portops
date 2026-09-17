@@ -8,10 +8,22 @@
 // pouvoir imposer un plafond du nombre de conducteurs en repos le même jour —
 // sans ce plafond partagé, plusieurs conducteurs peuvent indépendamment choisir
 // le même jour "idéal" (ex. un dimanche à faible charge) et vider l'équipe ce
-// jour-là. Le placement privilégie quand même les jours à faible charge de
-// travail (lundi/mardi, dimanche, samedi si shift 2 cette semaine-là) et évite
-// le pic mercredi-vendredi, via config.restDayWeightByDow, tant que le plafond
-// n'est pas atteint.
+// jour-là.
+//
+// Le CHOIX des jours eux-mêmes (une fois le nombre de repos dû à chaque
+// conducteur déterminé, cf. répartition par shift/label ci-dessous) se fait
+// par ROTATION PARTAGÉE au sein de chaque bloc de vacation (driver.
+// initialVacation) : les jours candidats sont parcourus dans l'ordre
+// chronologique et, à chaque jour, le conducteur suivant dans la rotation qui
+// a encore besoin d'un repos ce mois-ci se voit attribuer ce jour — le
+// pointeur de rotation n'est jamais réinitialisé (il persiste sur tout le
+// mois pour ce bloc). Ceci produit un placement visuellement ORDONNÉ "en
+// escalier" (chaque conducteur avance d'un cran par rapport au précédent),
+// demande explicite de l'exploitant à la place d'un placement dispersé.
+// config.restDayWeightByDow (préférence jour de semaine) n'intervient donc
+// plus dans ce choix fin — seul restDayWeightByShift (charge relative de
+// chaque SHIFT, voir plus bas) continue de déterminer COMBIEN de repos un
+// conducteur reçoit dans chaque période de shift, pas QUEL jour précis.
 //
 // Le quota de 6 repos est réduit d'un jour pour chaque tranche de
 // config.reposReductionParJoursCongé (5) jours de CONGÉ pris dans le mois.
@@ -26,8 +38,8 @@
 // au nombre de jours candidats de chaque shift ce mois-là ET à sa charge de
 // travail relative (config.restDayWeightByShift — Shift 3 = 20% de charge donc
 // plus de repos que Shift 1 = 30% ou Shift 2 = 50%). Le placement fin à
-// l'intérieur de chaque shift utilise ensuite le même algorithme d'espacement
-// pondéré par jour de semaine qu'avant (restDayWeightByDow).
+// l'intérieur de chaque shift (et, quand applicable, de chaque label V1/V2)
+// utilise ensuite la rotation partagée décrite plus haut.
 //
 // Chaque conducteur appartient à un bloc de vacation FIXE (driver.initialVacation,
 // §9-10 — les deux blocs d'une équipe ne se séparent jamais). Pour qu'un bloc ne
@@ -73,19 +85,6 @@ const RestDayEngine = {
       if (AbsenceEngine.findRecord(state.conges, driver.id, iso)) count++;
     }
     return count;
-  },
-
-  getDayWeight(date, team, state) {
-    const dow = RTGDate.dowMon0(date); // 0=Lundi ... 6=Dimanche
-    const weights = state.config.restDayWeightByDow || [1, 1, 1, 1, 1, 1, 1];
-    const shift = team ? ShiftRotationEngine.getTeamShiftForDate(team, date, state.config) : null;
-    const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
-    const shiftFactor = (shift && shiftWeights[shift]) || 1;
-
-    if (dow === 5 && shift === "S2") {
-      return (state.config.restDayWeightSaturdayShift2 || weights[5]) * shiftFactor;
-    }
-    return (weights[dow] || 1) * shiftFactor;
   },
 
   getCandidatesForDriver(driver, month, year, state, team) {
@@ -316,7 +315,17 @@ const RestDayEngine = {
       return shares;
     };
 
-    teamDrivers.forEach((driver, idxInTeam) => {
+    // ------------------------------------------------------------------
+    // Phase A : pour chaque conducteur, jours fixes déjà comptabilisés,
+    // quota restant, puis répartition — SANS encore choisir les jours eux-
+    // mêmes — par shift (restDayWeightByShift) et, à l'intérieur de chaque
+    // shift, par label V1/V2 (restDayLabelBiasByShift) : calcul de
+    // répartition identique à avant. Le CHOIX des jours se fait ensuite en
+    // Phase B, par ROTATION PARTAGÉE au sein de chaque bloc de vacation
+    // (voir en-tête du fichier).
+    // ------------------------------------------------------------------
+    const driverState = {};
+    teamDrivers.forEach(driver => {
       const candidates = this.getCandidatesForDriver(driver, month, year, state, team);
       const congeDays = this.countCongeDaysInMonth(driver, month, year, state);
       const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
@@ -325,31 +334,118 @@ const RestDayEngine = {
       const fixedDays = new Set([...(mandatorySundayOff[driver.id] || []), ...manualRestByDriver[driver.id]]);
       const chosen = [];
       const used = new Set();
-      fixedDays.forEach(d => {
-        chosen.push(d);
-        used.add(d);
-      });
+      fixedDays.forEach(d => { chosen.push(d); used.add(d); });
       // Jour 0 virtuel : bloque le jour 1 par adjacence si le conducteur était
       // déjà en repos le dernier jour du mois précédent.
       if (prevMonthRestByDriver[driver.id]) used.add(0);
 
       const target = Math.max(0, Math.min(quota, candidates.length) - chosen.length);
+      const needsByBucket = {};
 
-      if (target <= 0) { results[driver.id] = chosen.sort((a, b) => a - b); return; }
+      if (target > 0) {
+        if (!team) {
+          needsByBucket.__all__ = target;
+        } else {
+          const availableCandidates = candidates.filter(d => !used.has(d));
+          const buckets = { S1: [], S2: [], S3: [] };
+          availableCandidates.forEach(d => { const s = dayShift[d]; if (buckets[s]) buckets[s].push(d); });
+          const shiftIds = ["S1", "S2", "S3"];
+          const shares = distributeByWeight(target, shiftIds.map(s => ({
+            key: s, days: buckets[s], weight: shiftWeights[s] || 1
+          })));
+          shiftIds.forEach(s => {
+            const shiftTarget = shares[s];
+            if (shiftTarget <= 0) return;
+            const ratio = labelBiasByShift[s];
+            if (!ratio || !(ratio.V1 > 0) || !(ratio.V2 > 0)) {
+              needsByBucket[s + "_ANY"] = (needsByBucket[s + "_ANY"] || 0) + shiftTarget;
+              return;
+            }
+            const labelDays = { V1: [], V2: [] };
+            buckets[s].forEach(d => {
+              const label = VacationRotationEngine.getVacationForDate(driver, RTGDate.makeDate(year, month, d), state);
+              if (labelDays[label]) labelDays[label].push(d);
+            });
+            // Poids en 1/pct^LABEL_BIAS_EXPONENT (et non 1/pct) : les contraintes
+            // déjà en jeu (plafonds, non-adjacence, arrondis par petits buckets)
+            // atténuent fortement un simple ratio inverse — un exposant élevé est
+            // nécessaire pour que l'écart de présence obtenu se rapproche de celui
+            // attendu, surtout quand les deux vacations ont des charges proches.
+            const subShares = distributeByWeight(shiftTarget, [
+              { key: "V1", days: labelDays.V1, weight: 1 / Math.pow(ratio.V1, LABEL_BIAS_EXPONENT) },
+              { key: "V2", days: labelDays.V2, weight: 1 / Math.pow(ratio.V2, LABEL_BIAS_EXPONENT) }
+            ]);
+            ["V1", "V2"].forEach(l => {
+              if (subShares[l] > 0) needsByBucket[s + "_" + l] = (needsByBucket[s + "_" + l] || 0) + subShares[l];
+            });
+          });
+        }
+      }
 
-      const group = driver.initialVacation;
-      // Plafond quotidien de repos pour LE BLOC de ce conducteur, recalculé jour
-      // par jour : quand une charge par label est définie pour le shift de ce
-      // jour (restDayLabelBiasByShift), le plafond suit CETTE proportion (même
-      // poids que le sous-partage ci-dessous : la vacation à charge plus faible
-      // reçoit un plafond plus haut, donc plus de repos ce jour-là) — sinon, on
-      // retombe sur le plafond proportionnel à la taille du bloc (comportement
-      // précédent, qui empêche déjà un bloc de vider l'autre un jour donné).
-      const groupCapForDay = day => {
+      driverState[driver.id] = { driver: driver, chosen: chosen, used: used, needsByBucket: needsByBucket, candidateSet: new Set(candidates) };
+    });
+
+    if (!team) {
+      // Cas isolé (sans contexte d'équipe) : jamais emprunté en pratique —
+      // PlanningEngine résout toujours l'équipe avant d'appeler ce moteur
+      // (getDailyStatus retourne "ABSENCE" en amont si le conducteur n'a pas
+      // d'équipe). Repli simple : espacement de base et non-adjacence.
+      teamDrivers.forEach(driver => {
+        const st = driverState[driver.id];
+        let need = st.needsByBucket.__all__ || 0;
+        if (need <= 0) return;
+        const candidates = this.getCandidatesForDriver(driver, month, year, state, team).filter(d => !st.used.has(d));
+        for (const day of candidates) {
+          if (need <= 0) break;
+          if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
+          st.chosen.push(day);
+          st.used.add(day);
+          need--;
+        }
+      });
+    } else {
+      // ------------------------------------------------------------------
+      // Phase B : attribution des jours par ROTATION PARTAGÉE, bloc de
+      // vacation par bloc de vacation (driver.initialVacation — §9-10,
+      // jamais séparé), bucket par bucket (shift × label), jours du bucket
+      // traités dans l'ordre chronologique. Le pointeur de rotation n'est
+      // JAMAIS réinitialisé d'un bucket à l'autre (persiste sur tout le mois
+      // pour ce bloc) : même quand un conducteur est ignoré (déjà pourvu ce
+      // jour-là, adjacence, plafond) ou qu'un jour est sauté (plafond du
+      // jour atteint), l'ordre reprend exactement où il s'est arrêté au
+      // bucket suivant — c'est ce qui produit un motif "en escalier"
+      // cohérent sur l'ensemble du mois plutôt que juste à l'intérieur d'un
+      // seul petit groupe de jours (résolution insuffisante avec un simple
+      // décalage proportionnel recalculé indépendamment par petit bucket).
+      // ------------------------------------------------------------------
+      const blockDrivers = { V1: [], V2: [] };
+      teamDrivers.forEach(driver => {
+        if (driver.initialVacation === "V1" || driver.initialVacation === "V2") {
+          blockDrivers[driver.initialVacation].push(driver);
+        }
+      });
+      const rotationPointer = { V1: 0, V2: 0 };
+
+      // Label (V1/V2) qu'affiche CE JOUR-LÀ un bloc de vacation FIXE donné,
+      // indépendant du conducteur précis (VacationRotationEngine ne lit que
+      // driver.initialVacation) — calculé une seule fois par jour/bloc.
+      const labelForBlock = { V1: {}, V2: {} };
+      ["V1", "V2"].forEach(block => {
+        const blockStub = { id: "__block_" + block, initialVacation: block };
+        for (let d = 1; d <= dim; d++) {
+          labelForBlock[block][d] = VacationRotationEngine.getVacationForDate(blockStub, RTGDate.makeDate(year, month, d), state);
+        }
+      });
+
+      // Plafond quotidien de repos pour un BLOC donné, identique à avant
+      // (biaisé par restDayLabelBiasByShift quand applicable, sinon
+      // proportionnel à la taille du bloc) mais paramétré par bloc plutôt
+      // que fermé sur un conducteur précis.
+      const groupCapForDayGeneric = (day, group) => {
         const shift = dayShift[day];
         const ratio = shift && labelBiasByShift[shift];
         if (ratio && ratio.V1 > 0 && ratio.V2 > 0) {
-          const label = VacationRotationEngine.getVacationForDate(driver, RTGDate.makeDate(year, month, day), state);
+          const label = labelForBlock[group] && labelForBlock[group][day];
           if (label === "V1" || label === "V2") {
             const w = { V1: 1 / Math.pow(ratio.V1, LABEL_BIAS_EXPONENT), V2: 1 / Math.pow(ratio.V2, LABEL_BIAS_EXPONENT) };
             const share = w[label] / (w.V1 + w.V2);
@@ -358,192 +454,117 @@ const RestDayEngine = {
         }
         return maxPerDayGroup[group] !== undefined ? maxPerDayGroup[group] : maxPerDay;
       };
-      const underGroupCap = day => groupUsageAt(day, group) < groupCapForDay(day);
-      // Un jour candidat est adjacent (veille/lendemain civil) à un repos déjà
-      // retenu pour CE conducteur : à éviter en priorité pour ne jamais produire
-      // deux repos consécutifs.
-      const isAdjacentToUsed = day => used.has(day - 1) || used.has(day + 1);
+      const underGroupCapGeneric = (day, group) => groupUsageAt(day, group) < groupCapForDayGeneric(day, group);
 
-      // Place jusqu'à `bucketTarget` repos parmi `bucketCandidates` (sous-ensemble
-      // des jours candidats, ex. tous ceux d'un même shift), avec le même
-      // algorithme d'espacement + fenêtre pondérée qu'avant — mais borné à ce
-      // sous-ensemble, en partageant used/dayUsage/groupDayUsage/chosen avec les
-      // autres buckets du même conducteur (adjacence et plafonds valables sur tout
-      // le mois, pas seulement à l'intérieur d'un bucket).
-      //
-      // Si `allowAdjacencyRelax` est faux (répartition PAR SHIFT), on ne force
-      // jamais deux repos consécutifs pour rester dans un bucket trop petit/serré :
-      // on s'arrête dès qu'aucun jour ne respecte au moins la non-adjacence et le
-      // plafond d'équipe, et on rend le nombre réellement placé — l'appelant
-      // reporte le reliquat sur un autre bucket (ou sur l'ensemble du mois en tout
-      // dernier recours, où la marge de manœuvre est bien plus grande). Si vrai
-      // (dernier recours sur tout le mois, comme avant ce correctif), la relaxation
-      // de l'adjacence reste le tout dernier repli, inchangée.
-      const assignWithinBucket = (bucketCandidates, bucketTarget, allowAdjacencyRelax) => {
-        if (bucketTarget <= 0 || bucketCandidates.length === 0) return 0;
-        const spacing = bucketCandidates.length / bucketTarget;
-        const offset = Math.floor((idxInTeam / N) * bucketCandidates.length);
-        const windowRadius = Math.max(1, Math.floor(spacing / 2));
-        let placed = 0;
-
-        for (let k = 0; k < bucketTarget; k++) {
-          const basePos = Math.round(k * spacing);
-          let best = null;
-          for (let j = 0; j <= windowRadius; j++) {
-            const deltas = j === 0 ? [0] : [-j, j];
-            for (const dj of deltas) {
-              const pos = ((offset + basePos + dj) % bucketCandidates.length + bucketCandidates.length) % bucketCandidates.length;
-              const day = bucketCandidates[pos];
-              if (used.has(day)) continue;
-              if (isAdjacentToUsed(day)) continue;
-              if ((dayUsage[day] || 0) >= maxPerDay) continue;
-              if (!underGroupCap(day)) continue;
-              const weight = this.getDayWeight(RTGDate.makeDate(year, month, day), team, state);
-              if (!best || weight > best.weight || (weight === best.weight && Math.abs(dj) < best.dist)) {
-                best = { day: day, weight: weight, dist: Math.abs(dj) };
-              }
-            }
+      // Attribue au plus UN conducteur par jour pour CE bucket précis (les
+      // autres buckets/blocs peuvent encore utiliser le même jour civil,
+      // dans la limite du plafond global de l'équipe) en parcourant `days`
+      // dans l'ordre chronologique, avec autant de "tours" que nécessaire si
+      // le besoin total du bloc sur ce bucket dépasse son nombre de jours.
+      // Le besoin non satisfait (plafonds trop serrés) est laissé dans
+      // needsByBucket pour le repli de Phase C.
+      const assignBucketRotation = (block, bucketKey, days) => {
+        const blockList = blockDrivers[block];
+        const M = blockList.length;
+        if (M === 0 || days.length === 0) return;
+        let remaining = blockList.reduce((n, dr) => n + (driverState[dr.id].needsByBucket[bucketKey] || 0), 0);
+        if (remaining <= 0) return;
+        let safety = (remaining + days.length) * M + 50;
+        let dayIdx = 0;
+        while (remaining > 0 && safety-- > 0) {
+          const day = days[dayIdx % days.length];
+          dayIdx++;
+          if ((dayUsage[day] || 0) >= maxPerDay) continue;
+          for (let a = 0; a < M; a++) {
+            const dr = blockList[rotationPointer[block] % M];
+            rotationPointer[block] = (rotationPointer[block] + 1) % M;
+            const st = driverState[dr.id];
+            const need = st.needsByBucket[bucketKey] || 0;
+            if (need <= 0) continue;
+            // `days` est une liste PARTAGÉE (shift × label, commune au bloc) qui ne
+            // tient pas compte des absences fixes/jours fériés propres à CE
+            // conducteur (congé, maladie, absence, affectation manuelle) — seul
+            // candidateSet (issu de getCandidatesForDriver) les exclut vraiment.
+            if (!st.candidateSet.has(day)) continue;
+            if (st.used.has(day) || st.used.has(day - 1) || st.used.has(day + 1)) continue;
+            if (!underGroupCapGeneric(day, block)) continue;
+            st.chosen.push(day);
+            st.used.add(day);
+            st.needsByBucket[bucketKey] = need - 1;
+            dayUsage[day] = (dayUsage[day] || 0) + 1;
+            bumpGroupUsage(day, block);
+            remaining--;
+            break;
           }
-          if (!best) {
-            // Repli niveau 1 : rien de disponible dans la fenêtre (plafond atteint
-            // partout autour) — recherche linéaire du premier jour candidat encore
-            // sous le plafond (équipe et bloc), non adjacent à un repos déjà choisi.
-            let pos = (offset + basePos) % bucketCandidates.length;
-            let tries = 0;
-            let found = null;
-            while (tries < bucketCandidates.length) {
-              const day = bucketCandidates[pos];
-              if (!used.has(day) && !isAdjacentToUsed(day) && (dayUsage[day] || 0) < maxPerDay && underGroupCap(day)) { found = day; break; }
-              pos = (pos + 1) % bucketCandidates.length;
-              tries++;
-            }
-            if (found === null) {
-              // Repli niveau 2 : on relâche uniquement le plafond du BLOC (le plafond
-              // partagé de l'équipe et la non-adjacence restent respectés) — préférable
-              // à casser l'équilibre entre blocs plutôt qu'à produire deux repos
-              // consécutifs ou dépasser le plafond d'équipe.
-              pos = (offset + basePos) % bucketCandidates.length;
-              tries = 0;
-              while (tries < bucketCandidates.length) {
-                const day = bucketCandidates[pos];
-                if (!used.has(day) && !isAdjacentToUsed(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
-                pos = (pos + 1) % bucketCandidates.length;
-                tries++;
-              }
-            }
-            if (found === null && !allowAdjacencyRelax) {
-              // Ce bucket est épuisé sans casser la non-adjacence : on s'arrête ici,
-              // le reliquat sera replacé ailleurs (autre bucket, puis en tout
-              // dernier recours sur l'ensemble du mois).
-              return placed;
-            }
-            if (found === null) {
-              // Repli niveau 3 (dernier recours, mois entier uniquement) : aucun
-              // jour non adjacent disponible — on relâche aussi la contrainte
-              // d'adjacence ; le plafond partagé de l'équipe reste respecté.
-              pos = (offset + basePos) % bucketCandidates.length;
-              tries = 0;
-              while (tries < bucketCandidates.length) {
-                const day = bucketCandidates[pos];
-                if (!used.has(day) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
-                pos = (pos + 1) % bucketCandidates.length;
-                tries++;
-              }
-            }
-            best = { day: found !== null ? found : bucketCandidates[pos] };
-          }
-          used.add(best.day);
-          dayUsage[best.day] = (dayUsage[best.day] || 0) + 1;
-          bumpGroupUsage(best.day, group);
-          chosen.push(best.day);
-          placed++;
         }
-        return placed;
       };
 
-      // Sous-répartit `bucketTarget` (déjà attribué à un shift) entre les jours où
-      // le bloc de CE conducteur affiche ce jour-là le label V1 et ceux où il
-      // affiche V2 (VacationRotationEngine — bascule quotidienne du bloc entier),
-      // selon restDayLabelBiasByShift : la vacation à charge plus FAIBLE reçoit
-      // davantage de repos (donc moins de présents), ce qui fait mécaniquement
-      // pencher la présence quotidienne vers la vacation à charge plus élevée
-      // (ex. Shift 3 : plus de présents en V1 qu'en V2, conforme à 12% / 8%).
-      // N'affecte jamais l'appartenance au bloc, seulement le PLACEMENT des repos.
-      const assignShiftBucket = (bucketDays, bucketTarget, shiftId) => {
-        if (bucketTarget <= 0 || bucketDays.length === 0) return 0;
-        const ratio = labelBiasByShift[shiftId];
-        if (!ratio || !(ratio.V1 > 0) || !(ratio.V2 > 0)) {
-          return assignWithinBucket(bucketDays, bucketTarget, false);
-        }
-        const labelDays = { V1: [], V2: [] };
-        bucketDays.forEach(d => {
-          const label = VacationRotationEngine.getVacationForDate(driver, RTGDate.makeDate(year, month, d), state);
-          if (labelDays[label]) labelDays[label].push(d);
+      const shiftDays = { S1: [], S2: [], S3: [] };
+      for (let d = 1; d <= dim; d++) { if (shiftDays[dayShift[d]]) shiftDays[dayShift[d]].push(d); }
+
+      ["S1", "S2", "S3"].forEach(s => {
+        const ratio = labelBiasByShift[s];
+        ["V1", "V2"].forEach(block => {
+          if (ratio && ratio.V1 > 0 && ratio.V2 > 0) {
+            assignBucketRotation(block, s + "_V1", shiftDays[s].filter(d => labelForBlock[block][d] === "V1"));
+            assignBucketRotation(block, s + "_V2", shiftDays[s].filter(d => labelForBlock[block][d] === "V2"));
+          } else {
+            assignBucketRotation(block, s + "_ANY", shiftDays[s]);
+          }
         });
-        // Poids en 1/pct^LABEL_BIAS_EXPONENT (et non 1/pct) : les contraintes déjà en
-        // jeu (espacement, plafond équipe, non-adjacence, arrondis par petits
-        // buckets) atténuent fortement un simple ratio inverse — un exposant élevé
-        // est nécessaire pour que l'écart de présence obtenu se rapproche de celui
-        // attendu, surtout quand les deux vacations ont des charges proches (ex.
-        // 13.5%/16.5%) : sans ça, la vacation à charge plus faible peut se retrouver
-        // avec AUTANT ou PLUS de présents que l'autre certains jours, ce qui
-        // contredit la règle métier.
-        const subShares = distributeByWeight(bucketTarget, [
-          { key: "V1", days: labelDays.V1, weight: 1 / Math.pow(ratio.V1, LABEL_BIAS_EXPONENT) },
-          { key: "V2", days: labelDays.V2, weight: 1 / Math.pow(ratio.V2, LABEL_BIAS_EXPONENT) }
-        ]);
-        let placed = 0;
-        ["V1", "V2"]
-          .filter(l => labelDays[l].length > 0)
-          .sort((a, b) => (labelDays[a][0] || 0) - (labelDays[b][0] || 0))
-          .forEach(l => { placed += assignWithinBucket(labelDays[l], subShares[l], false); });
-        return placed;
-      };
+      });
 
-      if (!team) {
-        assignWithinBucket(candidates, target, true);
-      } else {
-        // Répartit `target` entre les jours candidats de Shift 1 / Shift 2 / Shift 3,
-        // proportionnellement au nombre de jours candidats de chaque shift ET à sa
-        // charge de travail relative (restDayWeightByShift) — plus la charge d'un
-        // shift est faible, plus il reçoit une part de repos élevée. Méthode du plus
-        // grand reste pour que les parts arrondies totalisent exactement `target`.
-        const availableCandidates = candidates.filter(d => !used.has(d));
-        const buckets = { S1: [], S2: [], S3: [] };
-        availableCandidates.forEach(d => {
-          const s = dayShift[d];
-          if (buckets[s]) buckets[s].push(d);
-        });
-
-        const shiftIds = ["S1", "S2", "S3"];
-        const shares = distributeByWeight(target, shiftIds.map(s => ({
-          key: s, days: buckets[s], weight: shiftWeights[s] || 1
-        })));
-
-        // Traite les buckets dans l'ordre chronologique (premier jour candidat de
-        // chaque bucket) pour un comportement prévisible d'un mois à l'autre ; en
-        // mode strict (sans relâcher l'adjacence), un bucket trop serré peut placer
-        // moins que sa part — le reliquat est cumulé pour un dernier passage.
-        let shortfall = 0;
-        shiftIds
-          .filter(s => buckets[s].length > 0)
-          .sort((a, b) => (buckets[a][0] || 0) - (buckets[b][0] || 0))
-          .forEach(s => {
-            const placed = assignShiftBucket(buckets[s], shares[s], s);
-            shortfall += shares[s] - placed;
-          });
-
-        if (shortfall > 0) {
-          // Dernier recours : replace le reliquat sur l'ensemble des jours candidats
-          // encore libres ce mois-ci (tous shifts confondus), avec la marge de
-          // manœuvre bien plus grande qu'à l'échelle d'un seul bucket — la
-          // relaxation de l'adjacence n'y est donc quasiment jamais nécessaire.
-          const remaining = candidates.filter(d => !used.has(d));
-          assignWithinBucket(remaining, shortfall, true);
+      // ------------------------------------------------------------------
+      // Phase C (repli, rare en pratique) : besoin résiduel non satisfait
+      // par la rotation par bucket (plafonds trop serrés à l'échelle d'un
+      // seul bucket) — replacé sur l'ensemble des jours candidats encore
+      // libres de CE conducteur, tout le mois confondu, où la marge de
+      // manœuvre est bien plus grande. Trois niveaux, comme avant : d'abord
+      // en respectant non-adjacence + plafond du bloc, puis en relâchant le
+      // plafond du bloc, puis (tout dernier recours) la non-adjacence — le
+      // plafond global de l'équipe n'est en revanche JAMAIS dépassé.
+      // ------------------------------------------------------------------
+      teamDrivers.forEach(driver => {
+        const st = driverState[driver.id];
+        let need = Object.values(st.needsByBucket).reduce((a, b) => a + b, 0);
+        if (need <= 0) return;
+        const candidates = this.getCandidatesForDriver(driver, month, year, state, team).filter(d => !st.used.has(d));
+        const group = driver.initialVacation;
+        const place = day => {
+          st.chosen.push(day); st.used.add(day);
+          dayUsage[day] = (dayUsage[day] || 0) + 1;
+          bumpGroupUsage(day, group);
+          need--;
+        };
+        for (const day of candidates) {
+          if (need <= 0) break;
+          if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
+          if ((dayUsage[day] || 0) >= maxPerDay) continue;
+          if (!underGroupCapGeneric(day, group)) continue;
+          place(day);
         }
-      }
+        if (need > 0) {
+          for (const day of candidates) {
+            if (need <= 0) break;
+            if (st.used.has(day)) continue;
+            if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
+            if ((dayUsage[day] || 0) >= maxPerDay) continue;
+            place(day);
+          }
+        }
+        if (need > 0) {
+          for (const day of candidates) {
+            if (need <= 0) break;
+            if (st.used.has(day)) continue;
+            if ((dayUsage[day] || 0) >= maxPerDay) continue;
+            place(day);
+          }
+        }
+      });
+    }
 
-      results[driver.id] = chosen.sort((a, b) => a - b);
+    teamDrivers.forEach(driver => {
+      results[driver.id] = driverState[driver.id].chosen.sort((a, b) => a - b);
     });
 
     // Post-passe (Shift 1 et Shift 3) : essaie de RÉÉQUILIBRER V1/V2 en
