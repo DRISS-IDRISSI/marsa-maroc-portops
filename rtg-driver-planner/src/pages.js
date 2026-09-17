@@ -1111,9 +1111,26 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
 // colonnes que le modèle Excel réel fourni (bloc de conducteurs suivi d'une
 // ligne "Nombre de présent" par jour), avec cellules cliquables si l'usager
 // a le droit de modifier le planning à la main (§32).
-function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell }) {
+function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell, team }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
+  // Regroupe les jours consécutifs sous le même shift (rotation hebdomadaire
+  // par équipe) pour une ligne d'en-tête fusionnée "Shift 1/2/3" au-dessus
+  // des dates, comme sur le planning Excel réel de l'exploitant.
+  const shiftRuns = useMemo(() => {
+    if (!team) return null;
+    const runs = [];
+    planning.days.forEach(day => {
+      const shiftId = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(day.iso), config);
+      const last = runs[runs.length - 1];
+      if (last && last.shiftId === shiftId) {
+        last.count++;
+      } else {
+        runs.push({ shiftId: shiftId, count: 1 });
+      }
+    });
+    return runs;
+  }, [planning, config, team]);
   return (
     <div className="mb-4 last:mb-0">
       <div className="text-[11px] font-bold text-orange-400 uppercase tracking-wider mb-1.5 px-0.5">{label} <span className="text-slate-500 font-normal normal-case">({drivers.length} conducteur{drivers.length > 1 ? "s" : ""})</span></div>
@@ -1123,10 +1140,20 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="border-collapse text-xs w-full">
             <thead>
+              {shiftRuns && (
+                <tr className="bg-surface">
+                  <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10" rowSpan="2">Mat</th>
+                  <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]" rowSpan="2">Nom</th>
+                  <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]" rowSpan="2">Prénom</th>
+                  {shiftRuns.map((run, i) => (
+                    <th key={i} colSpan={run.count} className="border border-border/60 px-1 py-1.5 text-center text-slate-400 text-[10px] font-semibold uppercase">{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
+                  ))}
+                </tr>
+              )}
               <tr className="bg-surface">
-                <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10">Mat</th>
-                <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>
-                <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>
+                {!shiftRuns && <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10">Mat</th>}
+                {!shiftRuns && <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>}
+                {!shiftRuns && <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>}
                 {planning.days.map(day => {
                   const holiday = HolidayEngine.getHoliday(day.iso, config);
                   const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
@@ -1194,8 +1221,8 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
         return (
           <div key={teamId} className="mb-6 last:mb-0">
             {teamIds.length > 1 && <h3 className="text-white font-semibold text-sm mb-2">{team ? team.nom : teamId}</h3>}
-            <VacationGroupTable label="Vacation 1" drivers={v1} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} />
-            <VacationGroupTable label="Vacation 2" drivers={v2} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} />
+            <VacationGroupTable label="Vacation 1" drivers={v1} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
+            <VacationGroupTable label="Vacation 2" drivers={v2} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
           </div>
         );
       })}
