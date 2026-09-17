@@ -354,31 +354,14 @@ const RestDayEngine = {
           const shares = distributeByWeight(target, shiftIds.map(s => ({
             key: s, days: buckets[s], weight: shiftWeights[s] || 1
           })));
+          // Le nombre de repos dû dans ce shift n'est PLUS scindé en un
+          // quota séparé par label V1/V2 (ancienne sous-répartition stricte,
+          // trop fragmentée pour un placement bien ordonné — cf. en-tête du
+          // fichier). restDayLabelBiasByShift reste appliqué, mais comme une
+          // PRÉFÉRENCE de jour (Phase B, tri des jours par poids) plutôt
+          // qu'un quota imposé par label.
           shiftIds.forEach(s => {
-            const shiftTarget = shares[s];
-            if (shiftTarget <= 0) return;
-            const ratio = labelBiasByShift[s];
-            if (!ratio || !(ratio.V1 > 0) || !(ratio.V2 > 0)) {
-              needsByBucket[s + "_ANY"] = (needsByBucket[s + "_ANY"] || 0) + shiftTarget;
-              return;
-            }
-            const labelDays = { V1: [], V2: [] };
-            buckets[s].forEach(d => {
-              const label = VacationRotationEngine.getVacationForDate(driver, RTGDate.makeDate(year, month, d), state);
-              if (labelDays[label]) labelDays[label].push(d);
-            });
-            // Poids en 1/pct^LABEL_BIAS_EXPONENT (et non 1/pct) : les contraintes
-            // déjà en jeu (plafonds, non-adjacence, arrondis par petits buckets)
-            // atténuent fortement un simple ratio inverse — un exposant élevé est
-            // nécessaire pour que l'écart de présence obtenu se rapproche de celui
-            // attendu, surtout quand les deux vacations ont des charges proches.
-            const subShares = distributeByWeight(shiftTarget, [
-              { key: "V1", days: labelDays.V1, weight: 1 / Math.pow(ratio.V1, LABEL_BIAS_EXPONENT) },
-              { key: "V2", days: labelDays.V2, weight: 1 / Math.pow(ratio.V2, LABEL_BIAS_EXPONENT) }
-            ]);
-            ["V1", "V2"].forEach(l => {
-              if (subShares[l] > 0) needsByBucket[s + "_" + l] = (needsByBucket[s + "_" + l] || 0) + subShares[l];
-            });
+            if (shares[s] > 0) needsByBucket[s + "_ANY"] = (needsByBucket[s + "_ANY"] || 0) + shares[s];
           });
         }
       }
@@ -513,25 +496,40 @@ const RestDayEngine = {
         return weights[dow] || 1;
       };
 
+      // Préférence de LABEL (V1/V2) d'un jour pour un bloc donné : le label à
+      // charge plus FAIBLE (restDayLabelBiasByShift) reçoit un poids plus
+      // élevé — même formule (1/pct^LABEL_BIAS_EXPONENT) qu'avant, mais
+      // utilisée maintenant comme préférence de tri (Phase B) plutôt que
+      // comme quota séparé par label (Phase A) : le jour reste choisi dans
+      // le même grand bucket "tout le shift" pour ce bloc, ce qui laisse
+      // largement plus de jours disponibles pour un placement bien ordonné,
+      // au prix d'un contrôle un peu moins strict de l'écart de présence
+      // V1/V2 (demande explicite de l'exploitant).
+      const labelWeightFactor = (day, block) => {
+        const ratio = labelBiasByShift[dayShift[day]];
+        if (!ratio || !(ratio.V1 > 0) || !(ratio.V2 > 0)) return 1;
+        const label = labelForBlock[block][day];
+        if (label !== "V1" && label !== "V2") return 1;
+        return 1 / Math.pow(ratio[label], LABEL_BIAS_EXPONENT);
+      };
+
       const shiftDays = { S1: [], S2: [], S3: [] };
       for (let d = 1; d <= dim; d++) { if (shiftDays[dayShift[d]]) shiftDays[dayShift[d]].push(d); }
-      // Trie chaque liste par poids jour-de-semaine DÉCROISSANT (à
-      // chronologie égale) : la rotation (assignBucketRotation ci-dessous)
-      // visite les jours d'un bucket dans CET ordre à chaque tour, donc ces
-      // jours à faible charge sont essayés EN PREMIER — plus de repos y sont
-      // mécaniquement concentrés (dans la limite des plafonds), sans perdre
-      // l'équité de la rotation entre conducteurs.
-      ["S1", "S2", "S3"].forEach(s => { shiftDays[s].sort((a, b) => dowWeight(b) - dowWeight(a) || a - b); });
 
+      // Pour chaque shift et chaque bloc, trie la liste des jours par poids
+      // combiné (jour-de-semaine × préférence de label pour CE bloc)
+      // décroissant, à chronologie égale : la rotation (assignBucketRotation
+      // ci-dessous) visite les jours d'un bucket dans CET ordre à chaque
+      // tour, donc les jours les plus favorables sont essayés EN PREMIER —
+      // sans perdre l'équité de la rotation entre conducteurs du même bloc.
       ["S1", "S2", "S3"].forEach(s => {
-        const ratio = labelBiasByShift[s];
         ["V1", "V2"].forEach(block => {
-          if (ratio && ratio.V1 > 0 && ratio.V2 > 0) {
-            assignBucketRotation(block, s + "_V1", shiftDays[s].filter(d => labelForBlock[block][d] === "V1"));
-            assignBucketRotation(block, s + "_V2", shiftDays[s].filter(d => labelForBlock[block][d] === "V2"));
-          } else {
-            assignBucketRotation(block, s + "_ANY", shiftDays[s]);
-          }
+          const sorted = shiftDays[s].slice().sort((a, b) => {
+            const wa = dowWeight(a) * labelWeightFactor(a, block);
+            const wb = dowWeight(b) * labelWeightFactor(b, block);
+            return wb - wa || a - b;
+          });
+          assignBucketRotation(block, s + "_ANY", sorted);
         });
       });
 
