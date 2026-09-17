@@ -1407,23 +1407,31 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
                 const holiday = HolidayEngine.getHoliday(day.iso, config);
                 return <th key={day.iso} className={PRINT_TH_XS + " text-center"} style={holiday ? { backgroundColor: PRINT_STATUS_BG.FERIE } : undefined} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}</th>;
               })}
+              <th className={PRINT_TH_XS + " text-center"}>Total repos</th>
             </tr>
           </thead>
           <tbody>
-            {drivers.map(driver => (
-              <tr key={driver.id}>
-                <td className={PRINT_TD_XS}>{driver.matricule}</td>
-                <td className={PRINT_TD_XS + " font-medium"}>{driver.nom}</td>
-                <td className={PRINT_TD_XS}>{driver.prenom}</td>
-                {planning.days.map(day => {
-                  const a = day.assignments.find(x => x.driverId === driver.id);
-                  const isPresent = !a || a.status === "PRESENT";
-                  const code = isPresent ? "" : ((RTG_STATUS_META[a.status] || {}).code || a.status);
-                  const bg = isPresent ? undefined : PRINT_STATUS_BG[a.status];
-                  return <td key={day.iso} className={PRINT_TD_XS_CENTER} style={bg ? { backgroundColor: bg } : undefined}>{code}</td>;
-                })}
-              </tr>
-            ))}
+            {drivers.map(driver => {
+              const totalRepos = planning.days.reduce((n, day) => {
+                const a = day.assignments.find(x => x.driverId === driver.id);
+                return n + (a && a.status === "REPOS" ? 1 : 0);
+              }, 0);
+              return (
+                <tr key={driver.id}>
+                  <td className={PRINT_TD_XS}>{driver.matricule}</td>
+                  <td className={PRINT_TD_XS + " font-medium"}>{driver.nom}</td>
+                  <td className={PRINT_TD_XS}>{driver.prenom}</td>
+                  {planning.days.map(day => {
+                    const a = day.assignments.find(x => x.driverId === driver.id);
+                    const isPresent = !a || a.status === "PRESENT";
+                    const code = isPresent ? "" : ((RTG_STATUS_META[a.status] || {}).code || a.status);
+                    const bg = isPresent ? undefined : PRINT_STATUS_BG[a.status];
+                    return <td key={day.iso} className={PRINT_TD_XS_CENTER} style={bg ? { backgroundColor: bg } : undefined}>{code}</td>;
+                  })}
+                  <td className={PRINT_TD_XS_CENTER + " font-bold"}>{totalRepos}</td>
+                </tr>
+              );
+            })}
             <tr className="font-bold">
               <td className={PRINT_TD_XS} colSpan="3">Nombre de présent</td>
               {planning.days.map(day => {
@@ -1433,6 +1441,7 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
                 }, 0);
                 return <td key={day.iso} className={PRINT_TD_XS_CENTER}>{count}</td>;
               })}
+              <td className={PRINT_TD_XS_CENTER}></td>
             </tr>
           </tbody>
         </table>
