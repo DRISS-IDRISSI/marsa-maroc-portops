@@ -76,11 +76,18 @@ const RestDayEngine = {
   _cache: {},
   _teamCache: {},
   _extraCache: {},
+  // État de rotation (pointeurs) reporté d'un mois sur l'autre — voir
+  // historyEnabled/reposReferenceDate dans getTeamRestDays : sans mémoire
+  // inter-mois, la rotation (dimanche obligatoire ET escalier continu Phase B)
+  // repartait de zéro chaque mois, ramenant systématiquement les MÊMES
+  // conducteurs en tête (ex. toujours les mêmes en repos le dimanche/samedi).
+  _pointerCache: {},
 
   clearCache() {
     this._cache = {};
     this._teamCache = {};
     this._extraCache = {};
+    this._pointerCache = {};
   },
 
   countCongeDaysInMonth(driver, month, year, state) {
@@ -124,20 +131,32 @@ const RestDayEngine = {
   // La vacation de chaque conducteur disponible ce dimanche-là est celle de son
   // bloc ce jour précis (VacationRotationEngine, bascule quotidienne du bloc entier,
   // gelée dimanche→lundi — §9-10) ; les deux blocs V1 et V2 de ce dimanche-là sont
-  // donc traités séparément, chacun plafonné à sundayVacationCap. Sélection en
-  // rotation équitable au sein de chaque bloc (le point de départ avance à chaque
-  // bloc/dimanche traité) pour que ce ne soit pas toujours les mêmes conducteurs
-  // qui travaillent — ou qui restent chez eux — le dimanche. Ce repos consomme le
-  // quota mensuel.
-  getMandatorySundayOff(team, month, year, state, teamDrivers) {
+  // donc traités séparément, chacun plafonné à sundayVacationCap.
+  //
+  // Rotation suivie PAR BLOC FIXE (driver.initialVacation, jamais par le label du
+  // jour qui alterne) — bug corrigé : un pointeur unique partagé, indexé sur la
+  // liste combinée des deux blocs et avancé du nombre de conducteurs CHOISIS à
+  // chaque passage, retombait systématiquement sur les 6 mêmes premiers
+  // conducteurs d'un bloc dès que sa taille (12) était un multiple exact du
+  // plafond (6) — signalé par l'exploitant (repos du dimanche/samedi "figés"
+  // sur les mêmes personnes). Le point de départ n'avance maintenant que d'UN
+  // SEUL cran par bloc/dimanche traité (conforme à l'intention déjà décrite
+  // ici), ce qui fait glisser la fenêtre de conducteurs choisis d'un dimanche
+  // à l'autre au lieu de la figer.
+  getMandatorySundayOff(team, month, year, state, teamDrivers, historyEnabled) {
     const mandatory = {};
     teamDrivers.forEach(d => { mandatory[d.id] = new Set(); });
     if (!team) return mandatory;
 
     const cap = state.config.sundayVacationCap || 6;
-    const N = teamDrivers.length || 1;
     const dim = RTGDate.daysInMonth(month, year);
-    let pointer = 0;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const pointerByBlock = {};
+    ["V1", "V2"].forEach(blockKey => {
+      const prevKey = "sun_" + team.id + "_" + blockKey + "_" + prevYear + "_" + prevMonth;
+      pointerByBlock[blockKey] = (historyEnabled && typeof this._pointerCache[prevKey] === "number") ? this._pointerCache[prevKey] : 0;
+    });
 
     for (let d = 1; d <= dim; d++) {
       const date = RTGDate.makeDate(year, month, d);
@@ -159,12 +178,16 @@ const RestDayEngine = {
         const requiredOff = group.length - cap;
         if (requiredOff <= 0) return;
 
+        const blockKey = (group[0] && (group[0].initialVacation === "V1" || group[0].initialVacation === "V2")) ? group[0].initialVacation : vac;
+        const blockList = teamDrivers.filter(dr => dr.initialVacation === blockKey);
+        const M = blockList.length || 1;
         const groupIds = new Set(group.map(dr => dr.id));
+        const start = pointerByBlock[blockKey] || 0;
         let chosen = 0;
         let scanned = 0;
-        let idx = pointer;
-        while (chosen < requiredOff && scanned < N * 2) {
-          const candidate = teamDrivers[idx % N];
+        let idx = start;
+        while (chosen < requiredOff && scanned < M * 2) {
+          const candidate = blockList[idx % M];
           if (groupIds.has(candidate.id)) {
             mandatory[candidate.id].add(d);
             chosen++;
@@ -172,9 +195,13 @@ const RestDayEngine = {
           idx++;
           scanned++;
         }
-        pointer = idx % N;
+        pointerByBlock[blockKey] = (start + 1) % M;
       });
     }
+
+    ["V1", "V2"].forEach(blockKey => {
+      this._pointerCache["sun_" + team.id + "_" + blockKey + "_" + year + "_" + month] = pointerByBlock[blockKey];
+    });
 
     return mandatory;
   },
@@ -237,7 +264,19 @@ const RestDayEngine = {
       dayUsage[group][day] = (dayUsage[group][day] || 0) + 1;
     };
 
-    const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers);
+    // Mois précédent + interrupteur d'historique (config.reposReferenceDate) :
+    // calculés ICI (avant le passage 1) car la rotation du repos dominical
+    // obligatoire (getMandatorySundayOff) a, elle aussi, besoin de savoir si
+    // elle peut hériter du pointeur de rotation du mois précédent — sinon
+    // octobre 2026 (mois de départ choisi par l'exploitant) recommencerait
+    // sa rotation à zéro tout en la reprenant quand même par la suite,
+    // incohérent avec le choix déjà fait pour Phase B plus bas.
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonthLastDay = RTGDate.daysInMonth(prevMonth, prevYear);
+    const historyEnabled = !!team && RTGDate.parseISO(state.config.reposReferenceDate || state.config.rotationReferenceDate).getTime() < RTGDate.makeDate(prevYear, prevMonth, prevMonthLastDay).getTime();
+
+    const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers, historyEnabled);
 
     // Jours où un conducteur a déjà un REPOS forcé par une affectation manuelle
     // (case par case ou import Excel du planning réel) : à traiter exactement
@@ -284,19 +323,14 @@ const RestDayEngine = {
     // AVANT cette date n'est jamais regardé en arrière — demande explicite de
     // l'exploitant après avoir constaté que des contraintes calculées sur un
     // mois antérieur (dont il ne veut plus tenir compte) bloquaient par
-    // adjacence certains repos du mois de départ.
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const prevMonthLastDay = RTGDate.daysInMonth(prevMonth, prevYear);
+    // adjacence certains repos du mois de départ. (prevMonth/prevYear/
+    // prevMonthLastDay/historyEnabled calculés plus haut, avant le passage 1.)
     const prevMonthRestByDriver = {};
-    if (team) {
-      const refDate = RTGDate.parseISO(state.config.reposReferenceDate || state.config.rotationReferenceDate);
-      if (refDate.getTime() < RTGDate.makeDate(prevYear, prevMonth, prevMonthLastDay).getTime()) {
-        teamDrivers.forEach(driver => {
-          const prevDays = this.getRestDaysForMonth(driver, prevMonth, prevYear, state, state.teams);
-          prevMonthRestByDriver[driver.id] = prevDays.indexOf(prevMonthLastDay) !== -1;
-        });
-      }
+    if (historyEnabled) {
+      teamDrivers.forEach(driver => {
+        const prevDays = this.getRestDaysForMonth(driver, prevMonth, prevYear, state, state.teams);
+        prevMonthRestByDriver[driver.id] = prevDays.indexOf(prevMonthLastDay) !== -1;
+      });
     }
 
     // Shift de l'équipe pour chaque jour du mois (indépendant du conducteur) —
@@ -551,19 +585,27 @@ const RestDayEngine = {
 
       ["V1", "V2"].forEach(block => {
         const blockList = blockDrivers[block];
+        const M = blockList.length || 1;
         // Rotation CONTINUE (cf. en-tête de Phase B) : UN SEUL pointeur pour
         // tout le bloc, déclaré ICI (hors de la boucle sur les occurrences)
         // pour ne JAMAIS se réinitialiser d'une occurrence à l'autre — sans
         // quoi le premier conducteur de chaque nouvelle occurrence serait
         // systématiquement le même (toujours le conducteur de rang 0), au
-        // lieu de continuer juste après le dernier conducteur servi.
-        let pointer = 0;
+        // lieu de continuer juste après le dernier conducteur servi. Hérite
+        // aussi du pointeur de FIN du mois précédent (historyEnabled) — sinon
+        // chaque mois repartait de rang 0, ramenant systématiquement les
+        // mêmes premiers conducteurs du bloc sur les tout premiers jours
+        // (donc sur le même samedi/dimanche du mois) — signalé par
+        // l'exploitant.
+        const pointerCacheKey = "esc_" + (team ? team.id : "none") + "_" + block;
+        const prevPointer = historyEnabled ? this._pointerCache[pointerCacheKey + "_" + prevYear + "_" + prevMonth] : undefined;
+        let pointer = (typeof prevPointer === "number") ? prevPointer % M : 0;
 
         shiftRuns.forEach((run, idx) => {
           const bucketKey = "occ" + idx;
           const needing = blockList.filter(dr => (driverState[dr.id].needsByBucket[bucketKey] || 0) > 0);
-          if (needing.length === 0) return;
           const totalDemand = needing.reduce((sum, dr) => sum + driverState[dr.id].needsByBucket[bucketKey], 0);
+          if (totalDemand === 0) return;
           // Exclut d'emblée les jours déjà saturés pour ce bloc (ex. le repos
           // obligatoire du dimanche, déjà enregistré dans dayUsage avant
           // Phase B) du calcul de répartition — sans ça, ce jour recevait
@@ -575,50 +617,74 @@ const RestDayEngine = {
           const openDays = run.days.filter(d => usageAt(block, d) < capForGroup(block));
           const dayShares = splitDemandAcrossDays(totalDemand, openDays.length > 0 ? openDays : run.days, d => dayWeightForBlock(block, d));
 
+          // Éligibilité basée sur le quota TOTAL restant du conducteur
+          // (st.remainingQuota), jamais sur son besoin propre à CETTE seule
+          // occurrence (st.needsByBucket[bucketKey]) — bug corrigé : la
+          // répartition du quota par occurrence (Phase A) est un calcul PAR
+          // CONDUCTEUR (arrondi indépendamment pour chacun), si bien que deux
+          // conducteurs consécutifs dans l'ordre de l'équipe peuvent se voir
+          // attribuer un besoin nul ici pour des raisons d'arrondi propres à
+          // chacun, alors qu'il leur reste bien un quota mensuel global — le
+          // pointeur les sautait alors purement à cause de cet arrondi
+          // individuel, créant un "trou" dans l'escalier visuel (ex. un
+          // conducteur sauté au profit de celui d'après, alors qu'il suit
+          // directement le précédent dans l'ordre de l'équipe). totalDemand
+          // (calculé juste au-dessus à partir de needsByBucket) reste
+          // inchangé : c'est le nombre AGRÉGÉ de repos que cette occurrence
+          // doit produire, seule la question de QUI les reçoit change.
+          let placed = 0;
           run.days.forEach(day => {
             let capLeft = Math.min(dayShares[day] || 0, Math.max(0, capForGroup(block) - usageAt(block, day)));
             let tries = 0;
-            while (capLeft > 0 && tries < blockList.length) {
+            while (capLeft > 0 && tries < M) {
               const dr = blockList[pointer];
-              pointer = (pointer + 1) % blockList.length;
+              pointer = (pointer + 1) % M;
               tries++;
               const st = driverState[dr.id];
-              if ((st.needsByBucket[bucketKey] || 0) <= 0 || !st.candidateSet.has(day) || st.used.has(day)
+              if (st.remainingQuota <= 0 || !st.candidateSet.has(day) || st.used.has(day)
                   || st.used.has(day - 1) || st.used.has(day + 1)) continue;
               st.chosen.push(day);
               st.used.add(day);
               bumpUsage(block, day);
-              st.needsByBucket[bucketKey]--;
+              if (st.needsByBucket[bucketKey] > 0) st.needsByBucket[bucketKey]--;
               st.remainingQuota--;
               capLeft--;
+              placed++;
             }
           });
 
-          // Rattrapage LOCAL (même occurrence) : la demande du jour
-          // (dayShares) peut, dans de rares cas, ne pas trouver assez de
-          // conducteurs éligibles ce jour précis (adjacence) alors qu'un
-          // autre jour de LA MÊME occurrence a encore de la marge — replacé
-          // ici plutôt que de partir directement en Phase C (recherche sur
-          // tout le mois), pour rester le plus proche possible dans le temps.
-          // Choisit le jour ÉLIGIBLE le MOINS CHARGÉ (pas le premier trouvé) :
-          // sans ça, plusieurs replis consécutifs s'entassaient sur le même
-          // jour "de secours" pendant qu'un autre restait sous-utilisé,
-          // cassant l'escalier régulier attendu (repos qui progressent
-          // 1, 2, 3... plutôt qu'un pic isolé sur un seul jour).
-          needing.forEach(dr => {
+          // Rattrapage LOCAL (même occurrence) : comble l'écart entre
+          // totalDemand et ce qui a réellement pu être placé ci-dessus, en
+          // continuant la MÊME rotation (à partir du pointeur courant) sur
+          // TOUT conducteur du bloc ayant encore un quota résiduel — plus
+          // seulement ceux dont l'arrondi Phase A tombait précisément dans
+          // CETTE occurrence (cf. note ci-dessus). Choisit le jour ÉLIGIBLE
+          // le MOINS CHARGÉ (pas le premier trouvé) : sans ça, plusieurs
+          // replis consécutifs s'entassaient sur le même jour "de secours"
+          // pendant qu'un autre restait sous-utilisé, cassant l'escalier
+          // régulier attendu (repos qui progressent 1, 2, 3... plutôt qu'un
+          // pic isolé sur un seul jour).
+          let shortfall = totalDemand - placed;
+          let attempts = 0;
+          while (shortfall > 0 && attempts < M * 2) {
+            const dr = blockList[pointer];
+            pointer = (pointer + 1) % M;
+            attempts++;
             const st = driverState[dr.id];
-            while ((st.needsByBucket[bucketKey] || 0) > 0) {
-              const eligibleDays = run.days.filter(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
-              if (eligibleDays.length === 0) break;
-              const day = eligibleDays.reduce((best, d) => usageAt(block, d) < usageAt(block, best) ? d : best);
-              st.chosen.push(day);
-              st.used.add(day);
-              bumpUsage(block, day);
-              st.needsByBucket[bucketKey]--;
-              st.remainingQuota--;
-            }
-          });
+            if (st.remainingQuota <= 0) continue;
+            const eligibleDays = run.days.filter(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
+            if (eligibleDays.length === 0) continue;
+            const day = eligibleDays.reduce((best, d) => usageAt(block, d) < usageAt(block, best) ? d : best);
+            st.chosen.push(day);
+            st.used.add(day);
+            bumpUsage(block, day);
+            if (st.needsByBucket[bucketKey] > 0) st.needsByBucket[bucketKey]--;
+            st.remainingQuota--;
+            shortfall--;
+          }
         });
+
+        this._pointerCache[pointerCacheKey + "_" + year + "_" + month] = pointer;
       });
 
       // ------------------------------------------------------------------
