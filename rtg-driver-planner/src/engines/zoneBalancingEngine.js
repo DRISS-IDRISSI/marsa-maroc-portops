@@ -6,9 +6,10 @@
 //     (un seul par zone, sans doublon) sur les 7 autres zones (B-H).
 //   - Si 8 conducteurs présents ou plus, les 8 zones (A comprise) sont toutes
 //     occupées : chacune reçoit d'abord floor(n/8) conducteurs, puis le reste
-//     (toujours < 8, donc absorbé par les 7 zones B-H) est distribué en +1 sur les
-//     zones B-H uniquement — la zone A ne reçoit jamais cette part supplémentaire
-//     avant les autres.
+//     (toujours < 8, donc absorbé par les 7 zones B-H) est distribué en +1, une
+//     zone à la fois, dans l'ordre C, D, B, E, F, G, H (décision explicite de
+//     l'exploitant — DOUBLING_ORDER ci-dessous) ; la zone A ne reçoit jamais
+//     cette part supplémentaire avant les autres.
 //
 // S'applique systématiquement à chaque créneau (pas seulement en cas de
 // dépassement), en remplacement de la simple rotation individuelle A→H pour la
@@ -17,6 +18,13 @@
 // clé de tri pour décider qui, dans le groupe, reçoit quelle zone — afin de garder
 // une variation raisonnable d'un jour à l'autre plutôt qu'un ordre figé.
 // ==========================================
+
+// Ordre dans lequel les zones B-H reçoivent un doublon au-delà de 8 présents
+// sur un créneau (le 9ᵉ présent double la 1ʳᵉ de cette liste, le 10ᵉ la 2ᵉ,
+// etc.) — décision explicite de l'exploitant, pas un simple ordre alphabétique.
+// Une zone du créneau absente de cette liste (config.zones personnalisée) est
+// ajoutée à la suite, dans son ordre d'origine, pour rester robuste.
+const DOUBLING_ORDER = ["C", "D", "B", "E", "F", "G", "H"];
 
 const ZoneBalancingEngine = {
   // `entries` : tableau d'objets portant une propriété `zone` mutable (déjà remplie
@@ -47,6 +55,8 @@ const ZoneBalancingEngine = {
 
     const base = Math.floor(n / zoneList.length);
     const remainder = n % zoneList.length; // toujours < 8, donc < others.length+1
+    const doublingOrder = DOUBLING_ORDER.filter(z => others.indexOf(z) !== -1)
+      .concat(others.filter(z => DOUBLING_ORDER.indexOf(z) === -1));
 
     let idx = 0;
     for (let r = 0; r < base && idx < n; r++) {
@@ -56,7 +66,7 @@ const ZoneBalancingEngine = {
       }
     }
     for (let r = 0; r < remainder && idx < n; r++) {
-      ordered[idx].zone = others[r % others.length];
+      ordered[idx].zone = doublingOrder[r % doublingOrder.length];
       idx++;
     }
 

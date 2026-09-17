@@ -469,7 +469,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     // conducteurs, zones D/H inoccupées). Rempli une fois par créneau à
     // partir du planning actuel, puis mis à jour au fil des corrections de
     // cette boucle pour éviter aussi les collisions entre elles.
-    const slotZonesUsed = {};
+    const slotZoneCounts = {};
     for (const r of presenceCorrectionsToApply) {
       try {
         const date = RTGDate.parseISO(r.iso);
@@ -479,25 +479,34 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         const vacDef = (state.config.vacations[shift] || []).find(v => v.id === vacation);
 
         const slotKey = r.iso + "_" + shift + "_" + vacation;
-        if (!slotZonesUsed[slotKey]) {
+        if (!slotZoneCounts[slotKey]) {
           const day = planning.days.find(d => d.iso === r.iso);
-          slotZonesUsed[slotKey] = new Set(
-            (day ? day.assignments : [])
-              .filter(a => a.status === "PRESENT" && a.shift === shift && a.vacation === vacation)
-              .map(a => a.zone)
-          );
+          const counts = {};
+          (day ? day.assignments : [])
+            .filter(a => a.status === "PRESENT" && a.shift === shift && a.vacation === vacation && a.zone)
+            .forEach(a => { counts[a.zone] = (counts[a.zone] || 0) + 1; });
+          slotZoneCounts[slotKey] = counts;
         }
-        const used = slotZonesUsed[slotKey];
+        const counts = slotZoneCounts[slotKey];
         const zoneList = state.config.zones || [];
         const others = zoneList.slice(1); // B..H — la zone A n'est jamais prioritaire.
-        let zone = others.find(z => !used.has(z));
+        // Même ordre de doublement que ZoneBalancingEngine (DOUBLING_ORDER) :
+        // d'abord toute zone B-H encore totalement libre, puis — au-delà de
+        // 8 présents sur ce créneau — celle qui a REÇU LE MOINS de doublons
+        // jusqu'ici, départagée par cet ordre (C, D, B, E, F, G, H).
+        const doublingOrder = DOUBLING_ORDER.filter(z => others.indexOf(z) !== -1)
+          .concat(others.filter(z => DOUBLING_ORDER.indexOf(z) === -1));
+        let zone = others.find(z => !counts[z]);
         if (!zone) {
-          // Toutes les zones B-H déjà prises sur ce créneau (8 présents ou
-          // plus) : zone A si encore libre, sinon repli sur la rotation
-          // individuelle habituelle (dernier recours).
-          zone = !used.has(zoneList[0]) ? zoneList[0] : ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
+          const minCount = Math.min(...doublingOrder.map(z => counts[z] || 0));
+          zone = doublingOrder.find(z => (counts[z] || 0) === minCount);
         }
-        used.add(zone);
+        if (!zone) {
+          // Cas extrême (config.zones vide au-delà de A) : zone A si encore
+          // libre, sinon repli sur la rotation individuelle habituelle.
+          zone = !counts[zoneList[0]] ? zoneList[0] : ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
+        }
+        counts[zone] = (counts[zone] || 0) + 1;
 
         const override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
         await RTGStore.setManualOverride(r.iso, r.driverId, override, RTG_IMPORT_OVERRIDE_MOTIF, "repos annulé (présent réel) — " + team.nom + " — " + r.iso);
