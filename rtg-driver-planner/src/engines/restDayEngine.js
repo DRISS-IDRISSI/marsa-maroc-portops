@@ -593,11 +593,17 @@ const RestDayEngine = {
           // autre jour de LA MÊME occurrence a encore de la marge — replacé
           // ici plutôt que de partir directement en Phase C (recherche sur
           // tout le mois), pour rester le plus proche possible dans le temps.
+          // Choisit le jour ÉLIGIBLE le MOINS CHARGÉ (pas le premier trouvé) :
+          // sans ça, plusieurs replis consécutifs s'entassaient sur le même
+          // jour "de secours" pendant qu'un autre restait sous-utilisé,
+          // cassant l'escalier régulier attendu (repos qui progressent
+          // 1, 2, 3... plutôt qu'un pic isolé sur un seul jour).
           needing.forEach(dr => {
             const st = driverState[dr.id];
             while ((st.needsByBucket[bucketKey] || 0) > 0) {
-              const day = run.days.find(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
-              if (day === undefined) break;
+              const eligibleDays = run.days.filter(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
+              if (eligibleDays.length === 0) break;
+              const day = eligibleDays.reduce((best, d) => usageAt(block, d) < usageAt(block, best) ? d : best);
               st.chosen.push(day);
               st.used.add(day);
               bumpUsage(block, day);
