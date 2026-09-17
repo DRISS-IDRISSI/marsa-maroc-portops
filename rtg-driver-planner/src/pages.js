@@ -1390,7 +1390,24 @@ function Home() {
 // absence/formation/OFF/férié (code court), les jours PRESENT restent VIERGES
 // (pas de shift/vacation/zone — volontairement omis, cf. en-tête de
 // PlanningGridPrintable), avec une ligne "Nombre de présent" par jour.
-function VacationGroupTablePrintable({ label, drivers, planning, config }) {
+function VacationGroupTablePrintable({ label, drivers, planning, config, team }) {
+  // Regroupe les jours consécutifs sous le même shift (rotation hebdomadaire
+  // par équipe) pour la ligne d'en-tête fusionnée "SHIFT 1/2/3", comme dans
+  // le planning Excel réel de l'exploitant.
+  const shiftRuns = useMemo(() => {
+    if (!team) return null;
+    const runs = [];
+    planning.days.forEach(day => {
+      const shiftId = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(day.iso), config);
+      const last = runs[runs.length - 1];
+      if (last && last.shiftId === shiftId) {
+        last.count++;
+      } else {
+        runs.push({ shiftId: shiftId, count: 1 });
+      }
+    });
+    return runs;
+  }, [planning, config, team]);
   return (
     <div className="mb-2 last:mb-0">
       <div className="text-[9px] font-bold uppercase tracking-wide mb-0.5">{label} — {drivers.length} conducteur{drivers.length > 1 ? "s" : ""}</div>
@@ -1399,15 +1416,26 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
       ) : (
         <table className="border-collapse text-[9px] mb-1 w-full">
           <thead>
+            {shiftRuns && (
+              <tr>
+                <th className={PRINT_TH_XS} rowSpan="2">Mat</th>
+                <th className={PRINT_TH_XS} rowSpan="2">Nom</th>
+                <th className={PRINT_TH_XS} rowSpan="2">Prénom</th>
+                {shiftRuns.map((run, i) => (
+                  <th key={i} colSpan={run.count} className={PRINT_TH_XS + " text-center"}>{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
+                ))}
+                <th className={PRINT_TH_XS + " text-center"} rowSpan="2">Total repos</th>
+              </tr>
+            )}
             <tr>
-              <th className={PRINT_TH_XS}>Mat</th>
-              <th className={PRINT_TH_XS}>Nom</th>
-              <th className={PRINT_TH_XS}>Prénom</th>
+              {!shiftRuns && <th className={PRINT_TH_XS}>Mat</th>}
+              {!shiftRuns && <th className={PRINT_TH_XS}>Nom</th>}
+              {!shiftRuns && <th className={PRINT_TH_XS}>Prénom</th>}
               {planning.days.map(day => {
                 const holiday = HolidayEngine.getHoliday(day.iso, config);
                 return <th key={day.iso} className={PRINT_TH_XS + " text-center"} style={holiday ? { backgroundColor: PRINT_STATUS_BG.FERIE } : undefined} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}</th>;
               })}
-              <th className={PRINT_TH_XS + " text-center"}>Total repos</th>
+              {!shiftRuns && <th className={PRINT_TH_XS + " text-center"}>Total repos</th>}
             </tr>
           </thead>
           <tbody>
@@ -1470,8 +1498,8 @@ function PlanningGridPrintable({ planning, drivers, config, teams }) {
         return (
           <div key={teamId} className="mb-2 last:mb-0">
             {teamIds.length > 1 && <div className="text-[10px] font-bold mb-0.5">{team ? team.nom : teamId}</div>}
-            <VacationGroupTablePrintable label="Vacation 1" drivers={v1} planning={planning} config={config} />
-            <VacationGroupTablePrintable label="Vacation 2" drivers={v2} planning={planning} config={config} />
+            <VacationGroupTablePrintable label="Vacation 1" drivers={v1} planning={planning} config={config} team={team} />
+            <VacationGroupTablePrintable label="Vacation 2" drivers={v2} planning={planning} config={config} team={team} />
           </div>
         );
       })}
