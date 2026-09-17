@@ -278,6 +278,22 @@ const RestDayEngine = {
         dayShift[d] = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, d), state.config);
       }
     }
+    // Regroupe les jours consécutifs sous le même shift (rotation
+    // hebdomadaire de l'équipe) en occurrences SÉPARÉES — ex. "Shift 1" du
+    // 1 au 4 PUIS à nouveau "Shift 1" du 19 au 25 sont deux buckets
+    // distincts, jamais fusionnés en un seul groupe de jours "Shift 1" du
+    // mois. Fusionner casserait l'escalier calendaire (Phase B) : un saut
+    // artificiel entre deux occurrences non consécutives d'un même shift,
+    // une fois traité comme un simple index de tableau, ne correspond plus
+    // à un écart de jours régulier.
+    const shiftRuns = [];
+    if (team) {
+      for (let d = 1; d <= dim; d++) {
+        const last = shiftRuns[shiftRuns.length - 1];
+        if (last && last.shift === dayShift[d]) last.days.push(d);
+        else shiftRuns.push({ shift: dayShift[d], days: [d] });
+      }
+    }
     const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
     const labelBiasByShift = state.config.restDayLabelBiasByShift || {};
 
@@ -347,21 +363,24 @@ const RestDayEngine = {
         if (!team) {
           needsByBucket.__all__ = target;
         } else {
-          const availableCandidates = candidates.filter(d => !used.has(d));
-          const buckets = { S1: [], S2: [], S3: [] };
-          availableCandidates.forEach(d => { const s = dayShift[d]; if (buckets[s]) buckets[s].push(d); });
-          const shiftIds = ["S1", "S2", "S3"];
-          const shares = distributeByWeight(target, shiftIds.map(s => ({
-            key: s, days: buckets[s], weight: shiftWeights[s] || 1
-          })));
-          // Le nombre de repos dû dans ce shift n'est PLUS scindé en un
-          // quota séparé par label V1/V2 (ancienne sous-répartition stricte,
+          const usedSet = used;
+          const occBuckets = shiftRuns.map((run, idx) => ({
+            key: "occ" + idx,
+            days: run.days.filter(d => !usedSet.has(d)),
+            weight: shiftWeights[run.shift] || 1
+          }));
+          // Répartit `target` entre les OCCURRENCES de shift (chaque semaine
+          // où l'équipe est sur tel shift compte comme un bucket à part,
+          // jamais fusionné avec une occurrence ultérieure du même shift —
+          // cf. shiftRuns plus haut), proportionnellement au nombre de jours
+          // candidats de chaque occurrence ET à la charge de travail relative
+          // du shift (restDayWeightByShift). restDayLabelBiasByShift n'est
+          // plus un quota séparé par label V1/V2 (ancienne sous-répartition
           // trop fragmentée pour un placement bien ordonné — cf. en-tête du
-          // fichier). restDayLabelBiasByShift reste appliqué, mais comme une
-          // PRÉFÉRENCE de jour (Phase B, tri des jours par poids) plutôt
-          // qu'un quota imposé par label.
-          shiftIds.forEach(s => {
-            if (shares[s] > 0) needsByBucket[s + "_ANY"] = (needsByBucket[s + "_ANY"] || 0) + shares[s];
+          // fichier) : appliqué en Phase B comme simple préférence de jour.
+          const shares = distributeByWeight(target, occBuckets);
+          occBuckets.forEach(b => {
+            if (shares[b.key] > 0) needsByBucket[b.key] = (needsByBucket[b.key] || 0) + shares[b.key];
           });
         }
       }
@@ -389,18 +408,20 @@ const RestDayEngine = {
       });
     } else {
       // ------------------------------------------------------------------
-      // Phase B : attribution des jours par ROTATION PARTAGÉE, bloc de
-      // vacation par bloc de vacation (driver.initialVacation — §9-10,
-      // jamais séparé), bucket par bucket (shift × label), jours du bucket
-      // traités dans l'ordre chronologique. Le pointeur de rotation n'est
-      // JAMAIS réinitialisé d'un bucket à l'autre (persiste sur tout le mois
-      // pour ce bloc) : même quand un conducteur est ignoré (déjà pourvu ce
-      // jour-là, adjacence, plafond) ou qu'un jour est sauté (plafond du
-      // jour atteint), l'ordre reprend exactement où il s'est arrêté au
-      // bucket suivant — c'est ce qui produit un motif "en escalier"
-      // cohérent sur l'ensemble du mois plutôt que juste à l'intérieur d'un
-      // seul petit groupe de jours (résolution insuffisante avec un simple
-      // décalage proportionnel recalculé indépendamment par petit bucket).
+      // Phase B : attribution des jours en ESCALIER, bloc de vacation par
+      // bloc de vacation (driver.initialVacation — §9-10, jamais séparé),
+      // bucket par bucket (shift). À l'intérieur d'un bucket, chaque
+      // conducteur du bloc vise une position CALENDAIRE FIXE, proportionnelle
+      // à son rang parmi les conducteurs de ce bloc qui ont encore besoin de
+      // ce bucket (cf. assignBucketRotation) — position stable qui ne se
+      // décale jamais à cause d'un autre conducteur, contrairement à une
+      // rotation à pointeur partagé qui avance même sur un conducteur ignoré.
+      // C'est ce qui produit l'escalier net et reproductible demandé par
+      // l'exploitant (chaque conducteur avance d'un cran par rapport au
+      // précédent, cf. modèle Excel fourni), au prix d'un contrôle un peu
+      // moins strict de l'écart de présence V1/V2 (cf. labelBiasByShift plus
+      // haut, devenu une préférence de répartition du QUOTA par shift plutôt
+      // qu'un quota par jour précis).
       // ------------------------------------------------------------------
       const blockDrivers = { V1: [], V2: [] };
       teamDrivers.forEach(driver => {
@@ -408,7 +429,6 @@ const RestDayEngine = {
           blockDrivers[driver.initialVacation].push(driver);
         }
       });
-      const rotationPointer = { V1: 0, V2: 0 };
 
       // Label (V1/V2) qu'affiche CE JOUR-LÀ un bloc de vacation FIXE donné,
       // indépendant du conducteur précis (VacationRotationEngine ne lit que
@@ -440,97 +460,79 @@ const RestDayEngine = {
       };
       const underGroupCapGeneric = (day, group) => groupUsageAt(day, group) < groupCapForDayGeneric(day, group);
 
-      // Attribue au plus UN conducteur par jour pour CE bucket précis (les
-      // autres buckets/blocs peuvent encore utiliser le même jour civil,
-      // dans la limite du plafond global de l'équipe) en parcourant `days`
-      // dans l'ordre chronologique, avec autant de "tours" que nécessaire si
-      // le besoin total du bloc sur ce bucket dépasse son nombre de jours.
-      // Le besoin non satisfait (plafonds trop serrés) est laissé dans
-      // needsByBucket pour le repli de Phase C.
+      // Attribue les jours de CE bucket en ESCALIER STRICT : les conducteurs
+      // du bloc qui ont encore besoin de ce bucket sont classés par RANG FIXE
+      // (ordre de l'équipe — driver.ordreAffichage / ordre de la liste), et
+      // chacun vise une position PROPORTIONNELLE à son rang dans `days`
+      // (conducteur 1/M -> début du bucket, conducteur M/M -> fin), espacée
+      // pour placer chacun de ses `bucketTarget` repos de ce bucket. Contrairement
+      // à une rotation qui avance même sur un conducteur ignoré, cette
+      // position est FIXE par conducteur : elle ne se décale jamais à cause
+      // d'un autre conducteur — c'est ce qui produit l'escalier net et stable
+      // demandé par l'exploitant (chaque conducteur avance d'un cran par
+      // rapport au précédent), tout en respectant plafonds/non-adjacence/
+      // jours fériés (le premier jour disponible à partir de la position
+      // visée est utilisé si elle est déjà prise).
       const assignBucketRotation = (block, bucketKey, days) => {
         const blockList = blockDrivers[block];
-        const M = blockList.length;
+        const needing = blockList.filter(dr => (driverState[dr.id].needsByBucket[bucketKey] || 0) > 0);
+        const M = needing.length;
         if (M === 0 || days.length === 0) return;
-        let remaining = blockList.reduce((n, dr) => n + (driverState[dr.id].needsByBucket[bucketKey] || 0), 0);
-        if (remaining <= 0) return;
-        let safety = (remaining + days.length) * M + 50;
-        let dayIdx = 0;
-        while (remaining > 0 && safety-- > 0) {
-          const day = days[dayIdx % days.length];
-          dayIdx++;
-          if ((dayUsage[day] || 0) >= maxPerDay) continue;
-          for (let a = 0; a < M; a++) {
-            const dr = blockList[rotationPointer[block] % M];
-            rotationPointer[block] = (rotationPointer[block] + 1) % M;
-            const st = driverState[dr.id];
-            const need = st.needsByBucket[bucketKey] || 0;
-            if (need <= 0) continue;
-            // `days` est une liste PARTAGÉE (shift × label, commune au bloc) qui ne
-            // tient pas compte des absences fixes/jours fériés propres à CE
-            // conducteur (congé, maladie, absence, affectation manuelle) — seul
-            // candidateSet (issu de getCandidatesForDriver) les exclut vraiment.
-            if (!st.candidateSet.has(day)) continue;
-            if (st.used.has(day) || st.used.has(day - 1) || st.used.has(day + 1)) continue;
-            if (!underGroupCapGeneric(day, block)) continue;
-            st.chosen.push(day);
-            st.used.add(day);
-            st.needsByBucket[bucketKey] = need - 1;
-            dayUsage[day] = (dayUsage[day] || 0) + 1;
-            bumpGroupUsage(day, block);
-            remaining--;
-            break;
+        needing.forEach((dr, idxInNeeding) => {
+          const st = driverState[dr.id];
+          const bucketTarget = st.needsByBucket[bucketKey];
+          if (bucketTarget <= 0) return;
+          const spacing = days.length / bucketTarget;
+          const offset = Math.floor((idxInNeeding / M) * days.length);
+          for (let k = 0; k < bucketTarget; k++) {
+            const basePos = Math.round(k * spacing);
+            let pos = (offset + basePos) % days.length;
+            let tries = 0;
+            let found = null;
+            while (tries < days.length) {
+              const day = days[pos];
+              // `days` est une liste PARTAGÉE (shift, commune au bloc) qui ne
+              // tient pas compte des absences fixes/jours fériés propres à CE
+              // conducteur (congé, maladie, absence, affectation manuelle) —
+              // seul candidateSet (issu de getCandidatesForDriver) les exclut
+              // vraiment.
+              if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1)
+                  && (dayUsage[day] || 0) < maxPerDay && underGroupCapGeneric(day, block)) { found = day; break; }
+              pos = (pos + 1) % days.length;
+              tries++;
+            }
+            if (found === null) {
+              // Repli : relâche uniquement le plafond du BLOC (jamais celui,
+              // partagé, de l'équipe, ni la non-adjacence).
+              pos = (offset + basePos) % days.length;
+              tries = 0;
+              while (tries < days.length) {
+                const day = days[pos];
+                if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
+                pos = (pos + 1) % days.length;
+                tries++;
+              }
+            }
+            if (found === null) continue; // laissé pour le repli de Phase C
+            st.chosen.push(found);
+            st.used.add(found);
+            dayUsage[found] = (dayUsage[found] || 0) + 1;
+            bumpGroupUsage(found, block);
+            st.needsByBucket[bucketKey]--;
           }
-        }
-      };
-
-      // Poids jour-de-semaine (dimanche, ou samedi si Shift 2 cette
-      // semaine-là — restDayWeightByDow / restDayWeightSaturdayShift2) :
-      // charge la plus faible, donc jour à privilégier pour un repos, tant
-      // que les plafonds jour/bloc le permettent.
-      const dowWeight = day => {
-        const dow = RTGDate.dowMon0(RTGDate.makeDate(year, month, day));
-        const weights = state.config.restDayWeightByDow || [1, 1, 1, 1, 1, 1, 1];
-        if (dow === 5 && dayShift[day] === "S2") {
-          return state.config.restDayWeightSaturdayShift2 || weights[5];
-        }
-        return weights[dow] || 1;
-      };
-
-      // Préférence de LABEL (V1/V2) d'un jour pour un bloc donné : le label à
-      // charge plus FAIBLE (restDayLabelBiasByShift) reçoit un poids plus
-      // élevé — même formule (1/pct^LABEL_BIAS_EXPONENT) qu'avant, mais
-      // utilisée maintenant comme préférence de tri (Phase B) plutôt que
-      // comme quota séparé par label (Phase A) : le jour reste choisi dans
-      // le même grand bucket "tout le shift" pour ce bloc, ce qui laisse
-      // largement plus de jours disponibles pour un placement bien ordonné,
-      // au prix d'un contrôle un peu moins strict de l'écart de présence
-      // V1/V2 (demande explicite de l'exploitant).
-      const labelWeightFactor = (day, block) => {
-        const ratio = labelBiasByShift[dayShift[day]];
-        if (!ratio || !(ratio.V1 > 0) || !(ratio.V2 > 0)) return 1;
-        const label = labelForBlock[block][day];
-        if (label !== "V1" && label !== "V2") return 1;
-        return 1 / Math.pow(ratio[label], LABEL_BIAS_EXPONENT);
-      };
-
-      const shiftDays = { S1: [], S2: [], S3: [] };
-      for (let d = 1; d <= dim; d++) { if (shiftDays[dayShift[d]]) shiftDays[dayShift[d]].push(d); }
-
-      // Pour chaque shift et chaque bloc, trie la liste des jours par poids
-      // combiné (jour-de-semaine × préférence de label pour CE bloc)
-      // décroissant, à chronologie égale : la rotation (assignBucketRotation
-      // ci-dessous) visite les jours d'un bucket dans CET ordre à chaque
-      // tour, donc les jours les plus favorables sont essayés EN PREMIER —
-      // sans perdre l'équité de la rotation entre conducteurs du même bloc.
-      ["S1", "S2", "S3"].forEach(s => {
-        ["V1", "V2"].forEach(block => {
-          const sorted = shiftDays[s].slice().sort((a, b) => {
-            const wa = dowWeight(a) * labelWeightFactor(a, block);
-            const wb = dowWeight(b) * labelWeightFactor(b, block);
-            return wb - wa || a - b;
-          });
-          assignBucketRotation(block, s + "_ANY", sorted);
         });
+      };
+
+      // Une occurrence de shift à la fois (ordre chronologique — shiftRuns
+      // est déjà construit dans cet ordre), avec ses jours en ordre
+      // CALENDAIRE (jamais triés par préférence) : l'escalier (position
+      // proportionnelle au rang, cf. assignBucketRotation ci-dessus) a
+      // besoin d'un ordre calendaire stable et d'un bucket dont tous les
+      // jours sont réellement consécutifs pour rester net — fusionner deux
+      // occurrences non consécutives d'un même shift (ancien découpage par
+      // TYPE de shift) cassait cette régularité.
+      shiftRuns.forEach((run, idx) => {
+        ["V1", "V2"].forEach(block => { assignBucketRotation(block, "occ" + idx, run.days); });
       });
 
       // ------------------------------------------------------------------
