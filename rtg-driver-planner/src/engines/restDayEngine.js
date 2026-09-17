@@ -126,86 +126,6 @@ const RestDayEngine = {
     return candidates;
   },
 
-  // Passage 1 : repos OBLIGATOIRE le dimanche sur les shifts 1 et 2 (le shift 3 est
-  // déjà OFF ce jour-là) pour ne jamais dépasser sundayVacationCap par vacation.
-  // La vacation de chaque conducteur disponible ce dimanche-là est celle de son
-  // bloc ce jour précis (VacationRotationEngine, bascule quotidienne du bloc entier,
-  // gelée dimanche→lundi — §9-10) ; les deux blocs V1 et V2 de ce dimanche-là sont
-  // donc traités séparément, chacun plafonné à sundayVacationCap.
-  //
-  // Rotation suivie PAR BLOC FIXE (driver.initialVacation, jamais par le label du
-  // jour qui alterne) — bug corrigé : un pointeur unique partagé, indexé sur la
-  // liste combinée des deux blocs et avancé du nombre de conducteurs CHOISIS à
-  // chaque passage, retombait systématiquement sur les 6 mêmes premiers
-  // conducteurs d'un bloc dès que sa taille (12) était un multiple exact du
-  // plafond (6) — signalé par l'exploitant (repos du dimanche/samedi "figés"
-  // sur les mêmes personnes). Le point de départ n'avance maintenant que d'UN
-  // SEUL cran par bloc/dimanche traité (conforme à l'intention déjà décrite
-  // ici), ce qui fait glisser la fenêtre de conducteurs choisis d'un dimanche
-  // à l'autre au lieu de la figer.
-  getMandatorySundayOff(team, month, year, state, teamDrivers, historyEnabled) {
-    const mandatory = {};
-    teamDrivers.forEach(d => { mandatory[d.id] = new Set(); });
-    if (!team) return mandatory;
-
-    const cap = state.config.sundayVacationCap || 6;
-    const dim = RTGDate.daysInMonth(month, year);
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const pointerByBlock = {};
-    ["V1", "V2"].forEach(blockKey => {
-      const prevKey = "sun_" + team.id + "_" + blockKey + "_" + prevYear + "_" + prevMonth;
-      pointerByBlock[blockKey] = (historyEnabled && typeof this._pointerCache[prevKey] === "number") ? this._pointerCache[prevKey] : 0;
-    });
-
-    for (let d = 1; d <= dim; d++) {
-      const date = RTGDate.makeDate(year, month, d);
-      if (!RTGDate.isSunday(date)) continue;
-      const iso = RTGDate.toISO(date);
-      if (HolidayEngine.getEffectiveHoliday(date, team, state.config)) continue;
-      const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-      if (shift !== "S1" && shift !== "S2") continue;
-
-      const available = teamDrivers.filter(dr => !AbsenceEngine.getFixedStatus(dr, iso, state) && !state.manualOverrides[iso + "_" + dr.id]);
-      const byVacation = { V1: [], V2: [] };
-      available.forEach(dr => {
-        const vac = VacationRotationEngine.getVacationForDate(dr, date, state);
-        if (vac === "V1" || vac === "V2") byVacation[vac].push(dr);
-      });
-
-      ["V1", "V2"].forEach(vac => {
-        const group = byVacation[vac];
-        const requiredOff = group.length - cap;
-        if (requiredOff <= 0) return;
-
-        const blockKey = (group[0] && (group[0].initialVacation === "V1" || group[0].initialVacation === "V2")) ? group[0].initialVacation : vac;
-        const blockList = teamDrivers.filter(dr => dr.initialVacation === blockKey);
-        const M = blockList.length || 1;
-        const groupIds = new Set(group.map(dr => dr.id));
-        const start = pointerByBlock[blockKey] || 0;
-        let chosen = 0;
-        let scanned = 0;
-        let idx = start;
-        while (chosen < requiredOff && scanned < M * 2) {
-          const candidate = blockList[idx % M];
-          if (groupIds.has(candidate.id)) {
-            mandatory[candidate.id].add(d);
-            chosen++;
-          }
-          idx++;
-          scanned++;
-        }
-        pointerByBlock[blockKey] = (start + 1) % M;
-      });
-    }
-
-    ["V1", "V2"].forEach(blockKey => {
-      this._pointerCache["sun_" + team.id + "_" + blockKey + "_" + year + "_" + month] = pointerByBlock[blockKey];
-    });
-
-    return mandatory;
-  },
-
   // Calcule les repos de TOUTE l'équipe en une passe, avec un plafond partagé du
   // nombre de conducteurs en repos le même jour civil.
   getTeamRestDays(team, month, year, state) {
@@ -256,7 +176,35 @@ const RestDayEngine = {
       V1: Math.max(2, Math.ceil(groupSizes.V1 * 0.3)),
       V2: Math.max(2, Math.ceil(groupSizes.V2 * 0.3))
     };
-    const capForGroup = group => (maxPerDayByGroup[group] !== undefined ? maxPerDayByGroup[group] : Math.max(2, Math.ceil(N * 0.3)));
+    // Le dimanche (shifts 1/2 — le shift 3 est déjà OFF ce jour-là) n'est plus
+    // soumis à un nombre FIGÉ de repos obligatoires (ancien getMandatorySundayOff,
+    // qui forçait exactement sundayVacationCap présents, quel que soit le quota
+    // mensuel restant) — retiré sur demande explicite de l'exploitant : le
+    // dimanche doit rester un jour candidat NORMAL, dont le nombre de repos
+    // dépend uniquement du quota mensuel disponible, pas d'une règle à part.
+    // Il reste seulement le jour le plus PROPICE au repos (déjà le poids le
+    // plus élevé de restDayWeightByDow), donc celui qui en accumule le plus
+    // via la répartition pondérée normale — le plafond du jour est juste
+    // relâché pour lui (au lieu du plafond restreint ~30% des autres jours)
+    // pour ne pas artificiellement brider ce qu'il peut recevoir, sans jamais
+    // l'imposer : le nombre réel varie selon le quota (l'exploitant observe
+    // généralement 4 à 7 selon les mois, jamais un chiffre fixe).
+    const sundayCeilingByGroup = {
+      V1: Math.max(maxPerDayByGroup.V1, groupSizes.V1 - (state.config.sundayVacationCap || 6)),
+      V2: Math.max(maxPerDayByGroup.V2, groupSizes.V2 - (state.config.sundayVacationCap || 6))
+    };
+    const isSundayS1S2Day = d => {
+      if (!team || d < 1 || d > dim) return false;
+      const date = RTGDate.makeDate(year, month, d);
+      if (!RTGDate.isSunday(date)) return false;
+      const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
+      return shift === "S1" || shift === "S2";
+    };
+    const capForGroup = (group, day) => {
+      const base = maxPerDayByGroup[group] !== undefined ? maxPerDayByGroup[group] : Math.max(2, Math.ceil(N * 0.3));
+      if (day != null && isSundayS1S2Day(day) && sundayCeilingByGroup[group] !== undefined) return sundayCeilingByGroup[group];
+      return base;
+    };
     const dayUsage = { V1: {}, V2: {} }; // { [group]: { [day]: n } } — jamais partagé entre V1 et V2
     const usageAt = (group, day) => (dayUsage[group] && dayUsage[group][day]) || 0;
     const bumpUsage = (group, day) => {
@@ -265,18 +213,15 @@ const RestDayEngine = {
     };
 
     // Mois précédent + interrupteur d'historique (config.reposReferenceDate) :
-    // calculés ICI (avant le passage 1) car la rotation du repos dominical
-    // obligatoire (getMandatorySundayOff) a, elle aussi, besoin de savoir si
-    // elle peut hériter du pointeur de rotation du mois précédent — sinon
-    // octobre 2026 (mois de départ choisi par l'exploitant) recommencerait
-    // sa rotation à zéro tout en la reprenant quand même par la suite,
-    // incohérent avec le choix déjà fait pour Phase B plus bas.
+    // calculé ICI (avant Phase A) car Phase B (pointeur de l'escalier continu)
+    // a besoin de savoir si elle peut hériter du pointeur de rotation du mois
+    // précédent — sinon octobre 2026 (mois de départ choisi par l'exploitant)
+    // recommencerait sa rotation à zéro tout en la reprenant quand même par la
+    // suite, incohérent avec le choix déjà fait pour Phase B plus bas.
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
     const prevMonthLastDay = RTGDate.daysInMonth(prevMonth, prevYear);
     const historyEnabled = !!team && RTGDate.parseISO(state.config.reposReferenceDate || state.config.rotationReferenceDate).getTime() < RTGDate.makeDate(prevYear, prevMonth, prevMonthLastDay).getTime();
-
-    const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers, historyEnabled);
 
     // Jours où un conducteur a déjà un REPOS forcé par une affectation manuelle
     // (case par case ou import Excel du planning réel) : à traiter exactement
@@ -297,17 +242,16 @@ const RestDayEngine = {
       manualRestByDriver[driver.id] = set;
     });
 
-    // Comptabilise TOUTES les affectations obligatoires (dimanche + manuelles)
-    // de l'équipe dans dayUsage avant de traiter le moindre conducteur : sans
-    // ça, les premiers conducteurs de la boucle voient le compteur encore à
-    // zéro pour un jour dont le repos obligatoire/manuel n'a été enregistré
-    // que pour des conducteurs plus loin dans la liste, et peuvent alors
-    // choisir ce même jour par préférence, faisant largement dépasser le
-    // plafond une fois tout le monde traité.
+    // Comptabilise TOUTES les affectations manuelles de l'équipe dans dayUsage
+    // avant de traiter le moindre conducteur : sans ça, les premiers
+    // conducteurs de la boucle voient le compteur encore à zéro pour un jour
+    // dont le repos manuel n'a été enregistré que pour des conducteurs plus
+    // loin dans la liste, et peuvent alors choisir ce même jour par
+    // préférence, faisant largement dépasser le plafond une fois tout le
+    // monde traité.
     teamDrivers.forEach(driver => {
       const group = driver.initialVacation;
-      const fixedDays = new Set([...(mandatorySundayOff[driver.id] || []), ...manualRestByDriver[driver.id]]);
-      fixedDays.forEach(d => { bumpUsage(group, d); });
+      manualRestByDriver[driver.id].forEach(d => { bumpUsage(group, d); });
     });
 
     // Repos du DERNIER jour du mois précédent, par conducteur : deux mois sont
@@ -477,10 +421,9 @@ const RestDayEngine = {
       const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
       const quota = Math.max(0, state.config.reposMensuel - reduction);
 
-      const fixedDays = new Set([...(mandatorySundayOff[driver.id] || []), ...manualRestByDriver[driver.id]]);
       const chosen = [];
       const used = new Set();
-      fixedDays.forEach(d => { chosen.push(d); used.add(d); });
+      manualRestByDriver[driver.id].forEach(d => { chosen.push(d); used.add(d); });
       // Jour 0 virtuel : bloque le jour 1 par adjacence si le conducteur était
       // déjà en repos le dernier jour du mois précédent.
       if (prevMonthRestByDriver[driver.id]) used.add(0);
@@ -634,7 +577,7 @@ const RestDayEngine = {
           // redirigée vers les autres jours de l'occurrence), forçant le
           // reliquat à partir en rattrapage sur un jour quelconque et à
           // casser l'ordre de la rotation continue.
-          const openDays = run.days.filter(d => usageAt(block, d) < capForGroup(block));
+          const openDays = run.days.filter(d => usageAt(block, d) < capForGroup(block, d));
           const dayShares = splitDemandAcrossDays(totalDemand, openDays.length > 0 ? openDays : run.days, d => dayWeightForBlock(block, d));
 
           // Éligibilité basée sur le quota TOTAL restant du conducteur
@@ -654,7 +597,7 @@ const RestDayEngine = {
           // doit produire, seule la question de QUI les reçoit change.
           let placed = 0;
           run.days.forEach(day => {
-            let capLeft = Math.min(dayShares[day] || 0, Math.max(0, capForGroup(block) - usageAt(block, day)));
+            let capLeft = Math.min(dayShares[day] || 0, Math.max(0, capForGroup(block, day) - usageAt(block, day)));
             let tries = 0;
             while (capLeft > 0 && tries < M) {
               const dr = blockList[pointer];
@@ -692,7 +635,7 @@ const RestDayEngine = {
             attempts++;
             const st = driverState[dr.id];
             if (st.remainingQuota <= 0) continue;
-            const eligibleDays = run.days.filter(d => st.candidateSet.has(d) && !st.used.has(d) && !blockedByAdjacency(st.used, d) && usageAt(block, d) < capForGroup(block));
+            const eligibleDays = run.days.filter(d => st.candidateSet.has(d) && !st.used.has(d) && !blockedByAdjacency(st.used, d) && usageAt(block, d) < capForGroup(block, d));
             if (eligibleDays.length === 0) continue;
             const day = eligibleDays.reduce((best, d) => usageAt(block, d) < usageAt(block, best) ? d : best);
             st.chosen.push(day);
@@ -731,7 +674,7 @@ const RestDayEngine = {
         for (const day of candidates) {
           if (need <= 0) break;
           if (blockedByAdjacency(st.used, day)) continue;
-          if (usageAt(group, day) >= capForGroup(group)) continue;
+          if (usageAt(group, day) >= capForGroup(group, day)) continue;
           place(day);
         }
         if (need > 0) {
@@ -739,7 +682,7 @@ const RestDayEngine = {
             if (need <= 0) break;
             if (st.used.has(day)) continue;
             if (blockedByAdjacency(st.used, day)) continue;
-            if (usageAt(group, day) >= capForGroup(group)) continue;
+            if (usageAt(group, day) >= capForGroup(group, day)) continue;
             place(day);
           }
         }
@@ -747,7 +690,7 @@ const RestDayEngine = {
           for (const day of candidates) {
             if (need <= 0) break;
             if (st.used.has(day)) continue;
-            if (usageAt(group, day) >= capForGroup(group)) continue;
+            if (usageAt(group, day) >= capForGroup(group, day)) continue;
             place(day);
           }
         }
