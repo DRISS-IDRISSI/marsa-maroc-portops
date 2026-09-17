@@ -78,6 +78,16 @@ const RTG_CONFIG = {
   // Date à partir de laquelle les rotations de zone/vacation sont calculées ;
   // driver.initialZone / driver.initialVacation s'appliquent exactement à cette date.
   rotationReferenceDate: "2026-08-01",
+  // Mois de DÉPART des repos mensuels — demande explicite de l'exploitant :
+  // les contraintes calculées sur septembre 2026 (mois avant ce point de
+  // départ, notamment le repos du dernier jour du mois qui bloquait par
+  // adjacence le 1er jour du mois suivant) ne doivent plus influencer
+  // octobre 2026 ni les mois suivants. Le moteur des repos (restDayEngine)
+  // ne regarde jamais en arrière avant cette date — octobre 2026 démarre
+  // donc sans aucune restriction héritée. Séparé de rotationReferenceDate
+  // (zone/vacation, ne doit pas changer) car ce n'est qu'une demande sur les
+  // REPOS.
+  reposReferenceDate: "2026-10-01",
   // Jours fériés marocains — affichage uniquement (aucun impact sur les repos ou
   // les affectations). Les dates religieuses (Aïd, Moharram, Mawlid) sont
   // approximatives : elles dépendent de l'observation du croissant lunaire et

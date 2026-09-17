@@ -278,12 +278,19 @@ const RestDayEngine = {
     // repos consécutifs à cheval sur la frontière des mois. Ne regarde qu'en
     // arrière (jamais le mois suivant) pour ne jamais créer de dépendance
     // circulaire entre deux mois calculés l'un après l'autre.
+    //
+    // config.reposReferenceDate (mois de DÉPART des repos, distinct de
+    // rotationReferenceDate qui reste dédié au zone/vacation) : aucun mois
+    // AVANT cette date n'est jamais regardé en arrière — demande explicite de
+    // l'exploitant après avoir constaté que des contraintes calculées sur un
+    // mois antérieur (dont il ne veut plus tenir compte) bloquaient par
+    // adjacence certains repos du mois de départ.
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
     const prevMonthLastDay = RTGDate.daysInMonth(prevMonth, prevYear);
     const prevMonthRestByDriver = {};
     if (team) {
-      const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+      const refDate = RTGDate.parseISO(state.config.reposReferenceDate || state.config.rotationReferenceDate);
       if (refDate.getTime() < RTGDate.makeDate(prevYear, prevMonth, prevMonthLastDay).getTime()) {
         teamDrivers.forEach(driver => {
           const prevDays = this.getRestDaysForMonth(driver, prevMonth, prevYear, state, state.teams);
