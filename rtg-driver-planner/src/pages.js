@@ -715,6 +715,20 @@ const RTG_STATUS_META = {
   FERIE: { code: "FÉR", label: "Jour férié (chômé)", className: "bg-indigo-500/25 text-indigo-300 border-indigo-500/40" }
 };
 
+// Couleurs pastel (imprimables — consommation d'encre raisonnable) pour le
+// rapport Planning mensuel papier/PDF, reprenant l'esprit des couleurs déjà
+// utilisées à l'écran (RTG_STATUS_META) pour chaque statut. PRESENT n'a pas
+// de couleur : la case reste vierge (volontairement, cf. VacationGroupTablePrintable).
+const PRINT_STATUS_BG = {
+  REPOS: "#fecdd3",
+  CONGE: "#fed7aa",
+  MALADIE: "#e9d5ff",
+  ABSENCE: "#fecaca",
+  FORMATION: "#bfdbfe",
+  OFF: "#e2e8f0",
+  FERIE: "#c7d2fe"
+};
+
 // Styles pour les rapports imprimables ("papier" clair, indépendant du thème
 // sombre de l'appli) — même convention que le Rapport RH (pages2.js).
 const PRINT_TH = "px-2 py-1.5 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
@@ -1381,7 +1395,7 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
               <th className={PRINT_TH_XS}>Prénom</th>
               {planning.days.map(day => {
                 const holiday = HolidayEngine.getHoliday(day.iso, config);
-                return <th key={day.iso} className={PRINT_TH_XS + " text-center"} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}</th>;
+                return <th key={day.iso} className={PRINT_TH_XS + " text-center"} style={holiday ? { backgroundColor: PRINT_STATUS_BG.FERIE } : undefined} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}</th>;
               })}
             </tr>
           </thead>
@@ -1393,8 +1407,10 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
                 <td className={PRINT_TD_XS}>{driver.prenom}</td>
                 {planning.days.map(day => {
                   const a = day.assignments.find(x => x.driverId === driver.id);
-                  const code = a && a.status !== "PRESENT" ? ((RTG_STATUS_META[a.status] || {}).code || a.status) : "";
-                  return <td key={day.iso} className={PRINT_TD_XS_CENTER}>{code}</td>;
+                  const isPresent = !a || a.status === "PRESENT";
+                  const code = isPresent ? "" : ((RTG_STATUS_META[a.status] || {}).code || a.status);
+                  const bg = isPresent ? undefined : PRINT_STATUS_BG[a.status];
+                  return <td key={day.iso} className={PRINT_TD_XS_CENTER} style={bg ? { backgroundColor: bg } : undefined}>{code}</td>;
                 })}
               </tr>
             ))}
@@ -1415,13 +1431,14 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
   );
 }
 
-// Version imprimable (noir sur blanc, sans couleurs pour économiser l'encre) du
-// planning mensuel — visible uniquement à l'impression / export PDF. Format
-// compact repris du modèle Excel réel de l'exploitant : conducteurs séparés
-// par vacation (V1/V2) avec ligne "Nombre de présent" par jour, AUCUN détail
-// d'affectation (shift/vacation/zone) — seuls repos, congés, maladies,
-// absences, formations et OFF/férié sont indiqués, tout le reste (présent)
-// reste vierge — pour tenir sur une seule page malgré un mois complet.
+// Version imprimable du planning mensuel — visible uniquement à
+// l'impression / export PDF. Format compact repris du modèle Excel réel de
+// l'exploitant : conducteurs séparés par vacation (V1/V2) avec ligne
+// "Nombre de présent" par jour, AUCUN détail d'affectation (shift/vacation/
+// zone) — seuls repos, congés, maladies, absences, formations et OFF/férié
+// sont indiqués (avec une couleur pastel par statut, reprise de l'écran),
+// tout le reste (présent) reste vierge — pour tenir sur une seule page
+// malgré un mois complet.
 function PlanningGridPrintable({ planning, drivers, config, teams }) {
   const teamIds = teams.filter(t => drivers.some(d => d.teamId === t.id)).map(t => t.id);
   return (
@@ -1440,7 +1457,12 @@ function PlanningGridPrintable({ planning, drivers, config, teams }) {
         );
       })}
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[7px] text-slate-600">
-        {Object.entries(RTG_STATUS_META).filter(([key]) => key !== "PRESENT").map(([key, meta]) => <span key={key}>{meta.code} = {meta.label}</span>)}
+        {Object.entries(RTG_STATUS_META).filter(([key]) => key !== "PRESENT").map(([key, meta]) => (
+          <span key={key} className="inline-flex items-center gap-1">
+            <span className="inline-block w-2 h-2 border border-slate-400" style={{ backgroundColor: PRINT_STATUS_BG[key] }}></span>
+            {meta.code} = {meta.label}
+          </span>
+        ))}
       </div>
     </div>
   );
