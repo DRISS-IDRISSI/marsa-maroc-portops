@@ -81,6 +81,17 @@ const RTG_CONFIG = {
   // (adjacence, peu de quota restant en fin de mois), rester en dessous.
   restDayMinSaturday: 4,
   restDayMinSunday: 5,
+  // Fourchette de présents ATTENDUE sur le Shift 3, par bloc de vacation
+  // (demande explicite de l'exploitant, valeurs observées sur un bloc de 12
+  // conducteurs) : le nombre de repos ce jour-là est contraint pour que le
+  // nombre de présents reste dans cette fourchette (min/max), jamais un
+  // chiffre imposé au-delà de ce que le quota restant/l'adjacence permet.
+  // V1 est plus sollicité que V2 sur le Shift 3 (restDayLabelBiasByShift.S3 :
+  // 18% contre 12%), d'où une fourchette de présents plus haute pour V1.
+  restDayShift3Present: {
+    V1: { min: 8, max: 9 },
+    V2: { min: 5, max: 7 }
+  },
   offShift3Dimanche: true,
   exceptionDimancheLundi: true,
   shiftRotationCycleDefault: ["S1", "S3", "S2"],
