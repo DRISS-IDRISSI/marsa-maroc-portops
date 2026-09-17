@@ -182,34 +182,36 @@ const RestDayEngine = {
 
     const teamDrivers = state.drivers.filter(dr => dr.teamId === (team ? team.id : null) && dr.actif !== false);
     const N = teamDrivers.length || 1;
-    // Plafond de conducteurs en repos le même jour : suffisamment large pour laisser
-    // jouer la préférence des jours à faible charge, assez bas pour ne jamais vider
-    // une part significative de l'équipe le même jour.
-    const maxPerDay = Math.max(2, Math.ceil(N * 0.3));
     const dim = RTGDate.daysInMonth(month, year);
-    const dayUsage = {};
     const results = {};
 
     // Taille de chaque bloc de vacation FIXE de l'équipe (driver.initialVacation —
-    // ne bouge jamais, cf. en-tête du fichier), pour plafonner les repos du même
-    // jour dans chaque bloc proportionnellement à sa taille.
+    // ne bouge jamais, cf. en-tête du fichier). Le modèle de référence fourni par
+    // l'exploitant (deux blocs de 12) montre que chaque bloc doit produire son
+    // PROPRE escalier de façon complètement INDÉPENDANTE de l'autre : dans ce
+    // modèle, les deux blocs sont des copies exactes l'un de l'autre, jour pour
+    // jour, preuve qu'ils ne se disputent PAS une même ressource commune. Le
+    // plafond de conducteurs en repos le même jour est donc calculé ET SUIVI
+    // PAR BLOC (jamais partagé entre V1 et V2, ni fusionné dans un compteur
+    // d'équipe) : un plafond partagé faisait échouer artificiellement le second
+    // bloc traité sur des jours déjà à moitié remplis par le premier, sans
+    // réelle raison de capacité — repos renvoyés en repli (Phase C) ailleurs
+    // dans le mois alors que ce bloc, livré à lui-même, aurait très bien pu
+    // placer ce repos ce jour-là.
     const groupSizes = { V1: 0, V2: 0 };
     teamDrivers.forEach(dr => {
       if (dr.initialVacation === "V1" || dr.initialVacation === "V2") groupSizes[dr.initialVacation]++;
     });
-    const maxPerDayGroup = {
-      V1: Math.max(1, Math.ceil(maxPerDay * groupSizes.V1 / N)),
-      V2: Math.max(1, Math.ceil(maxPerDay * groupSizes.V2 / N))
+    const maxPerDayByGroup = {
+      V1: Math.max(2, Math.ceil(groupSizes.V1 * 0.3)),
+      V2: Math.max(2, Math.ceil(groupSizes.V2 * 0.3))
     };
-    const groupDayUsage = {}; // { [day]: { V1: n, V2: n } }
-    const bumpGroupUsage = (day, group) => {
-      if (group !== "V1" && group !== "V2") return;
-      const g = (groupDayUsage[day] = groupDayUsage[day] || { V1: 0, V2: 0 });
-      g[group]++;
-    };
-    const groupUsageAt = (day, group) => {
-      const g = groupDayUsage[day];
-      return g ? g[group] || 0 : 0;
+    const capForGroup = group => (maxPerDayByGroup[group] !== undefined ? maxPerDayByGroup[group] : Math.max(2, Math.ceil(N * 0.3)));
+    const dayUsage = { V1: {}, V2: {} }; // { [group]: { [day]: n } } — jamais partagé entre V1 et V2
+    const usageAt = (group, day) => (dayUsage[group] && dayUsage[group][day]) || 0;
+    const bumpUsage = (group, day) => {
+      if (!dayUsage[group]) return;
+      dayUsage[group][day] = (dayUsage[group][day] || 0) + 1;
     };
 
     const mandatorySundayOff = this.getMandatorySundayOff(team, month, year, state, teamDrivers);
@@ -241,11 +243,9 @@ const RestDayEngine = {
     // choisir ce même jour par préférence, faisant largement dépasser le
     // plafond une fois tout le monde traité.
     teamDrivers.forEach(driver => {
+      const group = driver.initialVacation;
       const fixedDays = new Set([...(mandatorySundayOff[driver.id] || []), ...manualRestByDriver[driver.id]]);
-      fixedDays.forEach(d => {
-        dayUsage[d] = (dayUsage[d] || 0) + 1;
-        bumpGroupUsage(d, driver.initialVacation);
-      });
+      fixedDays.forEach(d => { bumpUsage(group, d); });
     });
 
     // Repos du DERNIER jour du mois précédent, par conducteur : deux mois sont
@@ -337,6 +337,45 @@ const RestDayEngine = {
         leftover--;
         remainders.splice(remainders.indexOf(r), 1);
         remainders.push(r);
+      }
+      return shares;
+    };
+
+    // Répartit `total` entre des JOURS individuels (pas des groupes de jours),
+    // par poids (méthode du plus grand reste), SANS plafond artificiel par
+    // jour — un jour peut recevoir plusieurs unités. Sert à répartir la
+    // demande totale d'une occurrence de shift sur ses propres jours,
+    // biaisée par le label V1/V2 que le bloc affiche ce jour-là
+    // (restDayLabelBiasByShift) : trouvé en comparant précisément au modèle
+    // Excel fourni par l'exploitant — le jour où le bloc affiche le label à
+    // charge plus faible reçoit mécaniquement plus de repos que le jour où
+    // il affiche l'autre label, ce qui explique l'asymétrie observée entre
+    // jours consécutifs d'une même occurrence (jamais un simple partage à
+    // parts égales).
+    const splitDemandAcrossDays = (total, days, weightForDay) => {
+      const weights = days.map(weightForDay);
+      const totalWeight = weights.reduce((a, b) => a + b, 0);
+      const shares = {};
+      if (totalWeight <= 0 || total <= 0) {
+        days.forEach(d => { shares[d] = 0; });
+        return shares;
+      }
+      const base = Math.floor(total / days.length);
+      let allocated = 0;
+      const remainders = [];
+      days.forEach((d, i) => {
+        shares[d] = base;
+        allocated += base;
+        const raw = total * weights[i] / totalWeight;
+        remainders.push({ day: d, rem: raw - base });
+      });
+      let leftover = total - allocated;
+      remainders.sort((a, b) => b.rem - a.rem);
+      let idx = 0;
+      while (leftover > 0 && remainders.length > 0) {
+        shares[remainders[idx % remainders.length].day]++;
+        leftover--;
+        idx++;
       }
       return shares;
     };
@@ -450,151 +489,89 @@ const RestDayEngine = {
         }
       });
 
-      // Plafond quotidien de repos pour un BLOC donné, identique à avant
-      // (biaisé par restDayLabelBiasByShift quand applicable, sinon
-      // proportionnel à la taille du bloc) mais paramétré par bloc plutôt
-      // que fermé sur un conducteur précis.
-      const groupCapForDayGeneric = (day, group) => {
+      // Poids d'UN JOUR pour UN bloc donné : biaisé par restDayLabelBiasByShift
+      // selon le label (V1/V2) que CE bloc affiche ce jour-là (1 par défaut,
+      // sans biais). Utilisé pour répartir la demande d'une occurrence sur ses
+      // propres jours (splitDemandAcrossDays) — trouvé en comparant précisément
+      // au modèle Excel fourni : le jour où le bloc affiche le label à charge
+      // plus faible reçoit mécaniquement plus de repos que l'autre.
+      const dayWeightForBlock = (block, day) => {
         const shift = dayShift[day];
         const ratio = shift && labelBiasByShift[shift];
         if (ratio && ratio.V1 > 0 && ratio.V2 > 0) {
-          const label = labelForBlock[group] && labelForBlock[group][day];
-          if (label === "V1" || label === "V2") {
-            const w = { V1: 1 / Math.pow(ratio.V1, LABEL_BIAS_EXPONENT), V2: 1 / Math.pow(ratio.V2, LABEL_BIAS_EXPONENT) };
-            const share = w[label] / (w.V1 + w.V2);
-            return Math.max(1, Math.ceil(maxPerDay * share));
-          }
+          const label = labelForBlock[block] && labelForBlock[block][day];
+          if (label === "V1" || label === "V2") return 1 / Math.pow(ratio[label], LABEL_BIAS_EXPONENT);
         }
-        return maxPerDayGroup[group] !== undefined ? maxPerDayGroup[group] : maxPerDay;
-      };
-      const underGroupCapGeneric = (day, group) => groupUsageAt(day, group) < groupCapForDayGeneric(day, group);
-
-      // Calcule les POSITIONS VISÉES (escalier) pour un bloc sur CE bucket, sans
-      // encore rien placer : les conducteurs du bloc qui ont encore besoin de ce
-      // bucket sont classés par RANG FIXE (ordre de l'équipe), et chacun vise une
-      // position PROPORTIONNELLE à son rang dans `days` (conducteur 1/M -> début
-      // du bucket, conducteur M/M -> fin), espacée pour placer chacun de ses
-      // `bucketTarget` repos de ce bucket — c'est ce qui produit l'escalier net et
-      // stable demandé par l'exploitant (chaque conducteur avance d'un cran par
-      // rapport au précédent). Séparé du PLACEMENT réel (placeAttempt ci-dessous)
-      // pour pouvoir ENTRELACER les tentatives des deux blocs V1/V2 (cf. plus bas) :
-      // calculer, puis placer bloc par bloc en entier privilégiait toujours le même
-      // bloc sur le plafond quotidien partagé de l'équipe.
-      const computeBlockAttempts = (block, bucketKey, days) => {
-        const blockList = blockDrivers[block];
-        const needing = blockList.filter(dr => (driverState[dr.id].needsByBucket[bucketKey] || 0) > 0);
-        const M = needing.length;
-        const attempts = [];
-        if (M === 0 || days.length === 0) return attempts;
-        needing.forEach((dr, idxInNeeding) => {
-          const bucketTarget = driverState[dr.id].needsByBucket[bucketKey];
-          if (bucketTarget <= 0) return;
-          const spacing = days.length / bucketTarget;
-          const offset = Math.floor((idxInNeeding / M) * days.length);
-          for (let k = 0; k < bucketTarget; k++) {
-            const basePos = Math.round(k * spacing);
-            attempts.push({ driver: dr, block: block, pos: (offset + basePos) % days.length });
-          }
-        });
-        return attempts;
+        return 1;
       };
 
-      // Place une tentative (jour visé) en partant de sa position, avec le même
-      // repli en deux paliers qu'avant (plafond du bloc, puis plafond de l'équipe
-      // seul — jamais l'adjacence ni le plafond partagé de l'équipe).
-      const placeAttempt = (attempt, days, bucketKey) => {
-        const st = driverState[attempt.driver.id];
-        if ((st.needsByBucket[bucketKey] || 0) <= 0) return; // déjà satisfait entre-temps
-        let pos = attempt.pos, tries = 0, found = null;
-        while (tries < days.length) {
-          const day = days[pos];
-          // `days` est une liste PARTAGÉE (shift, commune au bloc) qui ne tient pas
-          // compte des absences fixes/jours fériés propres à CE conducteur (congé,
-          // maladie, absence, affectation manuelle) — seul candidateSet (issu de
-          // getCandidatesForDriver) les exclut vraiment.
-          if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1)
-              && (dayUsage[day] || 0) < maxPerDay && underGroupCapGeneric(day, attempt.block)) { found = day; break; }
-          pos = (pos + 1) % days.length;
-          tries++;
-        }
-        if (found === null) {
-          // Repli : relâche uniquement le plafond du BLOC (jamais celui, partagé,
-          // de l'équipe, ni la non-adjacence).
-          pos = attempt.pos;
-          tries = 0;
-          while (tries < days.length) {
-            const day = days[pos];
-            if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
-            pos = (pos + 1) % days.length;
-            tries++;
-          }
-        }
-        if (found === null) return; // laissé pour le rattrapage local / Phase C
-        st.chosen.push(found);
-        st.used.add(found);
-        dayUsage[found] = (dayUsage[found] || 0) + 1;
-        bumpGroupUsage(found, attempt.block);
-        st.needsByBucket[bucketKey]--;
-      };
-
-      // Une occurrence de shift à la fois (ordre chronologique — shiftRuns
-      // est déjà construit dans cet ordre), avec ses jours en ordre
-      // CALENDAIRE (jamais triés par préférence) : l'escalier (position
-      // proportionnelle au rang, cf. computeBlockAttempts ci-dessus) a besoin
-      // d'un ordre calendaire stable et d'un bucket dont tous les jours sont
-      // réellement consécutifs pour rester net — fusionner deux occurrences
-      // non consécutives d'un même shift (ancien découpage par TYPE de shift)
-      // cassait cette régularité.
-      //
-      // Les tentatives des DEUX blocs sont ENTRELACÉES (V1, V2, V1, V2, ...)
-      // au lieu de traiter un bloc entièrement avant l'autre : les deux blocs
-      // partagent le même plafond quotidien d'équipe (dayUsage/maxPerDay) sur
-      // les jours de cette occurrence — traiter V1 en entier d'abord lui
-      // laissait toujours la meilleure place sur ce plafond partagé, et un
-      // dimanche à l'intérieur de l'occurrence (repos obligatoire, cf.
-      // getMandatorySundayOff) qui en consomme déjà une grande partie
-      // aggravait ce déséquilibre : V2 arrivait ensuite sur des jours déjà
-      // à moitié pleins et échouait plus souvent, ses repos partant alors en
-      // repli sur tout le mois (Phase C) au lieu de rester dans le bloc —
-      // cassant l'escalier de CE bloc sans raison réelle de capacité.
-      // Entrelacer les deux blocs leur fait disputer la place à parts égales,
-      // jour par jour, en temps réel.
+      // Attribution en escalier "MOINS SERVI D'ABORD" : trouvé en comparant
+      // précisément au modèle Excel fourni par l'exploitant (correspondance
+      // exacte, conducteur par conducteur, sur les deux dimanches à plafond
+      // renforcé du mois test) — ni une position calendaire figée par rang, ni
+      // une rotation à pointeur, mais un choix glouton jour par jour : pour
+      // chaque jour de l'occurrence (dans l'ordre chronologique), le nombre de
+      // repos dû ce jour-là (splitDemandAcrossDays) est attribué aux
+      // conducteurs du bloc qui ont ENCORE besoin de ce bucket, triés par
+      // NOMBRE TOTAL DE REPOS DÉJÀ PLACÉS ce mois-ci (le moins servi d'abord),
+      // égalité départagée par rang fixe (ordre de l'équipe). Comme ce total
+      // inclut les repos déjà placés dans les occurrences PRÉCÉDENTES (et le
+      // repos obligatoire du dimanche, déjà comptabilisé dans `chosen` avant
+      // Phase B), un conducteur qui a eu un repos bonus plus tôt dans le mois
+      // devient mécaniquement moins prioritaire pour les suivants — c'est ce
+      // qui produit l'escalier ET explique pourquoi le repos bonus du dimanche
+      // revient toujours aux conducteurs les moins servis à cet instant du
+      // mois plutôt qu'à un sous-ensemble fixe.
       shiftRuns.forEach((run, idx) => {
         const bucketKey = "occ" + idx;
-        const attemptsV1 = computeBlockAttempts("V1", bucketKey, run.days);
-        const attemptsV2 = computeBlockAttempts("V2", bucketKey, run.days);
-        const maxLen = Math.max(attemptsV1.length, attemptsV2.length);
-        for (let i = 0; i < maxLen; i++) {
-          if (attemptsV1[i]) placeAttempt(attemptsV1[i], run.days, bucketKey);
-          if (attemptsV2[i]) placeAttempt(attemptsV2[i], run.days, bucketKey);
-        }
+        ["V1", "V2"].forEach(block => {
+          const blockList = blockDrivers[block];
+          const needing = blockList.filter(dr => (driverState[dr.id].needsByBucket[bucketKey] || 0) > 0);
+          if (needing.length === 0) return;
+          const totalDemand = needing.reduce((sum, dr) => sum + driverState[dr.id].needsByBucket[bucketKey], 0);
+          const dayShares = splitDemandAcrossDays(totalDemand, run.days, d => dayWeightForBlock(block, d));
 
-        // Rattrapage LOCAL (même occurrence) : même avec l'entrelacement
-        // ci-dessus, une position figée par rang peut encore, dans de rares
-        // cas, échouer sur un jour saturé pendant qu'un autre jour de LA
-        // MÊME occurrence a encore de la marge inutilisée (ex. non-adjacence
-        // qui exclut ponctuellement une position). Sans ce rattrapage, ce
-        // besoin non satisfait partait directement en Phase C (recherche sur
-        // tout le mois). Ici, on utilise la marge RÉELLEMENT restante avant
-        // de laisser la main à Phase C — qui reste nécessaire quand la
-        // contrainte est réelle (ex. non-adjacence avec le repos obligatoire
-        // du dimanche).
-        teamDrivers.forEach(driver => {
-          const st = driverState[driver.id];
-          let need = st.needsByBucket[bucketKey] || 0;
-          if (need <= 0) return;
-          const group = driver.initialVacation;
-          for (const day of run.days) {
-            if (need <= 0) break;
-            if (!st.candidateSet.has(day) || st.used.has(day) || st.used.has(day - 1) || st.used.has(day + 1)) continue;
-            if ((dayUsage[day] || 0) >= maxPerDay) continue;
-            st.chosen.push(day);
-            st.used.add(day);
-            dayUsage[day] = (dayUsage[day] || 0) + 1;
-            bumpGroupUsage(day, group);
-            need--;
-          }
-          st.needsByBucket[bucketKey] = need;
+          run.days.forEach(day => {
+            let capLeft = dayShares[day] || 0;
+            while (capLeft > 0) {
+              const eligible = needing.filter(dr => {
+                const st = driverState[dr.id];
+                return (st.needsByBucket[bucketKey] || 0) > 0 && st.candidateSet.has(day)
+                  && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1);
+              });
+              if (eligible.length === 0) break;
+              eligible.sort((a, b) => {
+                const diff = driverState[a.id].chosen.length - driverState[b.id].chosen.length;
+                return diff !== 0 ? diff : blockList.indexOf(a) - blockList.indexOf(b);
+              });
+              const dr = eligible[0];
+              const st = driverState[dr.id];
+              st.chosen.push(day);
+              st.used.add(day);
+              bumpUsage(block, day);
+              st.needsByBucket[bucketKey]--;
+              capLeft--;
+            }
+          });
+
+          // Rattrapage LOCAL (même occurrence, même bloc) : la demande du jour
+          // (dayShares) peut, dans de rares cas, ne pas trouver assez de
+          // conducteurs ÉLIGIBLES ce jour précis (adjacence) alors qu'un autre
+          // jour de LA MÊME occurrence a encore de la marge. Sans ce
+          // rattrapage, ce besoin non satisfait partait directement en Phase C
+          // (recherche sur tout le mois) — cassant l'escalier de cette
+          // occurrence sans raison réelle de capacité.
+          needing.forEach(dr => {
+            const st = driverState[dr.id];
+            while ((st.needsByBucket[bucketKey] || 0) > 0) {
+              const day = run.days.find(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1));
+              if (day === undefined) break;
+              st.chosen.push(day);
+              st.used.add(day);
+              bumpUsage(block, day);
+              st.needsByBucket[bucketKey]--;
+            }
+          });
         });
       });
 
@@ -616,15 +593,13 @@ const RestDayEngine = {
         const group = driver.initialVacation;
         const place = day => {
           st.chosen.push(day); st.used.add(day);
-          dayUsage[day] = (dayUsage[day] || 0) + 1;
-          bumpGroupUsage(day, group);
+          bumpUsage(group, day);
           need--;
         };
         for (const day of candidates) {
           if (need <= 0) break;
           if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
-          if ((dayUsage[day] || 0) >= maxPerDay) continue;
-          if (!underGroupCapGeneric(day, group)) continue;
+          if (usageAt(group, day) >= capForGroup(group)) continue;
           place(day);
         }
         if (need > 0) {
@@ -632,7 +607,7 @@ const RestDayEngine = {
             if (need <= 0) break;
             if (st.used.has(day)) continue;
             if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
-            if ((dayUsage[day] || 0) >= maxPerDay) continue;
+            if (usageAt(group, day) >= capForGroup(group)) continue;
             place(day);
           }
         }
@@ -640,7 +615,7 @@ const RestDayEngine = {
           for (const day of candidates) {
             if (need <= 0) break;
             if (st.used.has(day)) continue;
-            if ((dayUsage[day] || 0) >= maxPerDay) continue;
+            if (usageAt(group, day) >= capForGroup(group)) continue;
             place(day);
           }
         }
@@ -662,6 +637,12 @@ const RestDayEngine = {
     // lui-même déficitaire. Respecte toujours l'espacement (jamais 2 repos
     // consécutifs) et le plafond quotidien de l'équipe.
     if (team) {
+      // Ce rééquilibrage compare la présence par LABEL (V1/V2) sur TOUTE
+      // l'équipe (les deux blocs combinés, puisqu'un jour donné l'un affiche
+      // V1 et l'autre V2) — contrairement au placement en escalier (Phase B,
+      // ci-dessus), qui lui est scindé par bloc. Le plafond ici reste donc
+      // volontairement celui de l'équipe entière.
+      const teamMaxPerDay = Math.max(2, Math.ceil(N * 0.3));
       const rebalanceShifts = ["S1", "S3"];
       const rebalanceDays = [];
       for (let d = 1; d <= dim; d++) if (rebalanceShifts.indexOf(dayShift[d]) !== -1) rebalanceDays.push(d);
@@ -707,7 +688,7 @@ const RestDayEngine = {
               const c = presenceOnDay(cd);
               if (!(c[surplusLabel] - 1 > c[deficitLabel])) return false;
               if (restDaysWithoutDay.indexOf(cd - 1) !== -1 || restDaysWithoutDay.indexOf(cd + 1) !== -1) return false;
-              if (totalRestingOnDay(cd) + 1 > maxPerDay) return false;
+              if (totalRestingOnDay(cd) + 1 > teamMaxPerDay) return false;
               return true;
             });
             if (swapTarget === undefined) continue;
