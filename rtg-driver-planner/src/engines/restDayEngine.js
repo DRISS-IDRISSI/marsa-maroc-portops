@@ -359,14 +359,26 @@ const RestDayEngine = {
     const blockedByAdjacency = (used, day) => adjacentDaysFor(day).some(d => used.has(d));
 
     // Répartit `total` entre des groupes de jours (occurrences de shift),
-    // proportionnellement à leur nombre de jours ET à un poids relatif — mais
-    // JAMAIS en laissant un groupe totalement vide tant que `total` permet
-    // d'en donner au moins un partout : chaque groupe reçoit d'abord
-    // floor(total / nombre de groupes) (borné par sa capacité), le reste
-    // étant ensuite départagé par poids (plus grand reste). Sans cette base
-    // garantie, une petite occurrence peut arrondir à zéro pour certains
-    // conducteurs et à deux pour d'autres, cassant l'escalier d'un bloc à
-    // l'autre.
+    // par poids (méthode du plus grand reste PUR — floor(total × son poids /
+    // poids total) par groupe, puis reliquat par plus grand reste), SANS
+    // plancher uniforme (floor(total/nombre de groupes)) attribué à tous les
+    // groupes avant tout poids.
+    //
+    // Correction : ce plancher uniforme écrasait la différence de poids
+    // entre occurrences de shifts différents dès que le quota d'un
+    // conducteur (souvent 6) était proche du nombre d'occurrences du mois
+    // (souvent 5) — un Shift 2 (poids 0.75, plus sollicité) recevait alors
+    // presque autant de repos qu'un Shift 3 (poids 1) au lieu de nettement
+    // moins, comme on ne le voit qu'après coup en comparant deux occurrences
+    // consécutives — signalé par l'exploitant (GR BAKKALI : nombre de
+    // présents quasi identique entre les occurrences Shift 2 et Shift 3 des
+    // deux dernières semaines d'octobre, alors que le Shift 2 est plus
+    // sollicité et devrait avoir MOINS de repos). La méthode du plus grand
+    // reste attribue naturellement au moins 1 à un groupe même si son poids
+    // le fait arrondir à 0 (son reste fractionnaire, proche de 1, le classe
+    // alors en tête du reliquat) — un groupe ne se retrouve donc vide que si
+    // le total est vraiment trop petit pour TOUS les groupes à la fois,
+    // jamais à cause d'un plancher artificiel qui gommait le poids.
     const distributeByWeight = (total, groups) => {
       const shares = {};
       let totalWeighted = 0;
@@ -375,14 +387,13 @@ const RestDayEngine = {
         groups.forEach(g => { shares[g.key] = 0; });
         return shares;
       }
-      const base = Math.floor(total / groups.length);
       let allocated = 0;
       const remainders = [];
       groups.forEach(g => {
-        const floor = Math.min(base, g.days.length);
+        const raw = total * g.weighted / totalWeighted;
+        const floor = Math.min(g.days.length, Math.floor(raw));
         shares[g.key] = floor;
         allocated += floor;
-        const raw = total * g.weighted / totalWeighted;
         remainders.push({ key: g.key, rem: raw - floor, cap: g.days.length });
       });
       let leftover = total - allocated;
