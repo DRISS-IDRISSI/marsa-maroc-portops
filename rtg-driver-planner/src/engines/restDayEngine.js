@@ -557,12 +557,18 @@ const RestDayEngine = {
           const needing = blockList.filter(dr => (driverState[dr.id].needsByBucket[bucketKey] || 0) > 0);
           if (needing.length === 0) return;
           const totalDemand = needing.reduce((sum, dr) => sum + driverState[dr.id].needsByBucket[bucketKey], 0);
-          const dayShares = splitDemandAcrossDays(totalDemand, run.days, d => dayWeightForBlock(block, d));
+          // Exclut d'emblée les jours déjà saturés pour ce bloc (ex. le repos
+          // obligatoire du dimanche, déjà enregistré dans dayUsage avant
+          // Phase B) du calcul de répartition — sans ça, ce jour recevait
+          // quand même une part théorique qui, une fois neutralisée par le
+          // plafond, se perdait purement et simplement (au lieu d'être
+          // redirigée vers les autres jours de l'occurrence), forçant le
+          // reliquat à partir en rattrapage sur un jour quelconque et à
+          // casser l'ordre de la rotation continue.
+          const openDays = run.days.filter(d => usageAt(block, d) < capForGroup(block));
+          const dayShares = splitDemandAcrossDays(totalDemand, openDays.length > 0 ? openDays : run.days, d => dayWeightForBlock(block, d));
 
           run.days.forEach(day => {
-            // Un jour déjà saturé pour ce bloc (ex. le repos obligatoire du
-            // dimanche, déjà enregistré dans dayUsage avant Phase B) ne doit
-            // JAMAIS recevoir un repos normal en plus.
             let capLeft = Math.min(dayShares[day] || 0, Math.max(0, capForGroup(block) - usageAt(block, day)));
             let tries = 0;
             while (capLeft > 0 && tries < blockList.length) {
@@ -653,155 +659,20 @@ const RestDayEngine = {
       results[driver.id] = driverState[driver.id].chosen.sort((a, b) => a - b);
     });
 
-    // Post-passe (Shift 1 et Shift 3) : essaie de RÉÉQUILIBRER V1/V2 en
-    // DÉPLAÇANT des repos déjà attribués (jamais en ajouter) — quota-neutre
-    // pour chaque conducteur. Idée de l'exploitant : sur un jour où un bloc
-    // est en déficit face à l'autre (dans un sens OU dans l'autre — un même
-    // shift peut basculer d'un excès à l'autre d'un jour à l'autre), faire
-    // revenir un conducteur du bloc en déficit en échangeant son repos de CE
-    // jour contre un autre jour où son bloc affiche l'autre label ET où ce
-    // label a alors assez d'excédent pour absorber la perte sans devenir
-    // lui-même déficitaire. Respecte toujours l'espacement (jamais 2 repos
-    // consécutifs) et le plafond quotidien de l'équipe.
-    if (team) {
-      // Ce rééquilibrage compare la présence par LABEL (V1/V2) sur TOUTE
-      // l'équipe (les deux blocs combinés, puisqu'un jour donné l'un affiche
-      // V1 et l'autre V2) — contrairement au placement en escalier (Phase B,
-      // ci-dessus), qui lui est scindé par bloc. Le plafond ici reste donc
-      // volontairement celui de l'équipe entière.
-      const teamMaxPerDay = Math.max(2, Math.ceil(N * 0.3));
-      const rebalanceShifts = ["S1", "S3"];
-      const rebalanceDays = [];
-      for (let d = 1; d <= dim; d++) if (rebalanceShifts.indexOf(dayShift[d]) !== -1) rebalanceDays.push(d);
-
-      const presenceOnDay = day => {
-        const counts = { V1: 0, V2: 0 };
-        teamDrivers.forEach(dr => {
-          if ((results[dr.id] || []).indexOf(day) !== -1) return;
-          const label = VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state);
-          if (label === "V1" || label === "V2") counts[label]++;
-        });
-        return counts;
-      };
-      const totalRestingOnDay = day => teamDrivers.filter(dr => (results[dr.id] || []).indexOf(day) !== -1).length;
-
-      let improved = true, safety = 0;
-      while (improved && safety < 400) {
-        improved = false;
-        safety++;
-        for (const day of rebalanceDays) {
-          const counts = presenceOnDay(day);
-          const deficitLabel = counts.V1 < counts.V2 - 1 ? "V1" : (counts.V2 < counts.V1 - 1 ? "V2" : null);
-          if (!deficitLabel) continue; // pas de déficit significatif dans aucun sens
-          const surplusLabel = deficitLabel === "V1" ? "V2" : "V1";
-
-          const restingDeficit = teamDrivers.filter(dr => {
-            if ((results[dr.id] || []).indexOf(day) === -1) return false;
-            // Jamais déplacer un repos déjà figé par une affectation manuelle
-            // (import Excel du planning réel, ou case par case) : seuls les
-            // repos placés par CET algorithme peuvent être rééquilibrés.
-            if ((manualRestByDriver[dr.id] || new Set()).has(day)) return false;
-            return VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state) === deficitLabel;
-          });
-
-          let swapped = false;
-          for (const dr of restingDeficit) {
-            const currentDays = results[dr.id] || [];
-            const restDaysWithoutDay = currentDays.filter(d => d !== day);
-            const candidateDays = this.getCandidatesForDriver(dr, month, year, state, team)
-              .filter(d => currentDays.indexOf(d) === -1 && d !== day);
-            const swapTarget = candidateDays.find(cd => {
-              if (VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, cd), state) !== surplusLabel) return false;
-              const c = presenceOnDay(cd);
-              if (!(c[surplusLabel] - 1 > c[deficitLabel])) return false;
-              if (restDaysWithoutDay.indexOf(cd - 1) !== -1 || restDaysWithoutDay.indexOf(cd + 1) !== -1) return false;
-              if (totalRestingOnDay(cd) + 1 > teamMaxPerDay) return false;
-              return true;
-            });
-            if (swapTarget === undefined) continue;
-            results[dr.id] = restDaysWithoutDay.concat([swapTarget]).sort((a, b) => a - b);
-            swapped = true;
-            improved = true;
-            break;
-          }
-          if (swapped) break; // recommence le scan : les effectifs du jour ont changé.
-        }
-      }
-    }
-
-    // Post-passe 2 (Shift 1 et Shift 3) : quand l'échange ci-dessus ne suffit
-    // pas (plus assez de jours candidats pour absorber tout l'écart), règle
-    // métier "les deux vacations doivent être égales, ou à défaut l'une ne
-    // dépasse l'autre que d'UN SEUL conducteur au maximum" — dans les deux
-    // sens. Traité ICI (une seule passe, jours dans l'ordre chronologique,
-    // sur TOUT le mois d'un coup) plutôt que jour par jour dans PlanningEngine :
-    // ça permet de savoir combien de repos ponctuels ont déjà été ajoutés à un
-    // conducteur PLUS TÔT dans le mois avant d'en ajouter un autre — sans ça,
-    // deux jours différents pouvaient chacun choisir le même conducteur sans le
-    // savoir, dépassant le plafond toléré et créant parfois 2 repos consécutifs.
-    // Repos ajoutés (jamais plus que quota attendu + 1 par conducteur) puis, si
-    // ça ne suffit toujours pas, le dernier conducteur en excédent est toléré
-    // mais signalé (vacationBalanceAlert) — décision humaine, pas automatique.
-    const corrections = {}; // { "<driverId>_<day>": true }
-    const flags = {}; // { "<driverId>_<day>": true }
-    if (team) {
-      // Écart toléré (dans un sens ou dans l'autre) avant repos exceptionnel /
-      // signalement : jusqu'à 2 conducteurs d'écart, décision explicite de
-      // l'exploitant (auparavant 1).
-      const MAX_TOLERATED_EXCESS = 2;
-      const rebalanceShifts = ["S1", "S3"];
-      const isAdjacentInResults = (driverId, day) => {
-        const days = results[driverId] || [];
-        return days.indexOf(day - 1) !== -1 || days.indexOf(day + 1) !== -1;
-      };
-      for (let day = 1; day <= dim; day++) {
-        if (rebalanceShifts.indexOf(dayShift[day]) === -1) continue;
-        const presentByLabel = { V1: [], V2: [] };
-        teamDrivers.forEach(dr => {
-          if ((results[dr.id] || []).indexOf(day) !== -1) return;
-          const label = VacationRotationEngine.getVacationForDate(dr, RTGDate.makeDate(year, month, day), state);
-          if (label === "V1" || label === "V2") presentByLabel[label].push(dr);
-        });
-        const diff = presentByLabel.V1.length - presentByLabel.V2.length;
-        const excessLabel = diff > 0 ? "V1" : (diff < 0 ? "V2" : null);
-        if (!excessLabel) continue;
-        let excess = Math.abs(diff);
-        if (excess <= MAX_TOLERATED_EXCESS) {
-          const toFlag = presentByLabel[excessLabel].slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule))).slice(-excess);
-          toFlag.forEach(dr => { flags[dr.id + "_" + day] = true; });
-          continue;
-        }
-
-        const withMeta = presentByLabel[excessLabel].map(dr => {
-          const restCount = (results[dr.id] || []).length;
-          const congeDays = this.countCongeDaysInMonth(dr, month, year, state);
-          const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
-          const attendu = Math.max(0, state.config.reposMensuel - reduction);
-          // L'adjacence (jamais 2 repos consécutifs) fait partie de l'éligibilité
-          // elle-même, pas d'un simple tri, et n'est JAMAIS relâchée ici : donnée
-          // réelle vérifiée (planning manuel fourni par l'exploitant, septembre
-          // 2026) — 0 occurrence de 2 repos consécutifs sur tout le mois. Ce
-          // repos ponctuel est un "bonus", pas un repos obligatoire ; s'il n'y a
-          // personne d'éligible sans casser cette règle, l'excédent restant est
-          // toléré et signalé (plus bas) plutôt que forcé.
-          return { dr: dr, restCount: restCount, eligible: restCount < attendu + 1 && !isAdjacentInResults(dr.id, day) };
-        });
-        const eligiblePool = withMeta.filter(x => x.eligible).sort((x, y) => x.restCount - y.restCount);
-        const need = excess - MAX_TOLERATED_EXCESS;
-        const toConvert = eligiblePool.slice(0, need);
-        const convertedIds = new Set(toConvert.map(x => x.dr.id));
-        toConvert.forEach(x => {
-          results[x.dr.id] = (results[x.dr.id] || []).concat([day]).sort((a, b) => a - b);
-          corrections[x.dr.id + "_" + day] = true;
-        });
-        excess -= toConvert.length;
-        if (excess <= 0) continue;
-
-        const remaining = presentByLabel[excessLabel].filter(dr => !convertedIds.has(dr.id));
-        const last = remaining.slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule))).slice(-excess);
-        last.forEach(dr => { flags[dr.id + "_" + day] = true; });
-      }
-    }
+    // Les deux anciennes post-passes de rééquilibrage automatique V1/V2
+    // (échange de repos déjà attribués, puis ajout d'un repos bonus en
+    // dernier recours) ont été retirées — instruction ferme de l'exploitant :
+    // l'ordre/escalier de la rotation continue (Phase B) prime toujours sur
+    // l'équilibrage automatique de la présence V1/V2. Ces passes ne
+    // touchaient que Shift 1/Shift 3 (jamais Shift 2), ce qui cassait
+    // sélectivement la continuité sur ces shifts alors que Shift 2 restait
+    // ordonné — signalé par l'exploitant sur GR AZZAM/Octobre. L'équilibrage
+    // V1/V2, si besoin, se fait désormais manuellement (case par case),
+    // comme dans le modèle de référence fourni par l'exploitant (quota
+    // individuel ajusté à 6 ou 7 selon les cas, jamais un forçage quotidien
+    // automatique).
+    const corrections = {}; // { "<driverId>_<day>": true } — toujours vide désormais
+    const flags = {}; // { "<driverId>_<day>": true } — toujours vide désormais
 
     this._teamCache[key] = results;
     this._extraCache[key] = { corrections: corrections, flags: flags };
