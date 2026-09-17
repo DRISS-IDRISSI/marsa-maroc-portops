@@ -301,8 +301,65 @@ const RestDayEngine = {
         dayShift[d] = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, d), state.config);
       }
     }
+    // Regroupe les jours consécutifs sous le même shift (rotation hebdomadaire
+    // de l'équipe) en occurrences SÉPARÉES — ex. "Shift 1" du 1 au 4 PUIS à
+    // nouveau "Shift 1" du 19 au 25 sont deux occurrences distinctes. Sert à
+    // répartir le quota de chaque conducteur PAR OCCURRENCE (Phase A) plutôt
+    // que sur tout le mois d'un coup : répartir sur tout le mois (essayé
+    // précédemment) donnait une part quotidienne trop fine (~2/jour en
+    // moyenne sur ~29 jours) — l'exploitant attend des groupes plus fournis
+    // (3-4) concentrés sur les jours d'une même période de shift, pas dilués
+    // sur tout le mois.
+    const shiftRuns = [];
+    if (team) {
+      for (let d = 1; d <= dim; d++) {
+        const last = shiftRuns[shiftRuns.length - 1];
+        if (last && last.shift === dayShift[d]) last.days.push(d);
+        else shiftRuns.push({ shift: dayShift[d], days: [d] });
+      }
+    }
     const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
     const labelBiasByShift = state.config.restDayLabelBiasByShift || {};
+
+    // Répartit `total` entre des groupes de jours (occurrences de shift),
+    // proportionnellement à leur nombre de jours ET à un poids relatif — mais
+    // JAMAIS en laissant un groupe totalement vide tant que `total` permet
+    // d'en donner au moins un partout : chaque groupe reçoit d'abord
+    // floor(total / nombre de groupes) (borné par sa capacité), le reste
+    // étant ensuite départagé par poids (plus grand reste). Sans cette base
+    // garantie, une petite occurrence peut arrondir à zéro pour certains
+    // conducteurs et à deux pour d'autres, cassant l'escalier d'un bloc à
+    // l'autre.
+    const distributeByWeight = (total, groups) => {
+      const shares = {};
+      let totalWeighted = 0;
+      groups.forEach(g => { g.weighted = g.days.length * (g.weight || 0); totalWeighted += g.weighted; });
+      if (totalWeighted <= 0) {
+        groups.forEach(g => { shares[g.key] = 0; });
+        return shares;
+      }
+      const base = Math.floor(total / groups.length);
+      let allocated = 0;
+      const remainders = [];
+      groups.forEach(g => {
+        const floor = Math.min(base, g.days.length);
+        shares[g.key] = floor;
+        allocated += floor;
+        const raw = total * g.weighted / totalWeighted;
+        remainders.push({ key: g.key, rem: raw - floor, cap: g.days.length });
+      });
+      let leftover = total - allocated;
+      remainders.sort((a, b) => b.rem - a.rem);
+      while (leftover > 0) {
+        const r = remainders.find(r => shares[r.key] < r.cap);
+        if (!r) break;
+        shares[r.key]++;
+        leftover--;
+        remainders.splice(remainders.indexOf(r), 1);
+        remainders.push(r);
+      }
+      return shares;
+    };
 
     // Répartit `total` entre des JOURS individuels (pas des groupes de jours),
     // par poids (méthode du plus grand reste), SANS plafond artificiel par
@@ -369,7 +426,25 @@ const RestDayEngine = {
 
       const remainingQuota = Math.max(0, Math.min(quota, candidates.length) - chosen.length);
 
-      driverState[driver.id] = { driver: driver, chosen: chosen, used: used, remainingQuota: remainingQuota, candidateSet: new Set(candidates) };
+      // Répartit remainingQuota entre les OCCURRENCES de shift (jamais deux
+      // occurrences non consécutives fusionnées, cf. shiftRuns plus haut),
+      // proportionnellement au nombre de jours candidats de chaque occurrence
+      // ET à la charge de travail relative du shift (restDayWeightByShift).
+      const needsByBucket = {};
+      if (team && remainingQuota > 0) {
+        const usedSet = used;
+        const occBuckets = shiftRuns.map((run, idx) => ({
+          key: "occ" + idx,
+          days: run.days.filter(d => !usedSet.has(d)),
+          weight: shiftWeights[run.shift] || 1
+        }));
+        const shares = distributeByWeight(remainingQuota, occBuckets);
+        occBuckets.forEach(b => {
+          if (shares[b.key] > 0) needsByBucket[b.key] = shares[b.key];
+        });
+      }
+
+      driverState[driver.id] = { driver: driver, chosen: chosen, used: used, remainingQuota: remainingQuota, needsByBucket: needsByBucket, candidateSet: new Set(candidates) };
     });
 
     if (!team) {
@@ -447,17 +522,17 @@ const RestDayEngine = {
         const arr = state.config.restDayWeightByDow;
         return (arr && arr[dow]) || 1;
       };
-      // Poids d'un jour pour un bloc donné : charge du SHIFT ce jour-là
-      // (restDayWeightByShift), préférence jour de semaine (dow/samedi-shift2)
-      // ET biais V1/V2 du label affiché par ce bloc ce jour-là — combinés en
-      // UN SEUL poids, utilisé pour répartir la demande totale du bloc sur
-      // TOUS les jours du mois d'un coup (plus de découpage par occurrence :
-      // la charge du shift est maintenant absorbée ici plutôt que dans un
-      // quota par occurrence séparé). Détermine uniquement COMBIEN de repos
-      // un jour reçoit, jamais QUI les obtient (cf. rotation continue plus
-      // bas, qui seule décide de l'ordre des conducteurs).
+      // Poids d'un jour pour un bloc donné : préférence jour de semaine
+      // (dow/samedi-shift2) ET biais V1/V2 du label affiché par ce bloc ce
+      // jour-là — combinés, utilisés pour répartir la demande d'UNE
+      // OCCURRENCE sur ses propres jours (la charge du SHIFT, elle, est déjà
+      // prise en compte au niveau de l'occurrence entière, cf. needsByBucket
+      // en Phase A — la répéter ici par jour n'aurait aucun effet, tous les
+      // jours d'une même occurrence partageant le même shift). Détermine
+      // uniquement COMBIEN de repos un jour reçoit, jamais QUI les obtient
+      // (cf. rotation continue plus bas, qui seule décide de l'ordre).
       const dayWeightForBlock = (block, day) => {
-        let weight = (shiftWeights[dayShift[day]] || 1) * dowWeightFor(day);
+        let weight = dowWeightFor(day);
         const shift = dayShift[day];
         const ratio = shift && labelBiasByShift[shift];
         if (ratio && ratio.V1 > 0 && ratio.V2 > 0) {
@@ -467,56 +542,63 @@ const RestDayEngine = {
         return weight;
       };
 
-      const allDays = [];
-      for (let d = 1; d <= dim; d++) allDays.push(d);
-
       ["V1", "V2"].forEach(block => {
         const blockList = blockDrivers[block];
-        const needing = blockList.filter(dr => driverState[dr.id].remainingQuota > 0);
-        if (needing.length === 0) return;
-        const totalDemand = needing.reduce((sum, dr) => sum + driverState[dr.id].remainingQuota, 0);
-        const dayShares = splitDemandAcrossDays(totalDemand, allDays, d => dayWeightForBlock(block, d));
-
-        // Rotation CONTINUE (cf. en-tête de Phase B) : un seul pointeur pour
-        // tout le bloc, qui avance de 1 à chaque conducteur EXAMINÉ (servi ou
-        // non) et ne revient jamais en arrière ni ne se réinitialise.
+        // Rotation CONTINUE (cf. en-tête de Phase B) : UN SEUL pointeur pour
+        // tout le bloc, déclaré ICI (hors de la boucle sur les occurrences)
+        // pour ne JAMAIS se réinitialiser d'une occurrence à l'autre — sans
+        // quoi le premier conducteur de chaque nouvelle occurrence serait
+        // systématiquement le même (toujours le conducteur de rang 0), au
+        // lieu de continuer juste après le dernier conducteur servi.
         let pointer = 0;
-        allDays.forEach(day => {
-          // Un jour déjà saturé pour ce bloc (ex. le repos obligatoire du
-          // dimanche, déjà enregistré dans dayUsage avant Phase B) ne doit
-          // JAMAIS recevoir un repos normal en plus.
-          let capLeft = Math.min(dayShares[day] || 0, Math.max(0, capForGroup(block) - usageAt(block, day)));
-          let tries = 0;
-          while (capLeft > 0 && tries < blockList.length) {
-            const dr = blockList[pointer];
-            pointer = (pointer + 1) % blockList.length;
-            tries++;
-            const st = driverState[dr.id];
-            if (st.remainingQuota <= 0 || !st.candidateSet.has(day) || st.used.has(day)
-                || st.used.has(day - 1) || st.used.has(day + 1)) continue;
-            st.chosen.push(day);
-            st.used.add(day);
-            bumpUsage(block, day);
-            st.remainingQuota--;
-            capLeft--;
-          }
-        });
 
-        // Rattrapage : la demande du jour (dayShares) peut, dans de rares cas,
-        // ne pas trouver assez de conducteurs éligibles ce jour précis
-        // (adjacence) alors qu'un autre jour du mois a encore de la marge —
-        // replacé ici plutôt que de partir directement en Phase C, en gardant
-        // l'ordre chronologique (donc, autant que possible, la continuité).
-        needing.forEach(dr => {
-          const st = driverState[dr.id];
-          while (st.remainingQuota > 0) {
-            const day = allDays.find(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
-            if (day === undefined) break;
-            st.chosen.push(day);
-            st.used.add(day);
-            bumpUsage(block, day);
-            st.remainingQuota--;
-          }
+        shiftRuns.forEach((run, idx) => {
+          const bucketKey = "occ" + idx;
+          const needing = blockList.filter(dr => (driverState[dr.id].needsByBucket[bucketKey] || 0) > 0);
+          if (needing.length === 0) return;
+          const totalDemand = needing.reduce((sum, dr) => sum + driverState[dr.id].needsByBucket[bucketKey], 0);
+          const dayShares = splitDemandAcrossDays(totalDemand, run.days, d => dayWeightForBlock(block, d));
+
+          run.days.forEach(day => {
+            // Un jour déjà saturé pour ce bloc (ex. le repos obligatoire du
+            // dimanche, déjà enregistré dans dayUsage avant Phase B) ne doit
+            // JAMAIS recevoir un repos normal en plus.
+            let capLeft = Math.min(dayShares[day] || 0, Math.max(0, capForGroup(block) - usageAt(block, day)));
+            let tries = 0;
+            while (capLeft > 0 && tries < blockList.length) {
+              const dr = blockList[pointer];
+              pointer = (pointer + 1) % blockList.length;
+              tries++;
+              const st = driverState[dr.id];
+              if ((st.needsByBucket[bucketKey] || 0) <= 0 || !st.candidateSet.has(day) || st.used.has(day)
+                  || st.used.has(day - 1) || st.used.has(day + 1)) continue;
+              st.chosen.push(day);
+              st.used.add(day);
+              bumpUsage(block, day);
+              st.needsByBucket[bucketKey]--;
+              st.remainingQuota--;
+              capLeft--;
+            }
+          });
+
+          // Rattrapage LOCAL (même occurrence) : la demande du jour
+          // (dayShares) peut, dans de rares cas, ne pas trouver assez de
+          // conducteurs éligibles ce jour précis (adjacence) alors qu'un
+          // autre jour de LA MÊME occurrence a encore de la marge — replacé
+          // ici plutôt que de partir directement en Phase C (recherche sur
+          // tout le mois), pour rester le plus proche possible dans le temps.
+          needing.forEach(dr => {
+            const st = driverState[dr.id];
+            while ((st.needsByBucket[bucketKey] || 0) > 0) {
+              const day = run.days.find(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
+              if (day === undefined) break;
+              st.chosen.push(day);
+              st.used.add(day);
+              bumpUsage(block, day);
+              st.needsByBucket[bucketKey]--;
+              st.remainingQuota--;
+            }
+          });
         });
       });
 
