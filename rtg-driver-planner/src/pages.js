@@ -999,12 +999,15 @@ function Cell({ assignment, detailLevel, onEdit, weekStart }) {
   const weekStartCls = weekStart ? "border-l-2 border-l-orange-500/70" : "";
   if (!assignment) return <td className={`border border-border/60 bg-surface/40 ${weekStartCls}`}></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
-  let text = meta.code;
+  // Jour de travail (PRESENT) : case vierge, comme sur le rapport imprimable —
+  // le code "C" (Travail) ne s'affiche plus, pour éviter la confusion avec
+  // "CG" (Congé).
+  let text = assignment.status === "PRESENT" ? "" : meta.code;
   if (assignment.status === "PRESENT" && detailLevel !== "code") {
     const parts = [];
     if (assignment.vacation) parts.push(assignment.vacation);
     if (detailLevel === "zone" && assignment.zone) parts.push(assignment.zone);
-    text = parts.length ? parts.join("/") : meta.code;
+    text = parts.length ? parts.join("/") : "";
   }
   const isManual = assignment.source === "MANUAL";
   const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
