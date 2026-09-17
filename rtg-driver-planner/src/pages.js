@@ -457,19 +457,48 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       } catch (e) { console.error(e); reposErrors++; }
       done++; setProgress({ done: done, total: total });
     }
+    // Zones déjà occupées par créneau (jour+shift+vacation), pour ne jamais
+    // donner à un conducteur corrigé ici (REPOS -> PRESENT) la même zone
+    // qu'un autre conducteur déjà présent ce jour-là sur le même créneau —
+    // ZoneBalancingEngine (répartition de groupe) a déjà tourné pour ces
+    // autres présents SANS savoir que ce conducteur-ci allait s'y ajouter
+    // (son statut AUTO était REPOS au moment de ce calcul), donc lui donner
+    // une zone "individuelle" (rotation seule) peut entrer en collision avec
+    // une zone déjà prise, ou doubler la zone A alors que d'autres zones
+    // restent libres (cas réel observé : GR AZZAM, zone A occupée par 2
+    // conducteurs, zones D/H inoccupées). Rempli une fois par créneau à
+    // partir du planning actuel, puis mis à jour au fil des corrections de
+    // cette boucle pour éviter aussi les collisions entre elles.
+    const slotZonesUsed = {};
     for (const r of presenceCorrectionsToApply) {
       try {
         const date = RTGDate.parseISO(r.iso);
         const driver = drivers.find(d => d.id === r.driverId);
         const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
         const vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
-        // getZoneForDate renvoie null si le statut AUTO du jour (avant cette
-        // correction) n'est pas déjà PRESENT — ce qui est justement le cas ici
-        // (REPOS auto qu'on est en train de corriger). getExpectedZoneForDate
-        // calcule la zone qu'aurait le conducteur s'il travaillait ce jour-là,
-        // indépendamment de son statut réel — exactement ce qu'il faut ici.
-        const zone = ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
         const vacDef = (state.config.vacations[shift] || []).find(v => v.id === vacation);
+
+        const slotKey = r.iso + "_" + shift + "_" + vacation;
+        if (!slotZonesUsed[slotKey]) {
+          const day = planning.days.find(d => d.iso === r.iso);
+          slotZonesUsed[slotKey] = new Set(
+            (day ? day.assignments : [])
+              .filter(a => a.status === "PRESENT" && a.shift === shift && a.vacation === vacation)
+              .map(a => a.zone)
+          );
+        }
+        const used = slotZonesUsed[slotKey];
+        const zoneList = state.config.zones || [];
+        const others = zoneList.slice(1); // B..H — la zone A n'est jamais prioritaire.
+        let zone = others.find(z => !used.has(z));
+        if (!zone) {
+          // Toutes les zones B-H déjà prises sur ce créneau (8 présents ou
+          // plus) : zone A si encore libre, sinon repli sur la rotation
+          // individuelle habituelle (dernier recours).
+          zone = !used.has(zoneList[0]) ? zoneList[0] : ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
+        }
+        used.add(zone);
+
         const override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
         await RTGStore.setManualOverride(r.iso, r.driverId, override, RTG_IMPORT_OVERRIDE_MOTIF, "repos annulé (présent réel) — " + team.nom + " — " + r.iso);
       } catch (e) { console.error(e); presenceErrors++; }
