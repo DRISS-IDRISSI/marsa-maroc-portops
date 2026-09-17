@@ -738,8 +738,8 @@ const PRINT_TD_CENTER = PRINT_TD + " text-center";
 // (comme le modèle Excel réel) et espacement minimal, pour faire tenir un
 // mois complet (jusqu'à 31 jours) sur une seule page malgré un nombre de
 // conducteurs important.
-const PRINT_TH_XS = "border border-slate-400 px-0.5 py-0.5 text-left font-semibold whitespace-nowrap";
-const PRINT_TD_XS = "border border-slate-300 px-0.5 py-0.5 whitespace-nowrap";
+const PRINT_TH_XS = "border border-slate-400 px-1 py-1 text-left font-semibold whitespace-nowrap align-middle";
+const PRINT_TD_XS = "border border-slate-300 px-1 py-1 whitespace-nowrap align-middle";
 const PRINT_TD_XS_CENTER = PRINT_TD_XS + " text-center";
 const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
@@ -842,16 +842,21 @@ async function exportNodeAsPdf(node, filename, opts) {
     const imgData = canvas.toDataURL("image/png");
 
     if (fitOnePage) {
-      // Occupe la page EN ENTIER (largeur ET hauteur), comme le ferait
-      // "Ajuster à la page" dans un tableur : un tableau compact et large
-      // mais peu haut (notre cas — un mois entier tient déjà en largeur avec
-      // beaucoup de lignes en moins qu'il n'y a de place en hauteur) laisse
-      // sinon une grande zone vide sous le rapport si on se contente de
-      // conserver ses proportions d'origine. Un léger étirement vertical
-      // (jamais horizontal, la largeur est déjà celle de la page) reste
-      // largement lisible pour un tableau (texte court, cellules à moitié
-      // vides) et donne un rendu "pleine page" plus soigné.
-      pdf.addImage(imgData, "PNG", margin, margin, usableWidthMm, usableHeightMm);
+      // Occupe toute la LARGEUR de la page, et la hauteur autant que possible
+      // sans dépasser un étirement vertical de maxStretch : un tableau
+      // compact et large mais peu haut (notre cas — un mois entier tient déjà
+      // en largeur avec moins de lignes qu'il n'y a de place en hauteur)
+      // laisserait sinon un grand vide sous le rapport à proportions
+      // d'origine conservées. Mais un étirement NON borné (proportions
+      // d'origine ignorées) crée un effet de moiré sur les bordures fines
+      // répétées du tableau (lignes qui semblent floues/mal alignées, bandes
+      // colorées en alternance) une fois la page rendue — d'où la limite.
+      // Le vide résiduel éventuel (table courte, peu de conducteurs) est
+      // centré verticalement plutôt que collé en haut.
+      const maxStretch = 1.8;
+      const targetHeightMm = Math.min(usableHeightMm, imgHeightMm * maxStretch);
+      const yOffset = margin + (usableHeightMm - targetHeightMm) / 2;
+      pdf.addImage(imgData, "PNG", margin, yOffset, usableWidthMm, targetHeightMm);
       pdf.save(filename);
       return;
     }
@@ -1392,7 +1397,7 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
       {drivers.length === 0 ? (
         <p className="text-[8px] italic text-slate-500 mb-1">Aucun conducteur dans ce groupe.</p>
       ) : (
-        <table className="border-collapse text-[7px] mb-1 w-full">
+        <table className="border-collapse text-[9px] mb-1 w-full">
           <thead>
             <tr>
               <th className={PRINT_TH_XS}>Mat</th>
