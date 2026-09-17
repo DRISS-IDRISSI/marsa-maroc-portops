@@ -838,6 +838,23 @@ function RapportRHPage() {
     downloadCSV(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
   };
 
+  const printRef = useRef(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const exportPdf = async () => {
+    if (!printRef.current) return;
+    setPdfBusy(true);
+    try {
+      const filename = tab === "feries"
+        ? `jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`
+        : `rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`;
+      await exportNodeAsPdf(printRef.current, filename);
+    } catch (e) {
+      alert(e.message || String(e));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
@@ -846,9 +863,7 @@ function RapportRHPage() {
           <p className="text-slate-400 text-sm mt-0.5">Rapports mensuels à imprimer / envoyer au service RH</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-            <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
-          </button>
+          <ExportPdfButton onClick={exportPdf} busy={pdfBusy} />
           <ExportExcelButton onClick={exportExcel} />
         </div>
       </div>
@@ -882,7 +897,7 @@ function RapportRHPage() {
 
       {/* Contenu imprimable : style "papier" clair, indépendant du thème sombre de l'appli. */}
       {tab === "rh" && (
-      <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
+      <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div className="flex items-center gap-3">
             <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
@@ -951,7 +966,7 @@ function RapportRHPage() {
       )}
 
       {tab === "feries" && (
-      <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
+      <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div className="flex items-center gap-3">
             <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />

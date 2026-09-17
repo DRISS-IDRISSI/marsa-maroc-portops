@@ -1,4 +1,4 @@
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useRef } = React;
 const { useNavigate } = ReactRouterDOM;
 
 function useRtgState() {
@@ -751,6 +751,90 @@ function ExportExcelButton({ onClick }) {
   );
 }
 
+// Export PDF direct (§ rapports imprimables) — remplace le bouton "Imprimer"
+// (qui ne faisait qu'ouvrir la boîte de dialogue d'impression du navigateur,
+// où "Enregistrer en PDF" n'était qu'une option parmi d'autres) par un vrai
+// téléchargement de fichier .pdf en un clic : capture le bloc "papier" du
+// rapport (html2canvas) puis l'insère dans un document PDF paysage A4
+// (jsPDF), sur autant de pages que nécessaire. Chargées à la demande
+// (comme SheetJS pour l'import Excel) pour ne pas alourdir le chargement
+// initial de l'appli pour un usage occasionnel.
+let _pdfLibsPromise = null;
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Impossible de charger " + src + " (connexion internet requise)."));
+    document.head.appendChild(script);
+  });
+}
+function loadPdfLibs() {
+  if (window.jspdf && window.html2canvas) return Promise.resolve();
+  if (_pdfLibsPromise) return _pdfLibsPromise;
+  _pdfLibsPromise = Promise.all([
+    loadScriptOnce("https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"),
+    loadScriptOnce("https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js")
+  ]);
+  return _pdfLibsPromise;
+}
+
+async function exportNodeAsPdf(node, filename) {
+  await loadPdfLibs();
+  // Les blocs "papier" (print-report) sont display:none à l'écran, affichés
+  // uniquement par la règle @media print — html2canvas ne peut capturer que
+  // ce qui est effectivement rendu, donc on le rend visible le temps de la
+  // capture (hors écran, pour ne rien perturber visuellement), puis on
+  // remet son état d'origine dans tous les cas (y compris en cas d'erreur).
+  const prevDisplay = node.style.display, prevPosition = node.style.position;
+  const prevLeft = node.style.left, prevTop = node.style.top, prevWidth = node.style.width;
+  const wasHidden = getComputedStyle(node).display === "none";
+  if (wasHidden) {
+    node.style.position = "fixed";
+    node.style.left = "-10000px";
+    node.style.top = "0";
+    node.style.width = "1200px";
+    node.style.display = "block";
+  }
+  try {
+    const canvas = await window.html2canvas(node, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidthMm = pdf.internal.pageSize.getWidth(), pageHeightMm = pdf.internal.pageSize.getHeight();
+    const margin = 5;
+    const imgWidthMm = pageWidthMm - margin * 2;
+    const imgHeightMm = imgWidthMm * canvas.height / canvas.width;
+    const imgData = canvas.toDataURL("image/jpeg", 0.92);
+    const usableHeightMm = pageHeightMm - margin * 2;
+    let heightLeftMm = imgHeightMm, offsetMm = 0;
+    pdf.addImage(imgData, "JPEG", margin, margin, imgWidthMm, imgHeightMm);
+    heightLeftMm -= usableHeightMm;
+    while (heightLeftMm > 0) {
+      offsetMm += usableHeightMm;
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", margin, margin - offsetMm, imgWidthMm, imgHeightMm);
+      heightLeftMm -= usableHeightMm;
+    }
+    pdf.save(filename);
+  } finally {
+    if (wasHidden) {
+      node.style.display = prevDisplay;
+      node.style.position = prevPosition;
+      node.style.left = prevLeft;
+      node.style.top = prevTop;
+      node.style.width = prevWidth;
+    }
+  }
+}
+
+function ExportPdfButton({ onClick, busy }) {
+  return (
+    <button onClick={onClick} disabled={busy} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">
+      <i className={`fas ${busy ? "fa-spinner fa-spin" : "fa-file-pdf"} mr-1.5`}></i>{busy ? "Génération…" : "PDF"}
+    </button>
+  );
+}
+
 function PrintHeader({ subtitle, count, countLabel }) {
   const generatedAt = new Date();
   return (
@@ -1354,6 +1438,20 @@ function PlanningMensuel() {
     downloadCSV(`planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.csv`, headers, rows);
   };
 
+  const printRef = useRef(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const exportPdf = async () => {
+    if (!printRef.current) return;
+    setPdfBusy(true);
+    try {
+      await exportNodeAsPdf(printRef.current, `planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.pdf`);
+    } catch (e) {
+      alert(e.message || String(e));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
@@ -1367,9 +1465,7 @@ function PlanningMensuel() {
               <i className="fas fa-file-import mr-1.5"></i>Importer Excel
             </button>
           )}
-          <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-            <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
-          </button>
+          <ExportPdfButton onClick={exportPdf} busy={pdfBusy} />
           <ExportExcelButton onClick={exportExcel} />
         </div>
       </div>
@@ -1403,7 +1499,7 @@ function PlanningMensuel() {
       </div>
 
       {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de l'appli. */}
-      <div className="print-report bg-white text-slate-900 rounded-xl p-0">
+      <div ref={printRef} className="print-report bg-white text-slate-900 rounded-xl p-0">
         <PrintHeader
           subtitle={"Rapport de planning mensuel — RTG — " + RAPPORT_MOIS_LABELS_P[month - 1] + " " + year + (effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : "")}
           count={drivers.length} countLabel="conducteur"
@@ -1699,6 +1795,21 @@ function AffectationDuJour() {
     downloadCSV(`affectation-${dateStr}${suffix}.csv`, headers, rows);
   };
 
+  const printRef = useRef(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const exportPdf = async () => {
+    if (!printRef.current) return;
+    setPdfBusy(true);
+    try {
+      const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
+      await exportNodeAsPdf(printRef.current, `affectation-${dateStr}${suffix}.pdf`);
+    } catch (e) {
+      alert(e.message || String(e));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
@@ -1707,9 +1818,7 @@ function AffectationDuJour() {
           <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date, et éventuellement un shift, pour voir l'affectation détaillée</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-            <i className="fas fa-print mr-1.5"></i>Imprimer / PDF
-          </button>
+          <ExportPdfButton onClick={exportPdf} busy={pdfBusy} />
           <ExportExcelButton onClick={exportExcel} />
         </div>
       </div>
@@ -1766,7 +1875,7 @@ function AffectationDuJour() {
       </div>
 
       {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de l'appli. */}
-      <div className="print-report bg-white text-slate-900 rounded-xl p-0">
+      <div ref={printRef} className="print-report bg-white text-slate-900 rounded-xl p-0">
         <PrintHeader
           subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "") + (effectiveShiftFilter !== "all" ? " — " + (state.config.shifts.find(s => s.id === effectiveShiftFilter) || {}).label : "")}
           count={holiday ? presentDrivers.length : assignments.length} countLabel={holiday ? "conducteur présent" : "conducteur affecté"}
