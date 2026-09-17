@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 230" width="900" height="230">
+  <!-- Étoile bicolore (bleu clair / bleu marine), reprenant l'esprit du logo TC3PC -->
+  <g transform="translate(95,115)">
+    <path d="M0,-95 L22,-30 L92,-30 L36,10 L57,78 L0,37 L-57,78 L-36,10 L-92,-30 L-22,-30 Z" fill="#0B2545"/>
+    <path d="M0,-95 L22,-30 L-22,-30 L-92,-30 L-36,10 L-57,78 L0,37 Z" fill="#2E86C1"/>
+    <path d="M0,-95 L22,-30 L-22,-30 Z" fill="#0B2545"/>
+  </g>
+  <text x="185" y="150" font-family="'Arial Black', Arial, sans-serif" font-weight="900" font-size="118" fill="#0B2545" letter-spacing="-2">TC3PC</text>
+  <text x="60" y="205" font-family="Arial, sans-serif" font-weight="700" font-size="21" fill="#0B2545" letter-spacing="1">TERMINAL À CONTENEURS 3 DU PORT DE CASABLANCA</text>
+</svg>
