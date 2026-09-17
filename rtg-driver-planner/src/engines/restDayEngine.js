@@ -297,11 +297,19 @@ const RestDayEngine = {
     const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
     const labelBiasByShift = state.config.restDayLabelBiasByShift || {};
 
-    // Répartit `total` entre des groupes de jours candidats (ex. par shift, ou par
-    // label de vacation du jour), proportionnellement à leur nombre de jours ET à
-    // un poids relatif — méthode du plus grand reste pour que les parts arrondies
-    // totalisent exactement `total`, sans jamais dépasser la capacité (longueur)
-    // de chacun.
+    // Répartit `total` entre des groupes de jours candidats (une occurrence
+    // de shift, cf. shiftRuns), proportionnellement à leur nombre de jours ET
+    // à un poids relatif — mais JAMAIS en laissant un groupe totalement vide
+    // tant que `total` permet d'en donner au moins un partout : chaque
+    // groupe reçoit d'abord floor(total / nombre de groupes) (borné par sa
+    // capacité), le reste étant ensuite départagé par poids (méthode du plus
+    // grand reste) pour que les parts totalisent exactement `total`. Sans
+    // cette base garantie, un petit groupe (ex. 4 jours) à charge normale
+    // peut arrondir à zéro pour certains conducteurs (ceux dont le reste
+    // pondéré est légèrement moins favorable) et à deux pour d'autres,
+    // cassant l'escalier calendaire d'un bloc à l'autre — comportement
+    // absent du modèle Excel fourni par l'exploitant, où CHAQUE occurrence
+    // reçoit au moins un repos avant qu'aucune n'en reçoive un second.
     const distributeByWeight = (total, groups) => {
       const shares = {};
       let totalWeighted = 0;
@@ -310,14 +318,15 @@ const RestDayEngine = {
         groups.forEach(g => { shares[g.key] = 0; });
         return shares;
       }
+      const base = Math.floor(total / groups.length);
       let allocated = 0;
       const remainders = [];
       groups.forEach(g => {
-        const raw = total * g.weighted / totalWeighted;
-        const floor = Math.min(Math.floor(raw), g.days.length);
+        const floor = Math.min(base, g.days.length);
         shares[g.key] = floor;
         allocated += floor;
-        remainders.push({ key: g.key, rem: raw - Math.floor(raw), cap: g.days.length });
+        const raw = total * g.weighted / totalWeighted;
+        remainders.push({ key: g.key, rem: raw - floor, cap: g.days.length });
       });
       let leftover = total - allocated;
       remainders.sort((a, b) => b.rem - a.rem);
