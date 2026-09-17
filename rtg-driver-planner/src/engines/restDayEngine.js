@@ -500,8 +500,28 @@ const RestDayEngine = {
         }
       };
 
+      // Poids jour-de-semaine (dimanche, ou samedi si Shift 2 cette
+      // semaine-là — restDayWeightByDow / restDayWeightSaturdayShift2) :
+      // charge la plus faible, donc jour à privilégier pour un repos, tant
+      // que les plafonds jour/bloc le permettent.
+      const dowWeight = day => {
+        const dow = RTGDate.dowMon0(RTGDate.makeDate(year, month, day));
+        const weights = state.config.restDayWeightByDow || [1, 1, 1, 1, 1, 1, 1];
+        if (dow === 5 && dayShift[day] === "S2") {
+          return state.config.restDayWeightSaturdayShift2 || weights[5];
+        }
+        return weights[dow] || 1;
+      };
+
       const shiftDays = { S1: [], S2: [], S3: [] };
       for (let d = 1; d <= dim; d++) { if (shiftDays[dayShift[d]]) shiftDays[dayShift[d]].push(d); }
+      // Trie chaque liste par poids jour-de-semaine DÉCROISSANT (à
+      // chronologie égale) : la rotation (assignBucketRotation ci-dessous)
+      // visite les jours d'un bucket dans CET ordre à chaque tour, donc ces
+      // jours à faible charge sont essayés EN PREMIER — plus de repos y sont
+      // mécaniquement concentrés (dans la limite des plafonds), sans perdre
+      // l'équité de la rotation entre conducteurs.
+      ["S1", "S2", "S3"].forEach(s => { shiftDays[s].sort((a, b) => dowWeight(b) - dowWeight(a) || a - b); });
 
       ["S1", "S2", "S3"].forEach(s => {
         const ratio = labelBiasByShift[s];
