@@ -8,22 +8,27 @@
 // pouvoir imposer un plafond du nombre de conducteurs en repos le même jour —
 // sans ce plafond partagé, plusieurs conducteurs peuvent indépendamment choisir
 // le même jour "idéal" (ex. un dimanche à faible charge) et vider l'équipe ce
-// jour-là.
+// jour-là. Ce plafond est calculé ET suivi PAR BLOC de vacation (driver.
+// initialVacation) : les deux blocs d'une équipe sont planifiés de façon
+// complètement INDÉPENDANTE l'un de l'autre (jamais de ressource partagée
+// entre eux) — confirmé en comparant un modèle Excel fourni par l'exploitant
+// où les deux blocs sont des copies exactes l'un de l'autre, jour pour jour.
 //
-// Le CHOIX des jours eux-mêmes (une fois le nombre de repos dû à chaque
-// conducteur déterminé, cf. répartition par shift/label ci-dessous) se fait
-// par ROTATION PARTAGÉE au sein de chaque bloc de vacation (driver.
-// initialVacation) : les jours candidats sont parcourus dans l'ordre
-// chronologique et, à chaque jour, le conducteur suivant dans la rotation qui
-// a encore besoin d'un repos ce mois-ci se voit attribuer ce jour — le
-// pointeur de rotation n'est jamais réinitialisé (il persiste sur tout le
-// mois pour ce bloc). Ceci produit un placement visuellement ORDONNÉ "en
-// escalier" (chaque conducteur avance d'un cran par rapport au précédent),
-// demande explicite de l'exploitant à la place d'un placement dispersé.
-// config.restDayWeightByDow (préférence jour de semaine) n'intervient donc
-// plus dans ce choix fin — seul restDayWeightByShift (charge relative de
-// chaque SHIFT, voir plus bas) continue de déterminer COMBIEN de repos un
-// conducteur reçoit dans chaque période de shift, pas QUEL jour précis.
+// Le CHOIX des jours (une fois le nombre de repos dû à chaque conducteur
+// déterminé par occurrence de shift, cf. répartition par shift/label
+// ci-dessous) se fait par un choix GLOUTON "MOINS SERVI D'ABORD" : pour
+// chaque jour d'une occurrence (dans l'ordre chronologique), le nombre de
+// repos dû ce jour-là (proportionnel à son poids — charge du shift, biais
+// V1/V2, ET préférence jour de semaine restDayWeightByDow/
+// restDayWeightSaturdayShift2, ex. samedi/dimanche à charge plus faible) est
+// attribué aux conducteurs du bloc qui ont encore besoin de repos, en
+// priorisant celui qui a le MOINS de repos déjà placés ce mois-ci (égalité
+// départagée par rang fixe dans l'équipe). Confirmé par correspondance EXACTE
+// avec le modèle Excel fourni par l'exploitant sur la sélection des dimanches
+// à plafond renforcé. La préférence jour de semaine influence ainsi seulement
+// COMBIEN de repos un jour reçoit, jamais QUI l'obtient précisément — c'est ce
+// qui permet de la réutiliser sans fragmenter l'escalier comme l'ancien
+// système (qui s'en servait pour fixer une POSITION par conducteur).
 //
 // Le quota de 6 repos est réduit d'un jour pour chaque tranche de
 // config.reposReductionParJoursCongé (5) jours de CONGÉ pris dans le mois.
@@ -494,15 +499,31 @@ const RestDayEngine = {
       // sans biais). Utilisé pour répartir la demande d'une occurrence sur ses
       // propres jours (splitDemandAcrossDays) — trouvé en comparant précisément
       // au modèle Excel fourni : le jour où le bloc affiche le label à charge
-      // plus faible reçoit mécaniquement plus de repos que l'autre.
+      // plus faible reçoit mécaniquement plus de repos que l'autre. Combiné à
+      // la préférence jour de semaine (restDayWeightByDow — samedi/dimanche à
+      // charge plus faible) : celle-ci n'influence plus qu'une PART relative
+      // du nombre de repos par jour au sein d'une occurrence (jamais QUI
+      // l'obtient, cf. plus bas), donc ne peut plus fragmenter l'escalier
+      // comme lorsqu'elle décidait directement une position par conducteur —
+      // demande explicite de l'exploitant après un cas observé (samedi à
+      // zéro repos alors qu'il est à charge plus faible).
+      const dowWeightFor = day => {
+        const dow = RTGDate.dowMon0(RTGDate.makeDate(year, month, day));
+        if (dow === 5 && dayShift[day] === "S2" && state.config.restDayWeightSaturdayShift2) {
+          return state.config.restDayWeightSaturdayShift2;
+        }
+        const arr = state.config.restDayWeightByDow;
+        return (arr && arr[dow]) || 1;
+      };
       const dayWeightForBlock = (block, day) => {
+        let weight = dowWeightFor(day);
         const shift = dayShift[day];
         const ratio = shift && labelBiasByShift[shift];
         if (ratio && ratio.V1 > 0 && ratio.V2 > 0) {
           const label = labelForBlock[block] && labelForBlock[block][day];
-          if (label === "V1" || label === "V2") return 1 / Math.pow(ratio[label], LABEL_BIAS_EXPONENT);
+          if (label === "V1" || label === "V2") weight *= 1 / Math.pow(ratio[label], LABEL_BIAS_EXPONENT);
         }
-        return 1;
+        return weight;
       };
 
       // Attribution en escalier "MOINS SERVI D'ABORD" : trouvé en comparant
