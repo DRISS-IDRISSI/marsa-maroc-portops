@@ -720,6 +720,13 @@ const RTG_STATUS_META = {
 const PRINT_TH = "px-2 py-1.5 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
 const PRINT_TD = "px-2 py-1 border-b border-slate-200 whitespace-nowrap";
 const PRINT_TD_CENTER = PRINT_TD + " text-center";
+// Variante compacte (Planning mensuel imprimable) : bordures fines partout
+// (comme le modèle Excel réel) et espacement minimal, pour faire tenir un
+// mois complet (jusqu'à 31 jours) sur une seule page malgré un nombre de
+// conducteurs important.
+const PRINT_TH_XS = "border border-slate-400 px-0.5 py-0.5 text-left font-semibold whitespace-nowrap";
+const PRINT_TD_XS = "border border-slate-300 px-0.5 py-0.5 whitespace-nowrap";
+const PRINT_TD_XS_CENTER = PRINT_TD_XS + " text-center";
 const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
 // Export Excel des rapports — CSV avec séparateur ";" (convention Excel FR,
@@ -779,7 +786,15 @@ function loadPdfLibs() {
   return _pdfLibsPromise;
 }
 
-async function exportNodeAsPdf(node, filename) {
+async function exportNodeAsPdf(node, filename, opts) {
+  const fitOnePage = !!(opts && opts.fitOnePage);
+  // Largeur forcée pendant la capture d'un bloc normalement display:none (voir
+  // plus bas) — utile pour les rapports qui utilisent des colonnes en
+  // pourcentage (w-full) prévues pour une page standard. Un rapport déjà
+  // compact et pensé pour tenir sur une page (ex. Planning mensuel) doit au
+  // contraire garder sa largeur NATURELLE (pas de contrainte) pour rester
+  // aussi resserré que son contenu réel : passer forceWidth: null.
+  const forceWidth = opts && "forceWidth" in opts ? opts.forceWidth : 1200;
   await loadPdfLibs();
   // Les blocs "papier" (print-report) sont display:none à l'écran, affichés
   // uniquement par la règle @media print — html2canvas ne peut capturer que
@@ -793,7 +808,7 @@ async function exportNodeAsPdf(node, filename) {
     node.style.position = "fixed";
     node.style.left = "-10000px";
     node.style.top = "0";
-    node.style.width = "1200px";
+    if (forceWidth) node.style.width = forceWidth + "px";
     node.style.display = "block";
   }
   try {
@@ -802,10 +817,23 @@ async function exportNodeAsPdf(node, filename) {
     const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const pageWidthMm = pdf.internal.pageSize.getWidth(), pageHeightMm = pdf.internal.pageSize.getHeight();
     const margin = 5;
-    const imgWidthMm = pageWidthMm - margin * 2;
-    const imgHeightMm = imgWidthMm * canvas.height / canvas.width;
+    const usableWidthMm = pageWidthMm - margin * 2, usableHeightMm = pageHeightMm - margin * 2;
+    let imgWidthMm = usableWidthMm;
+    let imgHeightMm = imgWidthMm * canvas.height / canvas.width;
     const imgData = canvas.toDataURL("image/jpeg", 0.92);
-    const usableHeightMm = pageHeightMm - margin * 2;
+
+    if (fitOnePage) {
+      // Une seule page, quitte à réduire l'échelle si le contenu est plus
+      // haut que la page (jamais de découpage sur plusieurs pages ici).
+      if (imgHeightMm > usableHeightMm) {
+        imgWidthMm = usableWidthMm * (usableHeightMm / imgHeightMm);
+        imgHeightMm = usableHeightMm;
+      }
+      pdf.addImage(imgData, "JPEG", margin, margin, imgWidthMm, imgHeightMm);
+      pdf.save(filename);
+      return;
+    }
+
     let heightLeftMm = imgHeightMm, offsetMm = 0;
     pdf.addImage(imgData, "JPEG", margin, margin, imgWidthMm, imgHeightMm);
     heightLeftMm -= usableHeightMm;
@@ -1330,46 +1358,86 @@ function Home() {
 // ==========================================
 // 2. Planning mensuel
 // ==========================================
-// Version imprimable (noir sur blanc, sans couleurs pour économiser l'encre) du
-// planning mensuel — visible uniquement à l'impression / export PDF.
-function PlanningGridPrintable({ planning, drivers, config }) {
+// Table imprimable d'un seul groupe de vacation (V1 ou V2) — même modèle que
+// le fichier Excel réel de l'exploitant : uniquement repos/congé/maladie/
+// absence/formation/OFF/férié (code court), les jours PRESENT restent VIERGES
+// (pas de shift/vacation/zone — volontairement omis, cf. en-tête de
+// PlanningGridPrintable), avec une ligne "Nombre de présent" par jour.
+function VacationGroupTablePrintable({ label, drivers, planning, config }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="border-collapse text-[10px] w-full">
-        <thead>
-          <tr>
-            <th className={PRINT_TH}>Mat</th>
-            <th className={PRINT_TH}>Nom</th>
-            <th className={PRINT_TH}>Prénom</th>
-            <th className={PRINT_TH}>Équipe</th>
-            {planning.days.map(day => {
-              const holiday = HolidayEngine.getHoliday(day.iso, config);
-              return <th key={day.iso} className={PRINT_TH + " text-center px-1"} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}{holiday ? "*" : ""}</th>;
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {drivers.map(driver => (
-            <tr key={driver.id}>
-              <td className={PRINT_TD}>{driver.matricule}</td>
-              <td className={PRINT_TD + " font-medium"}>{driver.nom}</td>
-              <td className={PRINT_TD}>{driver.prenom}</td>
-              <td className={PRINT_TD}>{driver.teamId}</td>
+    <div className="mb-2 last:mb-0">
+      <div className="text-[9px] font-bold uppercase tracking-wide mb-0.5">{label} — {drivers.length} conducteur{drivers.length > 1 ? "s" : ""}</div>
+      {drivers.length === 0 ? (
+        <p className="text-[8px] italic text-slate-500 mb-1">Aucun conducteur dans ce groupe.</p>
+      ) : (
+        <table className="border-collapse text-[7px] mb-1">
+          <thead>
+            <tr>
+              <th className={PRINT_TH_XS}>Mat</th>
+              <th className={PRINT_TH_XS}>Nom</th>
+              <th className={PRINT_TH_XS}>Prénom</th>
               {planning.days.map(day => {
-                const a = day.assignments.find(x => x.driverId === driver.id);
-                if (!a) return <td key={day.iso} className={PRINT_TD_CENTER}>—</td>;
-                const meta = RTG_STATUS_META[a.status] || { code: a.status };
-                let text = meta.code;
-                if (a.status === "PRESENT") text = [a.vacation, a.zone].filter(Boolean).join("-") || meta.code;
-                return <td key={day.iso} className={PRINT_TD_CENTER}>{text}</td>;
+                const holiday = HolidayEngine.getHoliday(day.iso, config);
+                return <th key={day.iso} className={PRINT_TH_XS + " text-center"} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}</th>;
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-600">
-        {Object.entries(RTG_STATUS_META).map(([key, meta]) => <span key={key}>{meta.code} = {meta.label}</span>)}
-        <span>* = jour férié</span>
+          </thead>
+          <tbody>
+            {drivers.map(driver => (
+              <tr key={driver.id}>
+                <td className={PRINT_TD_XS}>{driver.matricule}</td>
+                <td className={PRINT_TD_XS + " font-medium"}>{driver.nom}</td>
+                <td className={PRINT_TD_XS}>{driver.prenom}</td>
+                {planning.days.map(day => {
+                  const a = day.assignments.find(x => x.driverId === driver.id);
+                  const code = a && a.status !== "PRESENT" ? ((RTG_STATUS_META[a.status] || {}).code || a.status) : "";
+                  return <td key={day.iso} className={PRINT_TD_XS_CENTER}>{code}</td>;
+                })}
+              </tr>
+            ))}
+            <tr className="font-bold">
+              <td className={PRINT_TD_XS} colSpan="3">Nombre de présent</td>
+              {planning.days.map(day => {
+                const count = drivers.reduce((n, driver) => {
+                  const a = day.assignments.find(x => x.driverId === driver.id);
+                  return n + (a && a.status === "PRESENT" ? 1 : 0);
+                }, 0);
+                return <td key={day.iso} className={PRINT_TD_XS_CENTER}>{count}</td>;
+              })}
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// Version imprimable (noir sur blanc, sans couleurs pour économiser l'encre) du
+// planning mensuel — visible uniquement à l'impression / export PDF. Format
+// compact repris du modèle Excel réel de l'exploitant : conducteurs séparés
+// par vacation (V1/V2) avec ligne "Nombre de présent" par jour, AUCUN détail
+// d'affectation (shift/vacation/zone) — seuls repos, congés, maladies,
+// absences, formations et OFF/férié sont indiqués, tout le reste (présent)
+// reste vierge — pour tenir sur une seule page malgré un mois complet.
+function PlanningGridPrintable({ planning, drivers, config, teams }) {
+  const teamIds = teams.filter(t => drivers.some(d => d.teamId === t.id)).map(t => t.id);
+  return (
+    <div>
+      {teamIds.map(teamId => {
+        const team = teams.find(t => t.id === teamId);
+        const teamDrivers = drivers.filter(d => d.teamId === teamId);
+        const v1 = teamDrivers.filter(d => d.initialVacation !== "V2");
+        const v2 = teamDrivers.filter(d => d.initialVacation === "V2");
+        return (
+          <div key={teamId} className="mb-2 last:mb-0">
+            {teamIds.length > 1 && <div className="text-[10px] font-bold mb-0.5">{team ? team.nom : teamId}</div>}
+            <VacationGroupTablePrintable label="Vacation 1" drivers={v1} planning={planning} config={config} />
+            <VacationGroupTablePrintable label="Vacation 2" drivers={v2} planning={planning} config={config} />
+          </div>
+        );
+      })}
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[7px] text-slate-600">
+        {Object.entries(RTG_STATUS_META).filter(([key]) => key !== "PRESENT").map(([key, meta]) => <span key={key}>{meta.code} = {meta.label}</span>)}
       </div>
     </div>
   );
@@ -1444,7 +1512,7 @@ function PlanningMensuel() {
     if (!printRef.current) return;
     setPdfBusy(true);
     try {
-      await exportNodeAsPdf(printRef.current, `planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.pdf`);
+      await exportNodeAsPdf(printRef.current, `planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.pdf`, { fitOnePage: true, forceWidth: null });
     } catch (e) {
       alert(e.message || String(e));
     } finally {
@@ -1504,7 +1572,7 @@ function PlanningMensuel() {
           subtitle={"Rapport de planning mensuel — RTG — " + RAPPORT_MOIS_LABELS_P[month - 1] + " " + year + (effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : "")}
           count={drivers.length} countLabel="conducteur"
         />
-        <PlanningGridPrintable planning={planning} drivers={drivers} config={state.config} />
+        <PlanningGridPrintable planning={planning} drivers={drivers} config={state.config} teams={state.teams} />
       </div>
     </div>
   );
