@@ -362,6 +362,26 @@ const RestDayEngine = {
     const shiftWeights = state.config.restDayWeightByShift || { S1: 1, S2: 1, S3: 1 };
     const labelBiasByShift = state.config.restDayLabelBiasByShift || {};
 
+    // Un jour où le conducteur est déjà OFF automatiquement (dimanche Shift 3,
+    // offShift3Dimanche) n'est ni travaillé ni un repos "en dur" (candidateSet
+    // ne le compte pas), mais ce n'est pas non plus un vrai retour au travail
+    // pour l'adjacence : un repos juste avant ET un repos juste après un tel
+    // jour donnent en pratique 3 jours d'affilée sans travail (R, OFF, R) —
+    // aussi problématique que 2 repos consécutifs — signalé par l'exploitant
+    // (GR BAKKALI, HAITOU : repos 03/10 et 05/10 avec le dimanche 04/10 OFF
+    // entre les deux). La règle de non-adjacence "saute" donc par-dessus un
+    // jour OFF automatique pour aller comparer avec le jour réel d'après/
+    // d'avant.
+    const isAutoOffDay = d => !!(team && d >= 1 && d <= dim && dayShift[d] === "S3"
+      && state.config.offShift3Dimanche && RTGDate.isSunday(RTGDate.makeDate(year, month, d)));
+    const adjacentDaysFor = day => {
+      const days = [day - 1, day + 1];
+      if (isAutoOffDay(day - 1)) days.push(day - 2);
+      if (isAutoOffDay(day + 1)) days.push(day + 2);
+      return days;
+    };
+    const blockedByAdjacency = (used, day) => adjacentDaysFor(day).some(d => used.has(d));
+
     // Répartit `total` entre des groupes de jours (occurrences de shift),
     // proportionnellement à leur nombre de jours ET à un poids relatif — mais
     // JAMAIS en laissant un groupe totalement vide tant que `total` permet
@@ -500,7 +520,7 @@ const RestDayEngine = {
         const candidates = this.getCandidatesForDriver(driver, month, year, state, team).filter(d => !st.used.has(d));
         for (const day of candidates) {
           if (need <= 0) break;
-          if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
+          if (blockedByAdjacency(st.used, day)) continue;
           st.chosen.push(day);
           st.used.add(day);
           need--;
@@ -642,7 +662,7 @@ const RestDayEngine = {
               tries++;
               const st = driverState[dr.id];
               if (st.remainingQuota <= 0 || !st.candidateSet.has(day) || st.used.has(day)
-                  || st.used.has(day - 1) || st.used.has(day + 1)) continue;
+                  || blockedByAdjacency(st.used, day)) continue;
               st.chosen.push(day);
               st.used.add(day);
               bumpUsage(block, day);
@@ -672,7 +692,7 @@ const RestDayEngine = {
             attempts++;
             const st = driverState[dr.id];
             if (st.remainingQuota <= 0) continue;
-            const eligibleDays = run.days.filter(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
+            const eligibleDays = run.days.filter(d => st.candidateSet.has(d) && !st.used.has(d) && !blockedByAdjacency(st.used, d) && usageAt(block, d) < capForGroup(block));
             if (eligibleDays.length === 0) continue;
             const day = eligibleDays.reduce((best, d) => usageAt(block, d) < usageAt(block, best) ? d : best);
             st.chosen.push(day);
@@ -710,7 +730,7 @@ const RestDayEngine = {
         };
         for (const day of candidates) {
           if (need <= 0) break;
-          if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
+          if (blockedByAdjacency(st.used, day)) continue;
           if (usageAt(group, day) >= capForGroup(group)) continue;
           place(day);
         }
@@ -718,7 +738,7 @@ const RestDayEngine = {
           for (const day of candidates) {
             if (need <= 0) break;
             if (st.used.has(day)) continue;
-            if (st.used.has(day - 1) || st.used.has(day + 1)) continue;
+            if (blockedByAdjacency(st.used, day)) continue;
             if (usageAt(group, day) >= capForGroup(group)) continue;
             place(day);
           }
