@@ -189,9 +189,26 @@ const RestDayEngine = {
     // pour ne pas artificiellement brider ce qu'il peut recevoir, sans jamais
     // l'imposer : le nombre réel varie selon le quota (l'exploitant observe
     // généralement 4 à 7 selon les mois, jamais un chiffre fixe).
+    // Minimum garanti samedi/dimanche (restDayMinSaturday/restDayMinSunday,
+    // § data.js) — un plancher, jamais un chiffre imposé (cf. commentaire
+    // data.js). Le plafond journalier de ces deux jours est relâché pour
+    // pouvoir au moins ATTEINDRE ce plancher (sinon le plafond ~30% habituel
+    // pourrait être inférieur au minimum demandé sur un petit bloc).
+    const minSaturdayByGroup = {
+      V1: Math.min(groupSizes.V1, state.config.restDayMinSaturday || 0),
+      V2: Math.min(groupSizes.V2, state.config.restDayMinSaturday || 0)
+    };
+    const minSundayByGroup = {
+      V1: Math.min(groupSizes.V1, state.config.restDayMinSunday || 0),
+      V2: Math.min(groupSizes.V2, state.config.restDayMinSunday || 0)
+    };
     const sundayCeilingByGroup = {
-      V1: Math.max(maxPerDayByGroup.V1, groupSizes.V1 - (state.config.sundayVacationCap || 6)),
-      V2: Math.max(maxPerDayByGroup.V2, groupSizes.V2 - (state.config.sundayVacationCap || 6))
+      V1: Math.max(maxPerDayByGroup.V1, groupSizes.V1 - (state.config.sundayVacationCap || 6), minSundayByGroup.V1),
+      V2: Math.max(maxPerDayByGroup.V2, groupSizes.V2 - (state.config.sundayVacationCap || 6), minSundayByGroup.V2)
+    };
+    const saturdayCeilingByGroup = {
+      V1: Math.max(maxPerDayByGroup.V1, minSaturdayByGroup.V1),
+      V2: Math.max(maxPerDayByGroup.V2, minSaturdayByGroup.V2)
     };
     const isSundayS1S2Day = d => {
       if (!team || d < 1 || d > dim) return false;
@@ -200,10 +217,25 @@ const RestDayEngine = {
       const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
       return shift === "S1" || shift === "S2";
     };
+    // Samedi n'a pas d'exclusion automatique (contrairement au dimanche
+    // Shift 3) : c'est toujours un jour candidat normal, quel que soit le shift.
+    const isSaturdayDay = d => !!(team && d >= 1 && d <= dim && RTGDate.dowMon0(RTGDate.makeDate(year, month, d)) === 5);
     const capForGroup = (group, day) => {
       const base = maxPerDayByGroup[group] !== undefined ? maxPerDayByGroup[group] : Math.max(2, Math.ceil(N * 0.3));
-      if (day != null && isSundayS1S2Day(day) && sundayCeilingByGroup[group] !== undefined) return sundayCeilingByGroup[group];
+      if (day == null) return base;
+      if (isSundayS1S2Day(day) && sundayCeilingByGroup[group] !== undefined) return sundayCeilingByGroup[group];
+      if (isSaturdayDay(day) && saturdayCeilingByGroup[group] !== undefined) return saturdayCeilingByGroup[group];
       return base;
+    };
+    // Minimum garanti (samedi/dimanche) pour UN jour donné, borné par le
+    // plafond réel de ce jour (jamais plus que ce que capForGroup autorise) —
+    // utilisé par splitDemandAcrossDays pour réserver ce plancher AVANT la
+    // répartition pondérée normale du reliquat.
+    const minRestForDay = (group, day) => {
+      let min = 0;
+      if (isSundayS1S2Day(day)) min = minSundayByGroup[group] || 0;
+      else if (isSaturdayDay(day)) min = minSaturdayByGroup[group] || 0;
+      return Math.min(min, capForGroup(group, day));
     };
     const dayUsage = { V1: {}, V2: {} }; // { [group]: { [day]: n } } — jamais partagé entre V1 et V2
     const usageAt = (group, day) => (dayUsage[group] && dayUsage[group][day]) || 0;
@@ -391,24 +423,41 @@ const RestDayEngine = {
     // floor(total × son poids / poids total) — un dimanche à poids élevé
     // reçoit ainsi mécaniquement plusieurs unités d'avance sur un jour
     // normal dès le départ, pas seulement via le reliquat.
-    const splitDemandAcrossDays = (total, days, weightForDay) => {
+    // `minForDay` (optionnel) réserve d'abord un plancher garanti (samedi/
+    // dimanche, § restDayMinSaturday/restDayMinSunday) dans la limite du
+    // total réellement disponible cette occurrence — jamais inventé au-delà
+    // du quota réel — avant de répartir le reliquat par poids comme
+    // ci-dessus ; ce reliquat peut encore augmenter un jour déjà au plancher
+    // (le samedi/dimanche restent aussi les jours à plus fort poids).
+    const splitDemandAcrossDays = (total, days, weightForDay, minForDay) => {
       const weights = days.map(weightForDay);
       const totalWeight = weights.reduce((a, b) => a + b, 0);
       const shares = {};
-      if (totalWeight <= 0 || total <= 0) {
-        days.forEach(d => { shares[d] = 0; });
-        return shares;
+      days.forEach(d => { shares[d] = 0; });
+      if (total <= 0) return shares;
+
+      let reserved = 0;
+      if (minForDay) {
+        days.forEach(d => {
+          const m = Math.max(0, minForDay(d) || 0);
+          if (m <= 0) return;
+          const take = Math.min(m, total - reserved);
+          if (take > 0) { shares[d] += take; reserved += take; }
+        });
       }
+      const remaining = total - reserved;
+      if (remaining <= 0 || totalWeight <= 0) return shares;
+
       let allocated = 0;
       const remainders = [];
       days.forEach((d, i) => {
-        const raw = total * weights[i] / totalWeight;
+        const raw = remaining * weights[i] / totalWeight;
         const floor = Math.floor(raw);
-        shares[d] = floor;
+        shares[d] += floor;
         allocated += floor;
         remainders.push({ day: d, rem: raw - floor });
       });
-      let leftover = total - allocated;
+      let leftover = remaining - allocated;
       remainders.sort((a, b) => b.rem - a.rem);
       let idx = 0;
       while (leftover > 0 && remainders.length > 0) {
@@ -592,7 +641,7 @@ const RestDayEngine = {
           // reliquat à partir en rattrapage sur un jour quelconque et à
           // casser l'ordre de la rotation continue.
           const openDays = run.days.filter(d => usageAt(block, d) < capForGroup(block, d));
-          const dayShares = splitDemandAcrossDays(totalDemand, openDays.length > 0 ? openDays : run.days, d => dayWeightForBlock(block, d));
+          const dayShares = splitDemandAcrossDays(totalDemand, openDays.length > 0 ? openDays : run.days, d => dayWeightForBlock(block, d), d => minRestForDay(block, d));
 
           // Éligibilité basée sur le quota TOTAL restant du conducteur
           // (st.remainingQuota), jamais sur son besoin propre à CETTE seule

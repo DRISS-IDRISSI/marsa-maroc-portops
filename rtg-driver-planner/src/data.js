@@ -64,11 +64,23 @@ const RTG_CONFIG = {
     S2: { V1: 20, V2: 20 },
     S3: { V1: 18, V2: 12 }
   },
-  // Le dimanche, sur les shifts 1 et 2 (le shift 3 est déjà OFF), au plus ce nombre
-  // de conducteurs peut être affecté par vacation (V1 et V2) : le surplus de
-  // l'équipe est mis en repos obligatoire ce dimanche-là, en rotation équitable
-  // d'un dimanche à l'autre, et ce repos consomme le quota mensuel de 6.
+  // Le dimanche (shifts 1/2, le shift 3 est déjà OFF) n'a plus de nombre de
+  // repos FIGÉ (l'ancienne règle forçait exactement ce nombre de présents,
+  // quel que soit le quota restant — retirée sur demande explicite de
+  // l'exploitant, § restDayEngine.js). Ne sert plus qu'à calculer un plafond
+  // journalier assoupli pour le dimanche (bloc de vacation moins ce nombre) :
+  // le nombre réel de repos dépend uniquement du quota mensuel restant,
+  // jamais imposé.
   sundayVacationCap: 6,
+  // Nombre MINIMUM de repos garanti le samedi / le dimanche, par bloc de
+  // vacation, quand le quota restant et les contraintes (adjacence, congés)
+  // le permettent — demande explicite de l'exploitant, ces deux jours étant
+  // les plus propices au repos (charge de travail la plus faible). Un
+  // plancher, jamais un nombre imposé : le placement peut dépasser ce
+  // minimum (poids restDayWeightByDow) ou, en cas de contrainte réelle
+  // (adjacence, peu de quota restant en fin de mois), rester en dessous.
+  restDayMinSaturday: 4,
+  restDayMinSunday: 5,
   offShift3Dimanche: true,
   exceptionDimancheLundi: true,
   shiftRotationCycleDefault: ["S1", "S3", "S2"],
