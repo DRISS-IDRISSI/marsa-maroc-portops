@@ -541,7 +541,41 @@ const RestDayEngine = {
       // occurrences non consécutives d'un même shift (ancien découpage par
       // TYPE de shift) cassait cette régularité.
       shiftRuns.forEach((run, idx) => {
-        ["V1", "V2"].forEach(block => { assignBucketRotation(block, "occ" + idx, run.days); });
+        const bucketKey = "occ" + idx;
+        ["V1", "V2"].forEach(block => { assignBucketRotation(block, bucketKey, run.days); });
+
+        // Rattrapage LOCAL (même occurrence) : les deux blocs V1/V2 partagent le
+        // même plafond quotidien d'équipe (dayUsage/maxPerDay) sur les jours de
+        // CETTE occurrence — un dimanche à l'intérieur (repos obligatoire, cf.
+        // getMandatorySundayOff) peut à lui seul en consommer une grande partie,
+        // laissant très peu de marge sur les jours restants. Le placement par
+        // POSITION FIXE (assignBucketRotation, ci-dessus) ignore l'état réel du
+        // jour au moment où l'AUTRE bloc (traité juste après) tente sa propre
+        // position : un conducteur peut alors échouer sur un jour déjà saturé
+        // par l'autre bloc alors qu'un autre jour de la MÊME occurrence a encore
+        // de la marge inutilisée — sans ce rattrapage, ce besoin non satisfait
+        // partait directement en Phase C (recherche sur tout le mois), cassant
+        // l'escalier de cette occurrence sans raison réelle de capacité. Ici, on
+        // utilise la marge RÉELLEMENT restante (pas une position figée) avant de
+        // laisser la main à Phase C — qui reste nécessaire quand la contrainte
+        // est réelle (ex. non-adjacence avec le repos obligatoire du dimanche).
+        teamDrivers.forEach(driver => {
+          const st = driverState[driver.id];
+          let need = st.needsByBucket[bucketKey] || 0;
+          if (need <= 0) return;
+          const group = driver.initialVacation;
+          for (const day of run.days) {
+            if (need <= 0) break;
+            if (!st.candidateSet.has(day) || st.used.has(day) || st.used.has(day - 1) || st.used.has(day + 1)) continue;
+            if ((dayUsage[day] || 0) >= maxPerDay) continue;
+            st.chosen.push(day);
+            st.used.add(day);
+            dayUsage[day] = (dayUsage[day] || 0) + 1;
+            bumpGroupUsage(day, group);
+            need--;
+          }
+          st.needsByBucket[bucketKey] = need;
+        });
       });
 
       // ------------------------------------------------------------------
