@@ -469,96 +469,116 @@ const RestDayEngine = {
       };
       const underGroupCapGeneric = (day, group) => groupUsageAt(day, group) < groupCapForDayGeneric(day, group);
 
-      // Attribue les jours de CE bucket en ESCALIER STRICT : les conducteurs
-      // du bloc qui ont encore besoin de ce bucket sont classés par RANG FIXE
-      // (ordre de l'équipe — driver.ordreAffichage / ordre de la liste), et
-      // chacun vise une position PROPORTIONNELLE à son rang dans `days`
-      // (conducteur 1/M -> début du bucket, conducteur M/M -> fin), espacée
-      // pour placer chacun de ses `bucketTarget` repos de ce bucket. Contrairement
-      // à une rotation qui avance même sur un conducteur ignoré, cette
-      // position est FIXE par conducteur : elle ne se décale jamais à cause
-      // d'un autre conducteur — c'est ce qui produit l'escalier net et stable
-      // demandé par l'exploitant (chaque conducteur avance d'un cran par
-      // rapport au précédent), tout en respectant plafonds/non-adjacence/
-      // jours fériés (le premier jour disponible à partir de la position
-      // visée est utilisé si elle est déjà prise).
-      const assignBucketRotation = (block, bucketKey, days) => {
+      // Calcule les POSITIONS VISÉES (escalier) pour un bloc sur CE bucket, sans
+      // encore rien placer : les conducteurs du bloc qui ont encore besoin de ce
+      // bucket sont classés par RANG FIXE (ordre de l'équipe), et chacun vise une
+      // position PROPORTIONNELLE à son rang dans `days` (conducteur 1/M -> début
+      // du bucket, conducteur M/M -> fin), espacée pour placer chacun de ses
+      // `bucketTarget` repos de ce bucket — c'est ce qui produit l'escalier net et
+      // stable demandé par l'exploitant (chaque conducteur avance d'un cran par
+      // rapport au précédent). Séparé du PLACEMENT réel (placeAttempt ci-dessous)
+      // pour pouvoir ENTRELACER les tentatives des deux blocs V1/V2 (cf. plus bas) :
+      // calculer, puis placer bloc par bloc en entier privilégiait toujours le même
+      // bloc sur le plafond quotidien partagé de l'équipe.
+      const computeBlockAttempts = (block, bucketKey, days) => {
         const blockList = blockDrivers[block];
         const needing = blockList.filter(dr => (driverState[dr.id].needsByBucket[bucketKey] || 0) > 0);
         const M = needing.length;
-        if (M === 0 || days.length === 0) return;
+        const attempts = [];
+        if (M === 0 || days.length === 0) return attempts;
         needing.forEach((dr, idxInNeeding) => {
-          const st = driverState[dr.id];
-          const bucketTarget = st.needsByBucket[bucketKey];
+          const bucketTarget = driverState[dr.id].needsByBucket[bucketKey];
           if (bucketTarget <= 0) return;
           const spacing = days.length / bucketTarget;
           const offset = Math.floor((idxInNeeding / M) * days.length);
           for (let k = 0; k < bucketTarget; k++) {
             const basePos = Math.round(k * spacing);
-            let pos = (offset + basePos) % days.length;
-            let tries = 0;
-            let found = null;
-            while (tries < days.length) {
-              const day = days[pos];
-              // `days` est une liste PARTAGÉE (shift, commune au bloc) qui ne
-              // tient pas compte des absences fixes/jours fériés propres à CE
-              // conducteur (congé, maladie, absence, affectation manuelle) —
-              // seul candidateSet (issu de getCandidatesForDriver) les exclut
-              // vraiment.
-              if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1)
-                  && (dayUsage[day] || 0) < maxPerDay && underGroupCapGeneric(day, block)) { found = day; break; }
-              pos = (pos + 1) % days.length;
-              tries++;
-            }
-            if (found === null) {
-              // Repli : relâche uniquement le plafond du BLOC (jamais celui,
-              // partagé, de l'équipe, ni la non-adjacence).
-              pos = (offset + basePos) % days.length;
-              tries = 0;
-              while (tries < days.length) {
-                const day = days[pos];
-                if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
-                pos = (pos + 1) % days.length;
-                tries++;
-              }
-            }
-            if (found === null) continue; // laissé pour le repli de Phase C
-            st.chosen.push(found);
-            st.used.add(found);
-            dayUsage[found] = (dayUsage[found] || 0) + 1;
-            bumpGroupUsage(found, block);
-            st.needsByBucket[bucketKey]--;
+            attempts.push({ driver: dr, block: block, pos: (offset + basePos) % days.length });
           }
         });
+        return attempts;
+      };
+
+      // Place une tentative (jour visé) en partant de sa position, avec le même
+      // repli en deux paliers qu'avant (plafond du bloc, puis plafond de l'équipe
+      // seul — jamais l'adjacence ni le plafond partagé de l'équipe).
+      const placeAttempt = (attempt, days, bucketKey) => {
+        const st = driverState[attempt.driver.id];
+        if ((st.needsByBucket[bucketKey] || 0) <= 0) return; // déjà satisfait entre-temps
+        let pos = attempt.pos, tries = 0, found = null;
+        while (tries < days.length) {
+          const day = days[pos];
+          // `days` est une liste PARTAGÉE (shift, commune au bloc) qui ne tient pas
+          // compte des absences fixes/jours fériés propres à CE conducteur (congé,
+          // maladie, absence, affectation manuelle) — seul candidateSet (issu de
+          // getCandidatesForDriver) les exclut vraiment.
+          if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1)
+              && (dayUsage[day] || 0) < maxPerDay && underGroupCapGeneric(day, attempt.block)) { found = day; break; }
+          pos = (pos + 1) % days.length;
+          tries++;
+        }
+        if (found === null) {
+          // Repli : relâche uniquement le plafond du BLOC (jamais celui, partagé,
+          // de l'équipe, ni la non-adjacence).
+          pos = attempt.pos;
+          tries = 0;
+          while (tries < days.length) {
+            const day = days[pos];
+            if (st.candidateSet.has(day) && !st.used.has(day) && !st.used.has(day - 1) && !st.used.has(day + 1) && (dayUsage[day] || 0) < maxPerDay) { found = day; break; }
+            pos = (pos + 1) % days.length;
+            tries++;
+          }
+        }
+        if (found === null) return; // laissé pour le rattrapage local / Phase C
+        st.chosen.push(found);
+        st.used.add(found);
+        dayUsage[found] = (dayUsage[found] || 0) + 1;
+        bumpGroupUsage(found, attempt.block);
+        st.needsByBucket[bucketKey]--;
       };
 
       // Une occurrence de shift à la fois (ordre chronologique — shiftRuns
       // est déjà construit dans cet ordre), avec ses jours en ordre
       // CALENDAIRE (jamais triés par préférence) : l'escalier (position
-      // proportionnelle au rang, cf. assignBucketRotation ci-dessus) a
-      // besoin d'un ordre calendaire stable et d'un bucket dont tous les
-      // jours sont réellement consécutifs pour rester net — fusionner deux
-      // occurrences non consécutives d'un même shift (ancien découpage par
-      // TYPE de shift) cassait cette régularité.
+      // proportionnelle au rang, cf. computeBlockAttempts ci-dessus) a besoin
+      // d'un ordre calendaire stable et d'un bucket dont tous les jours sont
+      // réellement consécutifs pour rester net — fusionner deux occurrences
+      // non consécutives d'un même shift (ancien découpage par TYPE de shift)
+      // cassait cette régularité.
+      //
+      // Les tentatives des DEUX blocs sont ENTRELACÉES (V1, V2, V1, V2, ...)
+      // au lieu de traiter un bloc entièrement avant l'autre : les deux blocs
+      // partagent le même plafond quotidien d'équipe (dayUsage/maxPerDay) sur
+      // les jours de cette occurrence — traiter V1 en entier d'abord lui
+      // laissait toujours la meilleure place sur ce plafond partagé, et un
+      // dimanche à l'intérieur de l'occurrence (repos obligatoire, cf.
+      // getMandatorySundayOff) qui en consomme déjà une grande partie
+      // aggravait ce déséquilibre : V2 arrivait ensuite sur des jours déjà
+      // à moitié pleins et échouait plus souvent, ses repos partant alors en
+      // repli sur tout le mois (Phase C) au lieu de rester dans le bloc —
+      // cassant l'escalier de CE bloc sans raison réelle de capacité.
+      // Entrelacer les deux blocs leur fait disputer la place à parts égales,
+      // jour par jour, en temps réel.
       shiftRuns.forEach((run, idx) => {
         const bucketKey = "occ" + idx;
-        ["V1", "V2"].forEach(block => { assignBucketRotation(block, bucketKey, run.days); });
+        const attemptsV1 = computeBlockAttempts("V1", bucketKey, run.days);
+        const attemptsV2 = computeBlockAttempts("V2", bucketKey, run.days);
+        const maxLen = Math.max(attemptsV1.length, attemptsV2.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (attemptsV1[i]) placeAttempt(attemptsV1[i], run.days, bucketKey);
+          if (attemptsV2[i]) placeAttempt(attemptsV2[i], run.days, bucketKey);
+        }
 
-        // Rattrapage LOCAL (même occurrence) : les deux blocs V1/V2 partagent le
-        // même plafond quotidien d'équipe (dayUsage/maxPerDay) sur les jours de
-        // CETTE occurrence — un dimanche à l'intérieur (repos obligatoire, cf.
-        // getMandatorySundayOff) peut à lui seul en consommer une grande partie,
-        // laissant très peu de marge sur les jours restants. Le placement par
-        // POSITION FIXE (assignBucketRotation, ci-dessus) ignore l'état réel du
-        // jour au moment où l'AUTRE bloc (traité juste après) tente sa propre
-        // position : un conducteur peut alors échouer sur un jour déjà saturé
-        // par l'autre bloc alors qu'un autre jour de la MÊME occurrence a encore
-        // de la marge inutilisée — sans ce rattrapage, ce besoin non satisfait
-        // partait directement en Phase C (recherche sur tout le mois), cassant
-        // l'escalier de cette occurrence sans raison réelle de capacité. Ici, on
-        // utilise la marge RÉELLEMENT restante (pas une position figée) avant de
-        // laisser la main à Phase C — qui reste nécessaire quand la contrainte
-        // est réelle (ex. non-adjacence avec le repos obligatoire du dimanche).
+        // Rattrapage LOCAL (même occurrence) : même avec l'entrelacement
+        // ci-dessus, une position figée par rang peut encore, dans de rares
+        // cas, échouer sur un jour saturé pendant qu'un autre jour de LA
+        // MÊME occurrence a encore de la marge inutilisée (ex. non-adjacence
+        // qui exclut ponctuellement une position). Sans ce rattrapage, ce
+        // besoin non satisfait partait directement en Phase C (recherche sur
+        // tout le mois). Ici, on utilise la marge RÉELLEMENT restante avant
+        // de laisser la main à Phase C — qui reste nécessaire quand la
+        // contrainte est réelle (ex. non-adjacence avec le repos obligatoire
+        // du dimanche).
         teamDrivers.forEach(driver => {
           const st = driverState[driver.id];
           let need = st.needsByBucket[bucketKey] || 0;
