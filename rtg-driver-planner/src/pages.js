@@ -823,13 +823,16 @@ async function exportNodeAsPdf(node, filename, opts) {
     const imgData = canvas.toDataURL("image/jpeg", 0.92);
 
     if (fitOnePage) {
-      // Une seule page, quitte à réduire l'échelle si le contenu est plus
-      // haut que la page (jamais de découpage sur plusieurs pages ici).
-      if (imgHeightMm > usableHeightMm) {
-        imgWidthMm = usableWidthMm * (usableHeightMm / imgHeightMm);
-        imgHeightMm = usableHeightMm;
-      }
-      pdf.addImage(imgData, "JPEG", margin, margin, imgWidthMm, imgHeightMm);
+      // Occupe la page EN ENTIER (largeur ET hauteur), comme le ferait
+      // "Ajuster à la page" dans un tableur : un tableau compact et large
+      // mais peu haut (notre cas — un mois entier tient déjà en largeur avec
+      // beaucoup de lignes en moins qu'il n'y a de place en hauteur) laisse
+      // sinon une grande zone vide sous le rapport si on se contente de
+      // conserver ses proportions d'origine. Un léger étirement vertical
+      // (jamais horizontal, la largeur est déjà celle de la page) reste
+      // largement lisible pour un tableau (texte court, cellules à moitié
+      // vides) et donne un rendu "pleine page" plus soigné.
+      pdf.addImage(imgData, "JPEG", margin, margin, usableWidthMm, usableHeightMm);
       pdf.save(filename);
       return;
     }
