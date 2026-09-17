@@ -19,14 +19,15 @@ const PlanningEngine = {
     const fixed = AbsenceEngine.getFixedStatus(driver, iso, state);
     if (fixed) return fixed;
 
-    const holiday = HolidayEngine.getHoliday(iso, state.config);
-    const holidayWorked = holiday && ExceptionEngine.hasWorked(state, driver.id, iso, "FERIE_TRAVAILLE");
-    if (holiday && !holidayWorked) return "FERIE";
-
     const team = teams.find(t => t.id === driver.teamId);
     if (!team) return "ABSENCE";
 
     const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
+
+    const holiday = HolidayEngine.getEffectiveHoliday(date, team, state.config);
+    const holidayWorked = holiday && ExceptionEngine.hasWorked(state, driver.id, iso, "FERIE_TRAVAILLE");
+    if (holiday && !holidayWorked) return "FERIE";
+
     const sundayS3Off = state.config.offShift3Dimanche && shift === "S3" && RTGDate.isSunday(date);
     const sundayWorked = sundayS3Off && ExceptionEngine.hasWorked(state, driver.id, iso, "DIMANCHE_S3");
     if (sundayS3Off && !sundayWorked) return "OFF";

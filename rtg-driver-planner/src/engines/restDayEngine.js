@@ -104,7 +104,7 @@ const RestDayEngine = {
       // manuel (2 repos consécutifs une fois les deux fusionnés à
       // l'affichage — cas réel observé après import Excel).
       if (state.manualOverrides[iso + "_" + driver.id]) continue;
-      if (HolidayEngine.getHoliday(iso, state.config)) continue;
+      if (HolidayEngine.getEffectiveHoliday(date, team, state.config)) continue;
       if (team) {
         const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
         if (state.config.offShift3Dimanche && shift === "S3" && RTGDate.isSunday(date)) continue;
@@ -138,7 +138,7 @@ const RestDayEngine = {
       const date = RTGDate.makeDate(year, month, d);
       if (!RTGDate.isSunday(date)) continue;
       const iso = RTGDate.toISO(date);
-      if (HolidayEngine.getHoliday(iso, state.config)) continue;
+      if (HolidayEngine.getEffectiveHoliday(date, team, state.config)) continue;
       const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
       if (shift !== "S1" && shift !== "S2") continue;
 

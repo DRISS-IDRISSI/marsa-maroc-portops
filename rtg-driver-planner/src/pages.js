@@ -1155,7 +1155,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                 {!shiftRuns && <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>}
                 {!shiftRuns && <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>}
                 {planning.days.map(day => {
-                  const holiday = HolidayEngine.getHoliday(day.iso, config);
+                  const holiday = HolidayEngine.getEffectiveHoliday(RTGDate.parseISO(day.iso), team, config);
                   const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
                   return (
                     <th key={day.iso} className={`border border-border/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"} ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`} title={holiday ? holiday.label : undefined}>
@@ -1459,7 +1459,7 @@ function VacationGroupTablePrintable({ label, drivers, planning, config, team })
               {!shiftRuns && <th className={PRINT_TH_XS}>Nom</th>}
               {!shiftRuns && <th className={PRINT_TH_XS}>Prénom</th>}
               {planning.days.map(day => {
-                const holiday = HolidayEngine.getHoliday(day.iso, config);
+                const holiday = HolidayEngine.getEffectiveHoliday(RTGDate.parseISO(day.iso), team, config);
                 return <th key={day.iso} className={PRINT_TH_XS + " text-center"} style={holiday ? { backgroundColor: PRINT_STATUS_BG.FERIE } : undefined} title={holiday ? holiday.label : undefined}>{String(day.day).padStart(2, "0")}</th>;
               })}
               {!shiftRuns && <th className={PRINT_TH_XS + " text-center"}>Total repos</th>}
