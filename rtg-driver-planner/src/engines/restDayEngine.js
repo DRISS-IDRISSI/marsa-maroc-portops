@@ -185,7 +185,25 @@ const RestDayEngine = {
     const key = (team ? team.id : "none") + "_" + year + "_" + month;
     if (this._teamCache[key]) return this._teamCache[key];
 
-    const teamDrivers = state.drivers.filter(dr => dr.teamId === (team ? team.id : null) && dr.actif !== false);
+    // Trié par ordreAffichage (même tri que la grille Planning Mensuel,
+    // pages.js) — SANS ce tri, la rotation continue de Phase B (qui avance
+    // dans l'ordre de `teamDrivers`, ici l'ordre matricule de Supabase) ne
+    // correspond pas à l'ordre des LIGNES affichées à l'écran (ordreAffichage,
+    // rempli par l'import Excel) : une rotation parfaitement contiguë en
+    // interne apparaît alors dispersée sur des lignes non consécutives dans
+    // le tableau — signalé par l'exploitant (repos censés être groupés sur
+    // des conducteurs consécutifs, ex. OUDRAOUA/MAAQUOUL/CHARIH/AYAR le même
+    // jour, mais rendus sur des lignes éparpillées).
+    const teamDrivers = state.drivers
+      .filter(dr => dr.teamId === (team ? team.id : null) && dr.actif !== false)
+      .slice()
+      .sort((a, b) => {
+        const oa = a.ordreAffichage, ob = b.ordreAffichage;
+        if (oa == null && ob == null) return 0;
+        if (oa == null) return 1;
+        if (ob == null) return -1;
+        return oa - ob;
+      });
     const N = teamDrivers.length || 1;
     const dim = RTGDate.daysInMonth(month, year);
     const results = {};
