@@ -367,8 +367,9 @@ const RestDayEngine = {
     };
 
     // Répartit `total` entre des JOURS individuels (pas des groupes de jours),
-    // par poids (méthode du plus grand reste), SANS plafond artificiel par
-    // jour — un jour peut recevoir plusieurs unités. Sert à répartir la
+    // par poids (méthode du plus grand reste PUR, sans plancher uniforme par
+    // jour) — un jour peut recevoir plusieurs unités, et un jour à poids
+    // négligeable peut légitimement en recevoir zéro. Sert à répartir la
     // demande totale d'une occurrence de shift sur ses propres jours,
     // biaisée par le label V1/V2 que le bloc affiche ce jour-là
     // (restDayLabelBiasByShift) : trouvé en comparant précisément au modèle
@@ -377,6 +378,19 @@ const RestDayEngine = {
     // il affiche l'autre label, ce qui explique l'asymétrie observée entre
     // jours consécutifs d'une même occurrence (jamais un simple partage à
     // parts égales).
+    //
+    // Correction : un plancher UNIFORME (floor(total/nb jours), attribué à
+    // TOUS les jours avant tout poids) écrasait la différence de poids dès
+    // que la demande totale de l'occurrence était proche du nombre de jours
+    // — un dimanche 4x plus "attractif" qu'un jour normal ne recevait alors,
+    // dans la plupart des cas, qu'UN SEUL repos de plus qu'un jour ordinaire
+    // (le plancher consommant déjà l'essentiel du total, ne laissant qu'un
+    // petit reliquat à départager par poids) — signalé par l'exploitant
+    // (GR BAKKALI : 2 repos seulement le dimanche 11/10, comme 3 des jours
+    // ouvrés de la même semaine). Chaque jour reçoit maintenant directement
+    // floor(total × son poids / poids total) — un dimanche à poids élevé
+    // reçoit ainsi mécaniquement plusieurs unités d'avance sur un jour
+    // normal dès le départ, pas seulement via le reliquat.
     const splitDemandAcrossDays = (total, days, weightForDay) => {
       const weights = days.map(weightForDay);
       const totalWeight = weights.reduce((a, b) => a + b, 0);
@@ -385,14 +399,14 @@ const RestDayEngine = {
         days.forEach(d => { shares[d] = 0; });
         return shares;
       }
-      const base = Math.floor(total / days.length);
       let allocated = 0;
       const remainders = [];
       days.forEach((d, i) => {
-        shares[d] = base;
-        allocated += base;
         const raw = total * weights[i] / totalWeight;
-        remainders.push({ day: d, rem: raw - base });
+        const floor = Math.floor(raw);
+        shares[d] = floor;
+        allocated += floor;
+        remainders.push({ day: d, rem: raw - floor });
       });
       let leftover = total - allocated;
       remainders.sort((a, b) => b.rem - a.rem);
