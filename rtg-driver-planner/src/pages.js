@@ -895,7 +895,7 @@ function PrintHeader({ subtitle, count, countLabel }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
       <div className="flex items-center gap-3">
-        <img src="icons/tc3pc-logo.svg" alt="TC3PC" className="h-9 w-auto shrink-0" />
+        <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-9 w-auto shrink-0" />
         <div>
           <div className="text-base sm:text-lg font-bold whitespace-nowrap">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
           <div className="text-xs sm:text-sm text-slate-600">{subtitle}</div>
