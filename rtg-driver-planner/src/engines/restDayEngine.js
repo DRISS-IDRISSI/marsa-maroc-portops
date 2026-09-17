@@ -36,10 +36,11 @@
 // Le quota mensuel de chaque conducteur est réparti par ANTICIPATION entre les
 // semaines où son équipe est sur Shift 1, Shift 2 et Shift 3, proportionnellement
 // au nombre de jours candidats de chaque shift ce mois-là ET à sa charge de
-// travail relative (config.restDayWeightByShift — Shift 3 = 20% de charge donc
-// plus de repos que Shift 1 = 30% ou Shift 2 = 50%). Le placement fin à
-// l'intérieur de chaque shift (et, quand applicable, de chaque label V1/V2)
-// utilise ensuite la rotation partagée décrite plus haut.
+// travail relative (config.restDayWeightByShift — Shift 1 = 30%, Shift 2 = 40%,
+// Shift 3 = 30% ; plus la charge d'un shift est faible, plus il reçoit de
+// repos). Le placement fin à l'intérieur de chaque shift (et, quand
+// applicable, de chaque label V1/V2) utilise ensuite la rotation partagée
+// décrite plus haut.
 //
 // Chaque conducteur appartient à un bloc de vacation FIXE (driver.initialVacation,
 // §9-10 — les deux blocs d'une équipe ne se séparent jamais). Pour qu'un bloc ne

@@ -37,28 +37,32 @@ const RTG_CONFIG = {
   // Le samedi, si l'équipe est sur le SHIFT 2 cette semaine-là, la charge est
   // plus faible que d'habitude : ce poids remplace celui de restDayWeightByDow[5].
   restDayWeightSaturdayShift2: 4,
-  // Charge de travail par shift (§ note métier) : Shift 1 = 30% (13.5%+16.5%),
-  // Shift 2 = 50% (25%+25%), Shift 3 = 20% (12%+8%). Le poids de placement des
-  // repos est inversement proportionnel à cette charge : plus la charge du
-  // shift est faible, plus il est privilégié pour y placer des repos (donc
-  // moins de conducteurs présents), et inversement pour un shift à forte
-  // charge. Ce facteur se combine (multiplication) avec restDayWeightByDow.
-  restDayWeightByShift: { S1: 1, S2: 0.6, S3: 1.5 },
-  // Charge de travail par VACATION à l'intérieur de chaque shift (§ note métier,
-  // sur 100) : Shift 1 = 13.5% (V1) / 16.5% (V2), Shift 2 = 25% / 25%, Shift 3 = 12%
-  // (V1) / 8% (V2). NE définit PAS l'appartenance à un bloc (driver.initialVacation
-  // reste fixe, un bloc ne se sépare jamais — §9-10) : sert uniquement à biaiser,
-  // à l'intérieur d'un shift, le placement des repos selon le LABEL de vacation
-  // qu'affiche CE JOUR-LÀ le bloc de chaque conducteur (qui bascule quotidiennement
-  // — VacationRotationEngine). Plus la charge d'une vacation est faible, plus les
-  // jours où le bloc du conducteur affiche cette vacation sont privilégiés pour y
-  // placer un repos — ce qui fait mécaniquement pencher la présence quotidienne
-  // vers la vacation à charge plus élevée (ex. Shift 3 : plus de présents en V1
-  // qu'en V2, conformément à 12% contre 8%).
+  // Charge de travail par shift (§ note métier, mise à jour exploitant) :
+  // Shift 1 = 30% (13%+17%), Shift 2 = 40% (20%+20%), Shift 3 = 30% (18%+12%).
+  // Le nombre de repos DÛS à un conducteur pour les jours candidats de ce
+  // shift ce mois-ci est inversement proportionnel à cette charge (formule :
+  // référence = charge du Shift 1, poids = référence / charge du shift) :
+  // plus la charge du shift est faible, plus il reçoit une part de repos
+  // élevée (donc moins de conducteurs présents), et inversement pour un
+  // shift à forte charge.
+  restDayWeightByShift: { S1: 1, S2: 0.75, S3: 1 },
+  // Charge de travail par VACATION à l'intérieur de chaque shift (§ note
+  // métier, mise à jour exploitant, sur 100) : Shift 1 = 13% (V1) / 17% (V2),
+  // Shift 2 = 20% / 20% (moitié chacune des 40% du shift), Shift 3 = 18% (V1)
+  // / 12% (V2). NE définit PAS l'appartenance à un bloc (driver.
+  // initialVacation reste fixe, un bloc ne se sépare jamais — §9-10) : sert
+  // uniquement à biaiser, à l'intérieur d'un shift, le placement des repos
+  // selon le LABEL de vacation qu'affiche CE JOUR-LÀ le bloc de chaque
+  // conducteur (qui bascule quotidiennement — VacationRotationEngine). Plus
+  // la charge d'une vacation est faible, plus les jours où le bloc du
+  // conducteur affiche cette vacation sont privilégiés pour y placer un
+  // repos — ce qui fait mécaniquement pencher la présence quotidienne vers
+  // la vacation à charge plus élevée (ex. Shift 3 : plus de présents en V1
+  // qu'en V2, conformément à 18% contre 12%).
   restDayLabelBiasByShift: {
-    S1: { V1: 13.5, V2: 16.5 },
-    S2: { V1: 25, V2: 25 },
-    S3: { V1: 12, V2: 8 }
+    S1: { V1: 13, V2: 17 },
+    S2: { V1: 20, V2: 20 },
+    S3: { V1: 18, V2: 12 }
   },
   // Le dimanche, sur les shifts 1 et 2 (le shift 3 est déjà OFF), au plus ce nombre
   // de conducteurs peut être affecté par vacation (V1 et V2) : le surplus de
