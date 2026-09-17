@@ -803,11 +803,11 @@ function loadPdfLibs() {
 async function exportNodeAsPdf(node, filename, opts) {
   const fitOnePage = !!(opts && opts.fitOnePage);
   // Largeur forcée pendant la capture d'un bloc normalement display:none (voir
-  // plus bas) — utile pour les rapports qui utilisent des colonnes en
-  // pourcentage (w-full) prévues pour une page standard. Un rapport déjà
-  // compact et pensé pour tenir sur une page (ex. Planning mensuel) doit au
-  // contraire garder sa largeur NATURELLE (pas de contrainte) pour rester
-  // aussi resserré que son contenu réel : passer forceWidth: null.
+  // plus bas). Toujours fixer une largeur explicite plutôt que laisser le
+  // bloc se dimensionner naturellement : sinon un enfant plus large que le
+  // contenu principal (ex. le titre de l'en-tête) peut élargir tout le
+  // conteneur capturé, laissant un vide à droite du contenu réel une fois
+  // étiré à la page.
   const forceWidth = opts && "forceWidth" in opts ? opts.forceWidth : 1200;
   await loadPdfLibs();
   // Les blocs "papier" (print-report) sont display:none à l'écran, affichés
@@ -834,7 +834,12 @@ async function exportNodeAsPdf(node, filename, opts) {
     const usableWidthMm = pageWidthMm - margin * 2, usableHeightMm = pageHeightMm - margin * 2;
     let imgWidthMm = usableWidthMm;
     let imgHeightMm = imgWidthMm * canvas.height / canvas.width;
-    const imgData = canvas.toDataURL("image/jpeg", 0.92);
+    // PNG (sans perte) plutôt que JPEG : un rapport tableau (texte fin,
+    // bordures 1px) devient flou/crénelé en JPEG dès qu'on l'étire pour
+    // remplir la page — texte qui paraît "dans une autre police" et
+    // colonnes qui semblent désalignées. Le PNG reste net à n'importe
+    // quel facteur d'agrandissement.
+    const imgData = canvas.toDataURL("image/png");
 
     if (fitOnePage) {
       // Occupe la page EN ENTIER (largeur ET hauteur), comme le ferait
@@ -846,18 +851,18 @@ async function exportNodeAsPdf(node, filename, opts) {
       // (jamais horizontal, la largeur est déjà celle de la page) reste
       // largement lisible pour un tableau (texte court, cellules à moitié
       // vides) et donne un rendu "pleine page" plus soigné.
-      pdf.addImage(imgData, "JPEG", margin, margin, usableWidthMm, usableHeightMm);
+      pdf.addImage(imgData, "PNG", margin, margin, usableWidthMm, usableHeightMm);
       pdf.save(filename);
       return;
     }
 
     let heightLeftMm = imgHeightMm, offsetMm = 0;
-    pdf.addImage(imgData, "JPEG", margin, margin, imgWidthMm, imgHeightMm);
+    pdf.addImage(imgData, "PNG", margin, margin, imgWidthMm, imgHeightMm);
     heightLeftMm -= usableHeightMm;
     while (heightLeftMm > 0) {
       offsetMm += usableHeightMm;
       pdf.addPage();
-      pdf.addImage(imgData, "JPEG", margin, margin - offsetMm, imgWidthMm, imgHeightMm);
+      pdf.addImage(imgData, "PNG", margin, margin - offsetMm, imgWidthMm, imgHeightMm);
       heightLeftMm -= usableHeightMm;
     }
     pdf.save(filename);
@@ -886,8 +891,8 @@ function PrintHeader({ subtitle, count, countLabel }) {
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
       <div className="flex items-center gap-3">
         <img src="icons/tc3pc-logo.svg" alt="TC3PC" className="h-9 w-auto shrink-0" />
-        <div className="max-w-[420px]">
-          <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
+        <div>
+          <div className="text-base sm:text-lg font-bold whitespace-nowrap">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
           <div className="text-xs sm:text-sm text-slate-600">{subtitle}</div>
         </div>
       </div>
@@ -1387,7 +1392,7 @@ function VacationGroupTablePrintable({ label, drivers, planning, config }) {
       {drivers.length === 0 ? (
         <p className="text-[8px] italic text-slate-500 mb-1">Aucun conducteur dans ce groupe.</p>
       ) : (
-        <table className="border-collapse text-[7px] mb-1">
+        <table className="border-collapse text-[7px] mb-1 w-full">
           <thead>
             <tr>
               <th className={PRINT_TH_XS}>Mat</th>
@@ -1537,7 +1542,7 @@ function PlanningMensuel() {
     if (!printRef.current) return;
     setPdfBusy(true);
     try {
-      await exportNodeAsPdf(printRef.current, `planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.pdf`, { fitOnePage: true, forceWidth: null });
+      await exportNodeAsPdf(printRef.current, `planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.pdf`, { fitOnePage: true, forceWidth: 1450 });
     } catch (e) {
       alert(e.message || String(e));
     } finally {
