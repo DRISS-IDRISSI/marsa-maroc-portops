@@ -532,7 +532,13 @@ const RestDayEngine = {
           const dayShares = splitDemandAcrossDays(totalDemand, run.days, d => dayWeightForBlock(block, d));
 
           run.days.forEach(day => {
-            let capLeft = dayShares[day] || 0;
+            // Un jour déjà saturé pour ce bloc (ex. le repos obligatoire du
+            // dimanche, déjà enregistré dans dayUsage avant Phase B) ne doit
+            // JAMAIS recevoir un repos normal en plus — sans cette vérification,
+            // le placement glouton pouvait choisir ce même jour pour un
+            // conducteur non concerné par le repos obligatoire, dépassant le
+            // plafond (ex. 7 présents au repos un dimanche plafonné à 6).
+            let capLeft = Math.min(dayShares[day] || 0, Math.max(0, capForGroup(block) - usageAt(block, day)));
             while (capLeft > 0) {
               const eligible = needing.filter(dr => {
                 const st = driverState[dr.id];
@@ -564,7 +570,7 @@ const RestDayEngine = {
           needing.forEach(dr => {
             const st = driverState[dr.id];
             while ((st.needsByBucket[bucketKey] || 0) > 0) {
-              const day = run.days.find(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1));
+              const day = run.days.find(d => st.candidateSet.has(d) && !st.used.has(d) && !st.used.has(d - 1) && !st.used.has(d + 1) && usageAt(block, d) < capForGroup(block));
               if (day === undefined) break;
               st.chosen.push(day);
               st.used.add(day);
