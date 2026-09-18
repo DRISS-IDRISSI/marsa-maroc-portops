@@ -36,6 +36,7 @@ create table if not exists drivers (
   matricule text not null unique,
   nom text not null,
   prenom text not null,
+  email text,                          -- personnel, pour les notifications de congé (§38)
   team_id text references teams(id),
   initial_shift text,
   initial_zone text,
@@ -72,6 +73,13 @@ create table if not exists profiles (
 create unique index if not exists profiles_driver_id_unique on profiles(driver_id) where driver_id is not null;
 
 -- ---------- Congés / Maladies / Absences (même forme, 3 tables comme l'existant) ----------
+-- conges a un workflow d'approbation en plus (§38) : une demande envoyée en
+-- libre-service par un conducteur entre en EN_ATTENTE (justificatif à
+-- l'appui, cf. bucket storage "justificatifs-conges" plus bas) et n'a AUCUN
+-- effet sur le planning tant qu'elle n'est pas VALIDE (voir
+-- AbsenceEngine.activeConges, src/engines/absenceEngine.js). Un congé saisi
+-- directement par un responsable reste VALIDE dès sa création (valeur par
+-- défaut), comme avant.
 create table if not exists conges (
   id uuid primary key default gen_random_uuid(),
   driver_id text not null references drivers(id) on delete cascade,
@@ -81,6 +89,11 @@ create table if not exists conges (
   commentaire text,
   utilisateur text,                    -- nom affiché (historique), redondant avec created_by
   created_by uuid references auth.users(id),
+  statut text not null default 'VALIDE' check (statut in ('EN_ATTENTE', 'VALIDE', 'REFUSE')),
+  justificatif_path text,              -- chemin dans le bucket storage "justificatifs-conges"
+  motif_refus text,
+  validated_by uuid references auth.users(id),
+  validated_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -274,6 +287,15 @@ create policy "conges_select" on conges for select
 create policy "conges_write" on conges for all
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
   with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+-- Un CONDUCTEUR peut créer SA PROPRE demande, toujours EN_ATTENTE (jamais
+-- s'auto-valider) — §38. Se combine en OR avec "conges_write" ci-dessus
+-- (plusieurs policies permissives sur une même commande), sans l'élargir :
+-- un conducteur n'a accès qu'à ce cas précis.
+create policy "conges_insert_self" on conges for insert
+  with check (
+    current_user_active() and current_user_role() = 'CONDUCTEUR'
+    and driver_id = current_user_driver() and statut = 'EN_ATTENTE'
+  );
 
 create policy "maladies_select" on maladies for select
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or (current_user_role() = 'CONDUCTEUR' and driver_id = current_user_driver())));
@@ -328,6 +350,32 @@ create policy "app_config_select" on app_config for select
 create policy "app_config_write" on app_config for all
   using (current_user_active() and current_user_role() in ('ADMIN', 'RESPONSABLE'))
   with check (current_user_active() and current_user_role() in ('ADMIN', 'RESPONSABLE'));
+
+-- ---------- Stockage des justificatifs de congé (bucket privé — §38) ----------
+-- Chemin des fichiers : <driver_id>/<horodatage>-<nom>. Mêmes règles de
+-- visibilité que la table conges : Admin/Responsable voient tout,
+-- Responsable de Shift son équipe, Conducteur uniquement lui-même (et ne
+-- peut déposer que dans son propre dossier).
+insert into storage.buckets (id, name, public)
+  values ('justificatifs-conges', 'justificatifs-conges', false)
+  on conflict (id) do nothing;
+
+create policy "conges_justificatifs_insert_own" on storage.objects for insert
+  with check (
+    bucket_id = 'justificatifs-conges' and current_user_active()
+    and current_user_role() = 'CONDUCTEUR'
+    and (storage.foldername(name))[1] = current_user_driver()
+  );
+
+create policy "conges_justificatifs_select" on storage.objects for select
+  using (
+    bucket_id = 'justificatifs-conges' and current_user_active()
+    and (
+      current_user_role() in ('ADMIN', 'RESPONSABLE')
+      or (current_user_role() = 'RESPONSABLE_SHIFT' and is_own_team((storage.foldername(name))[1]))
+      or (current_user_role() = 'CONDUCTEUR' and (storage.foldername(name))[1] = current_user_driver())
+    )
+  );
 
 -- ==========================================
 -- FIN DU SCHÉMA

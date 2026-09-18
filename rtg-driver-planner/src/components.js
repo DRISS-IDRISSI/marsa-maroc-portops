@@ -73,7 +73,7 @@ function AuthGate({ children }) {
   // limitent déjà les DONNÉES visibles, ce garde-fou évite en plus d'exposer
   // l'interface des autres pages (même vide de données pertinentes).
   useEffect(() => {
-    if (currentUser && isDriverRestricted(currentUser) && loc.pathname !== "/mon-planning") {
+    if (currentUser && isDriverRestricted(currentUser) && loc.pathname !== "/mon-planning" && loc.pathname !== "/mes-conges") {
       nav("/mon-planning", { replace: true });
     }
   }, [currentUser, loc.pathname]);
@@ -114,7 +114,8 @@ function Sidebar() {
   // Un compte CONDUCTEUR (§37) n'a qu'un seul lien — voir AuthGate, qui
   // redirige déjà toute autre URL vers cette page.
   const links = isDriverRestricted(currentUser) ? [
-    { to: "/mon-planning", icon: "fa-calendar-check", label: "Mon planning" }
+    { to: "/mon-planning", icon: "fa-calendar-check", label: "Mon planning" },
+    { to: "/mes-conges", icon: "fa-umbrella-beach", label: "Mes congés" }
   ] : [
     { to: "/", icon: "fa-chart-line", label: "Accueil" },
     { to: "/planning", icon: "fa-calendar-alt", label: "Planning mensuel" },

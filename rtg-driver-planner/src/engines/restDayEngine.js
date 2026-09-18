@@ -92,10 +92,11 @@ const RestDayEngine = {
 
   countCongeDaysInMonth(driver, month, year, state) {
     const dim = RTGDate.daysInMonth(month, year);
+    const activeConges = AbsenceEngine.activeConges(state);
     let count = 0;
     for (let d = 1; d <= dim; d++) {
       const iso = RTGDate.toISO(RTGDate.makeDate(year, month, d));
-      if (AbsenceEngine.findRecord(state.conges, driver.id, iso)) count++;
+      if (AbsenceEngine.findRecord(activeConges, driver.id, iso)) count++;
     }
     return count;
   },

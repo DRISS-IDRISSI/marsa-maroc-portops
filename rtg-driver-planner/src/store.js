@@ -73,7 +73,7 @@ const RTGStore = (function () {
 
   function mapDriverRow(r) {
     return {
-      id: r.id, matricule: r.matricule, nom: r.nom, prenom: r.prenom, teamId: r.team_id,
+      id: r.id, matricule: r.matricule, nom: r.nom, prenom: r.prenom, email: r.email || "", teamId: r.team_id,
       initialShift: r.initial_shift, initialZone: r.initial_zone, initialVacation: r.initial_vacation,
       statut: r.statut, dateEntree: r.date_entree, dateSortie: r.date_sortie,
       observation: r.observation || "", actif: r.actif, motifDepart: r.motif_depart,
@@ -83,6 +83,19 @@ const RTGStore = (function () {
   function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
   function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, driverId: r.driver_id, actif: r.actif }; }
   function mapRecordRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
+  // Congés uniquement (§38) : mêmes champs de base + le workflow de demande
+  // en libre-service (statut / justificatif / refus / validation). Un congé
+  // saisi directement par un responsable n'a pas ces champs renseignés (statut
+  // vaut 'VALIDE' par défaut côté base — voir migration_003).
+  function mapCongeRow(r) {
+    return Object.assign(mapRecordRow(r), {
+      statut: r.statut || "VALIDE",
+      justificatifPath: r.justificatif_path || null,
+      motifRefus: r.motif_refus || "",
+      validatedBy: r.validated_by || null,
+      validatedAt: r.validated_at || null
+    });
+  }
   function mapHeureRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, heures: r.heures, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   function mapFerieMvtRow(r) { return { id: r.id, date: r.date, driverId: r.driver_id, mouvements: r.mouvements, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at, updatedAt: r.updated_at }; }
   function mapOverrideRow(r) { return { shift: r.shift, vacation: r.vacation, zone: r.zone, status: r.status, startTime: r.start_time, endTime: r.end_time, motif: r.motif, details: r.details, createdAt: r.created_at, updatedAt: r.updated_at }; }
@@ -114,7 +127,7 @@ const RTGStore = (function () {
       teams: (teamsRes.data || []).map(mapTeamRow),
       drivers: (driversRes.data || []).map(mapDriverRow),
       users: (profilesRes.data || []).map(mapProfileRow),
-      conges: (congesRes.data || []).map(mapRecordRow),
+      conges: (congesRes.data || []).map(mapCongeRow),
       maladies: (maladiesRes.data || []).map(mapRecordRow),
       absences: (absencesRes.data || []).map(mapRecordRow),
       heuresExceptionnelles: (heuresRes.data || []).map(mapHeureRow),
@@ -227,7 +240,7 @@ const RTGStore = (function () {
     const team = state.teams.find(t => t.id === input.teamId);
     const row = {
       id: input.teamId + "_" + input.matricule,
-      matricule: input.matricule, nom: input.nom, prenom: input.prenom, team_id: input.teamId,
+      matricule: input.matricule, nom: input.nom, prenom: input.prenom, email: input.email || null, team_id: input.teamId,
       initial_shift: team ? team.shiftCycle[0] : null,
       initial_zone: input.initialZone || state.config.zones[0],
       initial_vacation: input.initialVacation || "V1",
@@ -248,6 +261,7 @@ const RTGStore = (function () {
     if ("matricule" in patch) dbPatch.matricule = patch.matricule;
     if ("nom" in patch) dbPatch.nom = patch.nom;
     if ("prenom" in patch) dbPatch.prenom = patch.prenom;
+    if ("email" in patch) dbPatch.email = patch.email || null;
     if ("teamId" in patch) dbPatch.team_id = patch.teamId;
     if ("initialZone" in patch) dbPatch.initial_zone = patch.initialZone;
     if ("initialVacation" in patch) dbPatch.initial_vacation = patch.initialVacation;
@@ -324,6 +338,61 @@ const RTGStore = (function () {
   function addConge(input) { return addRecord("conges", "conges", input, "Ajout congé"); }
   function updateConge(id, patch) { return updateRecord("conges", "conges", id, patch, "Modification congé"); }
   function deleteConge(id) { return deleteRecord("conges", "conges", id, "Suppression congé"); }
+
+  // ---------- Demande de congé en libre-service (§38) ----------
+  // Un conducteur (role CONDUCTEUR) envoie sa propre demande, justificatif à
+  // l'appui (photo/scan) : elle entre en base avec statut EN_ATTENTE, sans
+  // effet sur le planning tant qu'un Responsable ne l'a pas validée
+  // (AbsenceEngine ne prend en compte que les congés VALIDE — voir son
+  // en-tête). Le fichier est stocké dans le bucket privé
+  // "justificatifs-conges", sous <driverId>/<horodatage>-<nom fichier> — les
+  // policies RLS de ce bucket (migration_003) limitent l'upload à ce même
+  // dossier pour un compte CONDUCTEUR.
+  const RTG_JUSTIFICATIFS_BUCKET = "justificatifs-conges";
+
+  async function submitCongeRequest(input) {
+    const path = input.driverId + "/" + Date.now() + "-" + input.file.name.replace(/[^\w.\-]/g, "_");
+    const { error: uploadError } = await sb.storage.from(RTG_JUSTIFICATIFS_BUCKET).upload(path, input.file, { upsert: false });
+    if (uploadError) { console.error(uploadError); throw uploadError; }
+
+    const row = {
+      driver_id: input.driverId, date_debut: input.dateDebut, date_fin: input.dateFin,
+      type: "Congé annuel", commentaire: input.commentaire || "", utilisateur: currentUserLabel(),
+      statut: "EN_ATTENTE", justificatif_path: path
+    };
+    const { data, error } = await sb.from("conges").insert(row).select().single();
+    if (error) { console.error(error); throw error; }
+    const record = mapCongeRow(data);
+    set(s => Object.assign({}, s, { conges: [...s.conges, record] }));
+    addAuditEntry({ driverId: input.driverId, matricule: (state.drivers.find(d => d.id === input.driverId) || {}).matricule || "", action: "Demande de congé (en attente)", details: input.dateDebut + " → " + input.dateFin });
+    return record;
+  }
+
+  // decision: "VALIDE" ou "REFUSE". Réservé à Admin/Responsable/Responsable
+  // de Shift (RLS conges_write) — un CONDUCTEUR ne peut pas s'auto-valider.
+  async function validateCongeRequest(id, decision, motifRefus) {
+    const dbPatch = {
+      statut: decision,
+      motif_refus: decision === "REFUSE" ? (motifRefus || "") : null,
+      validated_by: state.currentUserId,
+      validated_at: new Date().toISOString()
+    };
+    const { data, error } = await sb.from("conges").update(dbPatch).eq("id", id).select().single();
+    if (error) { console.error(error); throw error; }
+    const updated = mapCongeRow(data);
+    set(s => Object.assign({}, s, { conges: s.conges.map(r => r.id === id ? updated : r) }));
+    const d = state.drivers.find(dr => dr.id === updated.driverId);
+    addAuditEntry({ driverId: updated.driverId, matricule: d ? d.matricule : "", action: decision === "VALIDE" ? "Validation demande de congé" : "Refus demande de congé", details: motifRefus || "" });
+    return updated;
+  }
+
+  // URL signée temporaire (bucket privé) pour consulter/télécharger un
+  // justificatif — ne pas en garder une copie, elle expire (60s).
+  async function getCongeJustificatifUrl(path) {
+    const { data, error } = await sb.storage.from(RTG_JUSTIFICATIFS_BUCKET).createSignedUrl(path, 60);
+    if (error) { console.error(error); throw error; }
+    return data.signedUrl;
+  }
 
   function addMaladie(input) { return addRecord("maladies", "maladies", input, "Ajout maladie"); }
   function updateMaladie(id, patch) { return updateRecord("maladies", "maladies", id, patch, "Modification maladie"); }
@@ -575,6 +644,7 @@ const RTGStore = (function () {
     get, set, subscribe, addAuditEntry, resetToSeed, refreshAll,
     isMatriculeTaken, addDriver, updateDriver, setDriverActive,
     addConge, updateConge, deleteConge,
+    submitCongeRequest, validateCongeRequest, getCongeJustificatifUrl,
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
     addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,

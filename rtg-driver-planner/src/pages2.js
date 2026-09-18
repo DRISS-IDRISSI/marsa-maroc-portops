@@ -64,7 +64,7 @@ const LABEL_CLS = "block text-[10px] uppercase tracking-wider text-slate-500 mb-
 // 1. Conducteurs (CRUD complet — §28)
 // ==========================================
 function emptyDriverForm(lockedTeamId) {
-  return { matricule: "", nom: "", prenom: "", teamId: lockedTeamId || "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "" };
+  return { matricule: "", nom: "", prenom: "", email: "", teamId: lockedTeamId || "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "" };
 }
 
 function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId }) {
@@ -105,6 +105,7 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
         <div><label className={LABEL_CLS}>Matricule</label><input className={FIELD_CLS} value={form.matricule} onChange={e => setForm(f => Object.assign({}, f, { matricule: e.target.value }))} /></div>
         <div><label className={LABEL_CLS}>Nom</label><input className={FIELD_CLS} value={form.nom} onChange={e => setForm(f => Object.assign({}, f, { nom: e.target.value }))} /></div>
         <div><label className={LABEL_CLS}>Prénom</label><input className={FIELD_CLS} value={form.prenom} onChange={e => setForm(f => Object.assign({}, f, { prenom: e.target.value }))} /></div>
+        <div><label className={LABEL_CLS}>Email personnel</label><input type="email" placeholder="pour les notifications de congé" className={FIELD_CLS} value={form.email || ""} onChange={e => setForm(f => Object.assign({}, f, { email: e.target.value }))} /></div>
         {!lockedTeamId && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
@@ -234,7 +235,7 @@ function DriversPage() {
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
           <DriverForm state={state} lockedTeamId={shiftRestricted ? currentUser.teamId : null}
-            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
+            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
             editingId={editingId} onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -479,10 +480,170 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, d
   );
 }
 
+// Statuts d'une demande de congé (§38) — un congé saisi directement par un
+// responsable est VALIDE dès sa création ; seule une demande en
+// libre-service envoyée par un conducteur passe par EN_ATTENTE.
+const CONGE_STATUT_META = {
+  EN_ATTENTE: { label: "En attente", className: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
+  VALIDE: { label: "Validé", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+  REFUSE: { label: "Refusé", className: "bg-red-500/20 text-red-300 border-red-500/30" }
+};
+
+function CongeJustificatifLink({ path }) {
+  const [busy, setBusy] = useState(false);
+  if (!path) return <span className="text-slate-600">—</span>;
+  const open = async () => {
+    setBusy(true);
+    try {
+      const url = await RTGStore.getCongeJustificatifUrl(path);
+      window.open(url, "_blank", "noopener");
+    } catch (e) {
+      alert("Impossible d'ouvrir le justificatif : " + (e && e.message ? e.message : "réessayez."));
+    }
+    setBusy(false);
+  };
+  return (
+    <button onClick={open} disabled={busy} className="text-orange-400 hover:text-orange-300 disabled:opacity-50">
+      <i className="fas fa-paperclip mr-1"></i>{busy ? "Ouverture..." : "Voir"}
+    </button>
+  );
+}
+
+// Page Congés (Admin/Responsable/Responsable de Shift) — saisie directe
+// (auto-validée) toujours possible, PLUS les demandes envoyées en
+// libre-service par les conducteurs (statut EN_ATTENTE), à Valider/Refuser
+// ici. Distincte de RecordsPage (utilisée par Maladies/Absences) car ce
+// workflow d'approbation + justificatif n'existe que pour les congés.
 function CongesPage() {
-  return <RecordsPage title="Congés" icon="fa-umbrella-beach" listKey="conges" kindLabel="congé"
-    addFn={f => RTGStore.addConge({ driverId: f.driverId, dateDebut: f.dateDebut, dateFin: f.dateFin, type: f.commentaire || "Congé annuel", commentaire: f.commentaire })}
-    deleteFn={id => RTGStore.deleteConge(id)} />;
+  const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ driverId: "", dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [refusingId, setRefusingId] = useState(null);
+  const [refusMotif, setRefusMotif] = useState("");
+
+  const records = state.conges
+    .filter(r => {
+      if (!shiftRestricted) return true;
+      const d = state.drivers.find(dr => dr.id === r.driverId);
+      return d && d.teamId === currentUser.teamId;
+    })
+    .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+  const pendingCount = records.filter(r => r.statut === "EN_ATTENTE").length;
+
+  const submit = () => {
+    if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
+    if (form.dateFin < form.dateDebut) { setError("La date de fin doit être après la date de début."); return; }
+    RTGStore.addConge({ driverId: form.driverId, dateDebut: form.dateDebut, dateFin: form.dateFin, type: form.commentaire || "Congé annuel", commentaire: form.commentaire });
+    setForm({ driverId: "", dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
+    setError("");
+    setShowForm(false);
+  };
+
+  const validate = async id => {
+    setBusyId(id);
+    try { await RTGStore.validateCongeRequest(id, "VALIDE"); }
+    catch (e) { alert("Erreur : " + (e && e.message ? e.message : "réessayez.")); }
+    setBusyId(null);
+  };
+
+  const refuse = async id => {
+    setBusyId(id);
+    try { await RTGStore.validateCongeRequest(id, "REFUSE", refusMotif); setRefusingId(null); setRefusMotif(""); }
+    catch (e) { alert("Erreur : " + (e && e.message ? e.message : "réessayez.")); }
+    setBusyId(null);
+  };
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Congés</h1>
+          <p className="text-slate-400 text-sm mt-0.5">{records.length} enregistrement{records.length > 1 ? "s" : ""}{pendingCount > 0 ? " — " + pendingCount + " en attente de validation" : ""}</p>
+        </div>
+        <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+          <i className="fas fa-plus mr-1.5"></i>Nouveau
+        </button>
+      </div>
+
+      {showForm && (
+        <Panel title="Nouvel enregistrement — congé" icon="fa-umbrella-beach">
+          <div className="space-y-3">
+            {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
+              <div><label className={LABEL_CLS}>Date début</label><input type="date" className={FIELD_CLS} value={form.dateDebut} onChange={e => setForm(f => Object.assign({}, f, { dateDebut: e.target.value }))} /></div>
+              <div><label className={LABEL_CLS}>Date fin</label><input type="date" className={FIELD_CLS} value={form.dateFin} onChange={e => setForm(f => Object.assign({}, f, { dateFin: e.target.value }))} /></div>
+              <div className="sm:col-span-4"><label className={LABEL_CLS}>Commentaire</label><input className={FIELD_CLS} value={form.commentaire} onChange={e => setForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
+            </div>
+            <p className="text-[11px] text-slate-500">Un congé saisi ici est directement validé. Les demandes envoyées par un conducteur depuis son compte apparaissent ci-dessous avec le statut "En attente".</p>
+            <div className="flex gap-2">
+              <button onClick={submit} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Enregistrer</button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-surface text-slate-400">
+            <tr className="text-left">
+              <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
+              <th className="px-3 py-2">Statut</th><th className="px-3 py-2">Justificatif</th>
+              <th className="px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.length === 0 && (
+              <tr><td colSpan="8" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
+            )}
+            {records.map(r => {
+              const meta = CONGE_STATUT_META[r.statut] || CONGE_STATUT_META.VALIDE;
+              const isPending = r.statut === "EN_ATTENTE";
+              return (
+                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
+                  <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
+                  <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>
+                    {r.statut === "REFUSE" && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
+                  </td>
+                  <td className="px-3 py-2"><CongeJustificatifLink path={r.justificatifPath} /></td>
+                  <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
+                  <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isPending && (
+                        refusingId === r.id ? (
+                          <span className="flex items-center gap-1">
+                            <input autoFocus placeholder="Motif (optionnel)" value={refusMotif} onChange={e => setRefusMotif(e.target.value)} className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white w-28" />
+                            <button disabled={busyId === r.id} onClick={() => refuse(r.id)} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">OK</button>
+                            <button onClick={() => { setRefusingId(null); setRefusMotif(""); }} className="text-slate-500 hover:text-white text-xs">Annuler</button>
+                          </span>
+                        ) : (
+                          <React.Fragment>
+                            <button disabled={busyId === r.id} onClick={() => validate(r.id)} className="text-emerald-400 hover:text-emerald-300 text-xs disabled:opacity-50">Valider</button>
+                            <button disabled={busyId === r.id} onClick={() => setRefusingId(r.id)} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">Refuser</button>
+                          </React.Fragment>
+                        )
+                      )}
+                      <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteConge(r.id)} className="text-red-400 hover:text-red-300 text-xs" />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function MaladiesPage() {
@@ -1518,6 +1679,107 @@ function MonPlanningPage() {
                   <td className="px-3 py-2 text-slate-300">{present ? ((state.config.shifts.find(s => s.id === a.shift) || {}).label || a.shift) : "—"}</td>
                   <td className="px-3 py-2 text-slate-300">{present ? (a.vacation || "—") : "—"}</td>
                   <td className="px-3 py-2 text-slate-300">{present ? (a.zone || "—") : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// Mes congés (§38) — DEUXIÈME page accessible à un compte CONDUCTEUR
+// (avec "Mon planning") : demande de congé en libre-service, justificatif
+// obligatoire, transmise EN_ATTENTE jusqu'à validation par le Responsable
+// de Shift (page Congés). Aucun effet sur le planning tant qu'elle n'est
+// pas VALIDE (voir AbsenceEngine.activeConges).
+// ==========================================
+function MesCongesPage() {
+  const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const driver = currentUser && currentUser.driverId ? state.drivers.find(d => d.id === currentUser.driverId) : null;
+  const [form, setForm] = useState({ dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
+  const [file, setFile] = useState(null);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const myRequests = driver ? state.conges.filter(c => c.driverId === driver.id).slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut)) : [];
+
+  if (!driver) {
+    return (
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+        <i className="fas fa-triangle-exclamation"></i> Votre compte n'est rattaché à aucune fiche conducteur. Contactez un administrateur.
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    if (form.dateFin < form.dateDebut) { setError("La date de fin doit être après la date de début."); return; }
+    if (!file) { setError("Le justificatif (photo ou scan de la demande signée) est obligatoire."); return; }
+    setError(""); setSubmitting(true);
+    try {
+      await RTGStore.submitCongeRequest({ driverId: driver.id, dateDebut: form.dateDebut, dateFin: form.dateFin, commentaire: form.commentaire, file: file });
+      setForm({ dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
+      setFile(null);
+    } catch (e) {
+      setError("Erreur d'envoi : " + (e && e.message ? e.message : "réessayez."));
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Mes congés</h1>
+        <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}</p>
+      </div>
+
+      <Panel title="Nouvelle demande de congé" icon="fa-umbrella-beach">
+        <div className="space-y-3">
+          {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className={LABEL_CLS}>Date début</label><input type="date" className={FIELD_CLS} value={form.dateDebut} onChange={e => setForm(f => Object.assign({}, f, { dateDebut: e.target.value }))} /></div>
+            <div><label className={LABEL_CLS}>Date fin</label><input type="date" className={FIELD_CLS} value={form.dateFin} onChange={e => setForm(f => Object.assign({}, f, { dateFin: e.target.value }))} /></div>
+            <div className="sm:col-span-2"><label className={LABEL_CLS}>Commentaire (optionnel)</label><input className={FIELD_CLS} value={form.commentaire} onChange={e => setForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
+            <div className="sm:col-span-2">
+              <label className={LABEL_CLS}>Justificatif (photo ou scan de la demande signée)</label>
+              <input type="file" accept="image/*,.pdf" onChange={e => setFile(e.target.files[0] || null)}
+                className="block w-full text-xs text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-marine-700 file:text-white file:text-xs" />
+            </div>
+          </div>
+          <button onClick={submit} disabled={submitting} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
+            {submitting ? "Envoi en cours..." : "Envoyer la demande"}
+          </button>
+          <p className="text-[11px] text-slate-500">Votre demande sera transmise à votre Responsable de Shift pour validation. Suivez son statut ci-dessous.</p>
+        </div>
+      </Panel>
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-surface text-slate-400">
+            <tr className="text-left">
+              <th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th><th className="px-3 py-2">Statut</th>
+              <th className="px-3 py-2">Justificatif</th><th className="px-3 py-2">Commentaire</th>
+            </tr>
+          </thead>
+          <tbody>
+            {myRequests.length === 0 && (
+              <tr><td colSpan="5" className="px-3 py-6 text-center text-slate-500 italic">Aucune demande pour l'instant.</td></tr>
+            )}
+            {myRequests.map(r => {
+              const meta = CONGE_STATUT_META[r.statut] || CONGE_STATUT_META.VALIDE;
+              return (
+                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
+                  <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>
+                    {r.statut === "REFUSE" && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
+                  </td>
+                  <td className="px-3 py-2"><CongeJustificatifLink path={r.justificatifPath} /></td>
+                  <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                 </tr>
               );
             })}
