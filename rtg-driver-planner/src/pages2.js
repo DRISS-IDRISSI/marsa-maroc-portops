@@ -1210,3 +1210,121 @@ function UsersPage() {
     </div>
   );
 }
+
+// ==========================================
+// Assistant intelligent (§36) — détection automatique d'anomalies + aide à
+// la correction du planning, calcul 100% local (AssistantEngine, sans IA
+// externe — choix explicite de l'exploitant après comparaison des deux
+// approches).
+// ==========================================
+const ASSISTANT_SEVERITY_META = {
+  critical: { label: "Critique", icon: "fa-circle-exclamation", cls: "bg-red-500/10 border-red-500/30 text-red-300" },
+  warning: { label: "Avertissement", icon: "fa-triangle-exclamation", cls: "bg-amber-500/10 border-amber-500/30 text-amber-300" },
+  info: { label: "Info", icon: "fa-circle-info", cls: "bg-sky-500/10 border-sky-500/30 text-sky-300" }
+};
+
+function AssistantIntelligentPage() {
+  const state = useRtgState();
+  const nav = useNavigate();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
+  const now = new Date();
+  const [month, setMonth] = useState(now.getUTCMonth() + 1);
+  const [year, setYear] = useState(now.getUTCFullYear());
+  const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
+
+  const insights = useMemo(() => AssistantEngine.analyzeMonth(month, year, state, effectiveTeamId), [state, month, year, effectiveTeamId]);
+  const visibleInsights = severityFilter === "all" ? insights : insights.filter(i => i.severity === severityFilter);
+  const counts = { critical: 0, warning: 0, info: 0 };
+  insights.forEach(i => { counts[i.severity] = (counts[i.severity] || 0) + 1; });
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Assistant intelligent</h1>
+        <p className="text-slate-400 text-sm mt-0.5">Détection automatique d'anomalies et aide à la correction du planning — calcul 100% local, sans IA externe</p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+        <div>
+          <label className={LABEL_CLS}>Mois</label>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
+            {RAPPORT_MOIS_LABELS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Année</label>
+          <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
+        </div>
+        {!shiftRestricted && (
+          <div>
+            <label className={LABEL_CLS}>Équipe</label>
+            <select value={teamId} onChange={e => setTeamId(e.target.value)} className={FIELD_CLS}>
+              <option value="all">Toutes les équipes</option>
+              {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="ml-auto flex gap-1">
+          {[["all", "Tous"], ["critical", "Critiques"], ["warning", "Avertissements"], ["info", "Infos"]].map(([k, l]) => (
+            <button key={k} onClick={() => setSeverityFilter(k)}
+              className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${severityFilter === k ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-center">
+          <div className="text-2xl font-bold text-red-300">{counts.critical || 0}</div>
+          <div className="text-xs text-red-300/80 uppercase tracking-wider">Critiques</div>
+        </div>
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-center">
+          <div className="text-2xl font-bold text-amber-300">{counts.warning || 0}</div>
+          <div className="text-xs text-amber-300/80 uppercase tracking-wider">Avertissements</div>
+        </div>
+        <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-4 text-center">
+          <div className="text-2xl font-bold text-sky-300">{counts.info || 0}</div>
+          <div className="text-xs text-sky-300/80 uppercase tracking-wider">Infos</div>
+        </div>
+      </div>
+
+      {visibleInsights.length === 0 ? (
+        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-4 text-sm font-medium">
+          <i className="fas fa-circle-check"></i> Aucune anomalie détectée pour cette sélection — planning sain.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {visibleInsights.map(insight => {
+            const meta = ASSISTANT_SEVERITY_META[insight.severity] || ASSISTANT_SEVERITY_META.info;
+            return (
+              <div key={insight.id} className={`rounded-xl border p-4 text-sm ${meta.cls}`}>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-start gap-3">
+                    <i className={`fas ${meta.icon} mt-0.5`}></i>
+                    <div>
+                      <div className="font-semibold text-white">{insight.title}</div>
+                      <div className="text-slate-300 mt-0.5">{insight.detail}</div>
+                      {insight.suggestion && (
+                        <div className="mt-1.5 text-xs text-slate-400 flex items-start gap-1.5">
+                          <i className="fas fa-lightbulb mt-0.5"></i><span>{insight.suggestion}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {insight.date && (
+                    <button onClick={() => nav("/affectation?date=" + insight.date)}
+                      className="shrink-0 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-marine-800 text-slate-200 hover:text-white hover:bg-marine-700 transition-all whitespace-nowrap">
+                      <i className="fas fa-arrow-right mr-1"></i> Voir l'affectation
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

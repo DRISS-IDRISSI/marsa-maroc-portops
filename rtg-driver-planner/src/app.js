@@ -16,6 +16,7 @@ function App() {
             <Route path="/heures-exceptionnelles" element={<HeuresExceptionnellesPage />} />
             <Route path="/remplacement" element={<RemplacementPage />} />
             <Route path="/rapport-rh" element={<RapportRHPage />} />
+            <Route path="/assistant" element={<AssistantIntelligentPage />} />
             <Route path="/utilisateurs" element={<UsersPage />} />
           </Routes>
         </Layout>

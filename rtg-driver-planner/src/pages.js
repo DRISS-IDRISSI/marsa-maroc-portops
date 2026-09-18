@@ -1,5 +1,5 @@
 const { useState, useMemo, useEffect, useRef } = React;
-const { useNavigate } = ReactRouterDOM;
+const { useNavigate, useSearchParams } = ReactRouterDOM;
 
 function useRtgState() {
   const [state, setState] = useState(RTGStore.get());
@@ -1953,7 +1953,11 @@ function AffectationDuJour() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
-  const [dateStr, setDateStr] = useState(RTGDate.toISO(new Date()));
+  // Pré-remplissage depuis l'Assistant intelligent (lien "Voir l'affectation"
+  // sur une alerte datée — ?date=YYYY-MM-DD) : sinon, aujourd'hui par défaut.
+  const [searchParams] = useSearchParams();
+  const dateParam = searchParams.get("date");
+  const [dateStr, setDateStr] = useState(dateParam || RTGDate.toISO(new Date()));
   const [shiftFilter, setShiftFilter] = useState("all");
 
   const assignments = useMemo(() => {

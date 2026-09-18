@@ -110,7 +110,8 @@ function Sidebar() {
     { to: "/absences", icon: "fa-user-slash", label: "Absences" },
     { to: "/heures-exceptionnelles", icon: "fa-clock-rotate-left", label: "Over Time" },
     { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" },
-    { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapports" }
+    { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapports" },
+    { to: "/assistant", icon: "fa-wand-magic-sparkles", label: "Assistant intelligent" }
   ];
   if (currentUser && currentUser.role === "ADMIN") {
     links.push({ to: "/utilisateurs", icon: "fa-user-shield", label: "Utilisateurs" });
