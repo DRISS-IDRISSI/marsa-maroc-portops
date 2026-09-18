@@ -1819,11 +1819,13 @@ function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, sign
           <div className="text-right">
             <div className="text-base font-bold uppercase">Demande de congé administratif</div>
             <div className="text-sm">Personnel 5 à 18</div>
-            <div className="flex items-center justify-end gap-1 mt-2 text-[10px]">
-              <span className="font-semibold mr-1">Document :</span>
-              {CONGE_DOC_CODE.split("").map((c, i) => (
-                <span key={i} className="inline-flex items-center justify-center w-4 h-4 border border-slate-800 font-bold">{c}</span>
-              ))}
+            <div className="flex items-center justify-end mt-2 text-[10px] leading-none">
+              <span className="font-semibold mr-1 leading-none">Document :</span>
+              <div className="flex">
+                {CONGE_DOC_CODE.split("").map((c, i) => (
+                  <span key={i} className={`inline-flex items-center justify-center w-4 h-4 border border-slate-800 font-bold leading-none ${i > 0 ? "-ml-px" : ""}`}>{c}</span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
