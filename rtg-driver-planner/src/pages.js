@@ -890,10 +890,11 @@ function addFittedImageToPage(pdf, img) {
 async function exportNodeAsPdf(node, filename, opts) {
   const fitOnePage = !!(opts && opts.fitOnePage);
   const forceWidth = opts && "forceWidth" in opts ? opts.forceWidth : 1200;
+  const orientation = (opts && opts.orientation) || "landscape";
   await loadPdfLibs();
   const img = await captureNodeAsPng(node, forceWidth);
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: orientation, unit: "mm", format: "a4" });
 
   if (fitOnePage) {
     addFittedImageToPage(pdf, img);
@@ -925,10 +926,10 @@ async function exportNodeAsPdf(node, filename, opts) {
 // toujours sur UNE SEULE page — demande explicite de l'exploitant — au lieu
 // d'un découpage arbitraire à cheval sur deux pages en cas de repos/congés
 // nombreux ce jour-là.
-async function exportNodesAsPdf(nodes, filename, forceWidth) {
+async function exportNodesAsPdf(nodes, filename, forceWidth, orientation) {
   await loadPdfLibs();
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: orientation || "landscape", unit: "mm", format: "a4" });
   for (let i = 0; i < nodes.length; i++) {
     const img = await captureNodeAsPng(nodes[i], forceWidth);
     if (i > 0) pdf.addPage();
@@ -1842,7 +1843,7 @@ function ShiftBlockPrintable({ title, rows, showTeamColumn = true }) {
       {rows.length === 0 ? (
         <p className="text-[10px] text-slate-500 italic mb-2">Aucun conducteur affecté.</p>
       ) : (
-        <table className="w-full text-[10px] border-collapse mb-2" style={{ tableLayout: "fixed" }}>
+        <table className="w-full text-[13px] border-collapse mb-2" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
               <th className={PRINT_TH} style={{ width: w.mat }}>Mat</th>
@@ -1883,7 +1884,7 @@ function FerieMouvementsPrintable({ dateStr, presentDrivers }) {
   return (
     <div className="mb-3">
       <div className="text-[11px] font-bold uppercase tracking-wide mb-1">Mouvements réalisés — jour férié</div>
-      <table className="w-full text-[10px] border-collapse mb-2">
+      <table className="w-full text-[13px] border-collapse mb-2">
         <thead>
           <tr>
             <th className={PRINT_TH}>Mat</th><th className={PRINT_TH}>Nom</th><th className={PRINT_TH}>Prénom</th>
@@ -1914,7 +1915,7 @@ function ReposCongesPrintable({ rows, showTeamColumn = true }) {
   return (
     <div className="mb-3">
       <div className="text-[11px] font-bold uppercase tracking-wide mb-1">Repos &amp; congés — {rows.length} conducteur{rows.length > 1 ? "s" : ""}</div>
-      <table className="w-full text-[10px] border-collapse mb-2">
+      <table className="w-full text-[13px] border-collapse mb-2">
         <thead>
           <tr>
             <th className={PRINT_TH}>Mat</th><th className={PRINT_TH}>Nom</th><th className={PRINT_TH}>Prénom</th>
@@ -2064,14 +2065,19 @@ function AffectationDuJour() {
     try {
       const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
       const filename = `affectation-${dateStr}${suffix}.pdf`;
+      // Portrait + capture plus étroite (800px au lieu de 1200) — demande
+      // explicite de l'exploitant : ce rapport n'a plus que 5-6 colonnes
+      // (Équipe/Horaire retirées), le format portrait laisse donc les noms
+      // et zones s'imprimer avec un texte plus grand et plus lisible que
+      // sur un format paysage large et peu rempli.
       if (holiday) {
         if (!holidayPrintRef.current) return;
-        await exportNodeAsPdf(holidayPrintRef.current, filename, { fitOnePage: true });
+        await exportNodeAsPdf(holidayPrintRef.current, filename, { fitOnePage: true, orientation: "portrait", forceWidth: 800 });
         return;
       }
       const nodes = visibleShifts.map(s => shiftPrintRefs.current[s.id]).filter(Boolean);
       if (nodes.length === 0) return;
-      await exportNodesAsPdf(nodes, filename);
+      await exportNodesAsPdf(nodes, filename, 800, "portrait");
     } catch (e) {
       alert(e.message || String(e));
     } finally {
