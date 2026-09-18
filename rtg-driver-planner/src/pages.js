@@ -1007,20 +1007,29 @@ function Legend() {
   );
 }
 
-function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId, teams, detailLevel, setDetailLevel, lockTeam }) {
+function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId, teams, detailLevel, setDetailLevel, lockTeam, lockMonth }) {
   const months = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
   return (
     <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
-      <div>
-        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mois</label>
-        <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white">
-          {months.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Année</label>
-        <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className="w-24 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
-      </div>
+      {lockMonth ? (
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mois</label>
+          <div className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white">{months[month - 1]} {year}</div>
+        </div>
+      ) : (
+        <>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mois</label>
+            <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white">
+              {months.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Année</label>
+            <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className="w-24 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
+          </div>
+        </>
+      )}
       {!lockTeam && (
       <div>
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Équipe</label>
@@ -1665,6 +1674,10 @@ function PlanningMensuel() {
   // coup : réservé à l'ADMIN/RESPONSABLE (pas au RESPONSABLE_SHIFT), à la
   // différence de l'édition case par case ci-dessus.
   const canBulkImport = !!currentUser && ["ADMIN", "RESPONSABLE"].indexOf(currentUser.role) !== -1;
+  // Un CONDUCTEUR ne peut consulter que le mois EN COURS (demande explicite
+  // de l'exploitant) — le sélecteur mois/année est masqué (lockMonth) et
+  // l'état initial (déjà le mois courant) n'est jamais modifié pour ce rôle.
+  const monthLocked = isDriverRestricted(currentUser);
   const [showImport, setShowImport] = useState(false);
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
@@ -1751,7 +1764,7 @@ function PlanningMensuel() {
       )}
 
       <div className="print:hidden">
-        <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={effectiveTeamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} lockTeam={shiftRestricted} />
+        <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={effectiveTeamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} lockTeam={shiftRestricted} lockMonth={monthLocked} />
       </div>
 
       {showImport && effectiveTeamId !== "all" && (
@@ -1992,11 +2005,20 @@ function AffectationDuJour() {
   // action d'édition).
   const shiftRestricted = isTeamRestricted(currentUser);
   const ownTeamId = restrictedTeamId(currentUser, state);
+  // Un CONDUCTEUR ne peut consulter que la journée en cours et J+1 (demande
+  // explicite de l'exploitant) — le sélecteur de date libre est remplacé par
+  // deux boutons Aujourd'hui/Demain ci-dessous.
+  const dateLocked = isDriverRestricted(currentUser);
+  const todayIso = RTGDate.toISO(new Date());
+  const tomorrowIso = RTGDate.toISO(RTGDate.addDays(new Date(), 1));
   // Pré-remplissage depuis l'Assistant intelligent (lien "Voir l'affectation"
   // sur une alerte datée — ?date=YYYY-MM-DD) : sinon, aujourd'hui par défaut.
+  // Ignoré pour un CONDUCTEUR (qui n'accède de toute façon pas à l'Assistant
+  // intelligent) si la date tombe hors de la plage autorisée.
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get("date");
-  const [dateStr, setDateStr] = useState(dateParam || RTGDate.toISO(new Date()));
+  const initialDate = dateParam && (!dateLocked || dateParam === todayIso || dateParam === tomorrowIso) ? dateParam : todayIso;
+  const [dateStr, setDateStr] = useState(initialDate);
   const [shiftFilter, setShiftFilter] = useState("all");
 
   const assignments = useMemo(() => {
@@ -2149,7 +2171,16 @@ function AffectationDuJour() {
       <div className="bg-card rounded-xl border border-border p-4 flex flex-wrap items-end gap-3 print:hidden">
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Date</label>
-          <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
+          {dateLocked ? (
+            <div className="flex gap-1">
+              <button onClick={() => setDateStr(todayIso)}
+                className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${dateStr === todayIso ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Aujourd'hui</button>
+              <button onClick={() => setDateStr(tomorrowIso)}
+                className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${dateStr === tomorrowIso ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Demain</button>
+            </div>
+          ) : (
+            <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
+          )}
         </div>
         <div className="text-xs text-slate-500">{RTGDate.formatFr(RTGDate.parseISO(dateStr))}</div>
         {!shiftRestricted && (
