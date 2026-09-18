@@ -1309,30 +1309,63 @@ function generateTempPassword() {
 // temporaire généré. Les mots de passe ne sont récupérables qu'une seule
 // fois (Supabase Auth ne les stocke pas en clair) : affichés + exportables
 // en CSV juste après la création, pour être distribués aux conducteurs.
+const RTG_SLEEP = ms => new Promise(r => setTimeout(r, ms));
+function isRateLimitError(e) {
+  const msg = ((e && e.message) || "").toLowerCase();
+  return msg.indexOf("rate limit") !== -1 || msg.indexOf("too many requests") !== -1 || msg.indexOf("429") !== -1;
+}
+
 function ConducteurAccountsPanel({ state }) {
   const driverIdsWithAccount = {};
   state.users.forEach(u => { if (u.driverId) driverIdsWithAccount[u.driverId] = true; });
   const missing = state.drivers.filter(d => d.actif !== false && !driverIdsWithAccount[d.id]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
 
+  // Supabase Auth limite le nombre d'inscriptions par fenêtre de temps —
+  // avec ~40 conducteurs créés d'affilée sans pause, la limite est atteinte
+  // en cours de route (observé en usage réel). Un délai entre chaque compte
+  // + des nouvelles tentatives avec attente croissante en cas de "rate
+  // limit" évitent d'interrompre la création à mi-chemin ; en dernier
+  // recours, ré-cliquer sur le bouton reprend uniquement les conducteurs
+  // encore sans compte (liste "missing" recalculée à chaque rendu).
   const createAll = async () => {
-    setBusy(true); setError(""); setResults([]);
+    setBusy(true); setError(""); setResults([]); setProgress({ done: 0, total: missing.length });
     const created = [];
     for (const d of missing) {
       const username = d.matricule.toLowerCase();
-      if (RTGStore.isUsernameTaken(username)) continue;
+      if (RTGStore.isUsernameTaken(username)) { setProgress(p => Object.assign({}, p, { done: p.done + 1 })); continue; }
       const password = generateTempPassword();
-      try {
-        await RTGStore.addUser({ nom: d.nom + " " + d.prenom, username: username, password: password, role: "CONDUCTEUR", driverId: d.id });
-        created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password });
-      } catch (e) {
-        setError("Échec pour " + d.matricule + " — " + d.nom + " " + d.prenom + " : " + (e && e.message ? e.message : "erreur inconnue") + ". Arrêt (les comptes déjà créés ci-dessous sont bien enregistrés).");
-        break;
+      let attempt = 0;
+      let ok = false;
+      while (!ok) {
+        try {
+          await RTGStore.addUser({ nom: d.nom + " " + d.prenom, username: username, password: password, role: "CONDUCTEUR", driverId: d.id });
+          created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password });
+          ok = true;
+        } catch (e) {
+          if (isRateLimitError(e) && attempt < 4) {
+            attempt++;
+            const wait = 5000 * attempt;
+            setError("Limite de débit Supabase atteinte — nouvelle tentative dans " + (wait / 1000) + "s pour " + d.matricule + "...");
+            await RTG_SLEEP(wait);
+            continue;
+          }
+          setError("Échec pour " + d.matricule + " — " + d.nom + " " + d.prenom + " : " + (e && e.message ? e.message : "erreur inconnue") + ". Arrêt (les comptes déjà créés ci-dessous sont bien enregistrés — recliquez sur le bouton pour reprendre là où ça s'est arrêté).");
+          setResults(created);
+          setProgress(null);
+          setBusy(false);
+          return;
+        }
       }
+      setProgress(p => Object.assign({}, p, { done: p.done + 1 }));
+      await RTG_SLEEP(1500);
     }
+    setError("");
     setResults(created);
+    setProgress(null);
     setBusy(false);
   };
 
@@ -1351,7 +1384,7 @@ function ConducteurAccountsPanel({ state }) {
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-3">{error}</div>}
       {missing.length > 0 && (
         <button onClick={createAll} disabled={busy} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60 mb-3">
-          {busy ? "Création en cours..." : `Créer les ${missing.length} compte(s) manquant(s)`}
+          {busy ? `Création en cours... (${progress ? progress.done : 0}/${progress ? progress.total : missing.length})` : `Créer les ${missing.length} compte(s) manquant(s)`}
         </button>
       )}
       {results.length > 0 && (
