@@ -81,7 +81,7 @@ const RTGStore = (function () {
     };
   }
   function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
-  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, actif: r.actif }; }
+  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, driverId: r.driver_id, actif: r.actif }; }
   function mapRecordRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   function mapHeureRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, heures: r.heures, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   function mapFerieMvtRow(r) { return { id: r.id, date: r.date, driverId: r.driver_id, mouvements: r.mouvements, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at, updatedAt: r.updated_at }; }
@@ -504,7 +504,9 @@ const RTGStore = (function () {
 
     const row = {
       id: authData.user.id, username: input.username.trim(), nom: input.nom.trim(), role: input.role,
-      team_id: input.role === "RESPONSABLE_SHIFT" ? input.teamId : null, actif: true
+      team_id: input.role === "RESPONSABLE_SHIFT" ? input.teamId : null,
+      driver_id: input.role === "CONDUCTEUR" ? input.driverId : null,
+      actif: true
     };
     const { data, error } = await sb.from("profiles").insert(row).select().single();
     if (error) { console.error(error); throw error; }
@@ -520,6 +522,7 @@ const RTGStore = (function () {
     if ("nom" in patch) dbPatch.nom = patch.nom;
     if ("role" in patch) dbPatch.role = patch.role;
     if ("teamId" in patch) dbPatch.team_id = patch.teamId;
+    if ("driverId" in patch) dbPatch.driver_id = patch.driverId;
     if ("actif" in patch) dbPatch.actif = patch.actif;
 
     if (patch.password) {

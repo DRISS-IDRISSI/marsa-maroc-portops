@@ -1041,11 +1041,12 @@ function RapportRHPage() {
 const ROLE_OPTIONS = [
   { value: "ADMIN", label: "Administrateur — accès complet + gestion des utilisateurs" },
   { value: "RESPONSABLE", label: "Responsable — accès opérationnel complet, toutes équipes" },
-  { value: "RESPONSABLE_SHIFT", label: "Responsable de Shift — accès limité à SON équipe" }
+  { value: "RESPONSABLE_SHIFT", label: "Responsable de Shift — accès limité à SON équipe" },
+  { value: "CONDUCTEUR", label: "Conducteur — accès à SON planning uniquement" }
 ];
 
 function emptyUserForm() {
-  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: "A" };
+  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: "A", driverId: "" };
 }
 
 function UserForm({ state, initial, editingId, onCancel, onSaved }) {
@@ -1058,8 +1059,17 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
     if (!editingId && !form.password) { setError("Mot de passe obligatoire à la création."); return; }
     if (RTGStore.isUsernameTaken(form.username.trim(), editingId)) { setError("Cet identifiant est déjà utilisé."); return; }
     if (form.role === "RESPONSABLE_SHIFT" && !form.teamId) { setError("Sélectionnez l'équipe pour un Responsable de Shift."); return; }
+    if (form.role === "CONDUCTEUR") {
+      if (!form.driverId) { setError("Sélectionnez le conducteur rattaché à ce compte."); return; }
+      const already = state.users.find(u => u.driverId === form.driverId && u.id !== editingId);
+      if (already) { setError("Ce conducteur a déjà un compte (" + already.username + ")."); return; }
+    }
 
-    const payload = { nom: form.nom.trim(), username: form.username.trim(), role: form.role, teamId: form.role === "RESPONSABLE_SHIFT" ? form.teamId : null };
+    const payload = {
+      nom: form.nom.trim(), username: form.username.trim(), role: form.role,
+      teamId: form.role === "RESPONSABLE_SHIFT" ? form.teamId : null,
+      driverId: form.role === "CONDUCTEUR" ? form.driverId : null
+    };
     if (form.password) payload.password = form.password;
 
     setSaving(true);
@@ -1100,12 +1110,117 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
             </select>
           </div>
         )}
+        {form.role === "CONDUCTEUR" && (
+          <div>
+            <label className={LABEL_CLS}>Conducteur</label>
+            <DriverSelect state={state} value={form.driverId} onlyActive
+              onChange={id => setForm(f => {
+                const driver = state.drivers.find(d => d.id === id);
+                const next = Object.assign({}, f, { driverId: id });
+                // Identifiant suggéré à partir du matricule — seulement si le
+                // champ n'a pas déjà été modifié manuellement, pour ne jamais
+                // écraser une saisie volontaire.
+                if (driver && !f.username.trim()) next.username = driver.matricule.toLowerCase();
+                return next;
+              })} />
+          </div>
+        )}
       </div>
       <div className="flex gap-2">
         <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : (editingId ? "Enregistrer" : "Créer l'utilisateur")}</button>
         <button onClick={onCancel} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
       </div>
     </div>
+  );
+}
+
+// Mot de passe temporaire lisible (évite les caractères ambigus 0/O, 1/l/I)
+// à communiquer au conducteur — il pourra le changer une fois connecté.
+function generateTempPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+// Création en masse d'un compte CONDUCTEUR pour chaque conducteur actif qui
+// n'en a pas encore — identifiant = matricule (minuscules), mot de passe
+// temporaire généré. Les mots de passe ne sont récupérables qu'une seule
+// fois (Supabase Auth ne les stocke pas en clair) : affichés + exportables
+// en CSV juste après la création, pour être distribués aux conducteurs.
+function ConducteurAccountsPanel({ state }) {
+  const driverIdsWithAccount = {};
+  state.users.forEach(u => { if (u.driverId) driverIdsWithAccount[u.driverId] = true; });
+  const missing = state.drivers.filter(d => d.actif !== false && !driverIdsWithAccount[d.id]);
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState([]);
+  const [error, setError] = useState("");
+
+  const createAll = async () => {
+    setBusy(true); setError(""); setResults([]);
+    const created = [];
+    for (const d of missing) {
+      const username = d.matricule.toLowerCase();
+      if (RTGStore.isUsernameTaken(username)) continue;
+      const password = generateTempPassword();
+      try {
+        await RTGStore.addUser({ nom: d.nom + " " + d.prenom, username: username, password: password, role: "CONDUCTEUR", driverId: d.id });
+        created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password });
+      } catch (e) {
+        setError("Échec pour " + d.matricule + " — " + d.nom + " " + d.prenom + " : " + (e && e.message ? e.message : "erreur inconnue") + ". Arrêt (les comptes déjà créés ci-dessous sont bien enregistrés).");
+        break;
+      }
+    }
+    setResults(created);
+    setBusy(false);
+  };
+
+  const downloadCsv = () => {
+    downloadCSV("comptes-conducteurs.csv", ["Matricule", "Nom", "Prénom", "Identifiant", "Mot de passe"],
+      results.map(r => [r.matricule, r.nom, r.prenom, r.username, r.password]));
+  };
+
+  return (
+    <Panel title="Comptes conducteurs" icon="fa-id-card">
+      <p className="text-xs text-slate-400 mb-3">
+        {missing.length === 0
+          ? "Tous les conducteurs actifs ont déjà un compte."
+          : missing.length + " conducteur(s) actif(s) sans compte. L'identifiant sera son matricule (en minuscules) et un mot de passe temporaire sera généré pour chacun, à communiquer au conducteur — il pourra le changer une fois connecté."}
+      </p>
+      {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-3">{error}</div>}
+      {missing.length > 0 && (
+        <button onClick={createAll} disabled={busy} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60 mb-3">
+          {busy ? "Création en cours..." : `Créer les ${missing.length} compte(s) manquant(s)`}
+        </button>
+      )}
+      {results.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <p className="text-xs text-emerald-400"><i className="fas fa-circle-check mr-1"></i>{results.length} compte(s) créé(s) — notez ces mots de passe, ils ne seront plus jamais affichés ensuite.</p>
+            <button onClick={downloadCsv} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-marine-700 text-white hover:bg-marine-600">
+              <i className="fas fa-download mr-1.5"></i>Télécharger (CSV)
+            </button>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-xs">
+              <thead className="bg-surface text-slate-400">
+                <tr className="text-left"><th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Identifiant</th><th className="px-3 py-2">Mot de passe</th></tr>
+              </thead>
+              <tbody>
+                {results.map(r => (
+                  <tr key={r.matricule} className="border-t border-border">
+                    <td className="px-3 py-2 text-slate-300">{r.matricule}</td>
+                    <td className="px-3 py-2 text-white">{r.nom} {r.prenom}</td>
+                    <td className="px-3 py-2 text-slate-300">{r.username}</td>
+                    <td className="px-3 py-2 text-slate-300 font-mono">{r.password}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -1132,7 +1247,7 @@ function UsersPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-white">Utilisateurs</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{state.users.length} compte{state.users.length > 1 ? "s" : ""} — Admin, Responsable, Responsable de Shift</p>
+          <p className="text-slate-400 text-sm mt-0.5">{state.users.length} compte{state.users.length > 1 ? "s" : ""} — Admin, Responsable, Responsable de Shift, Conducteur</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
           <i className="fas fa-plus mr-1.5"></i>Nouvel utilisateur
@@ -1161,10 +1276,12 @@ function UsersPage() {
         </button>
       </Panel>
 
+      <ConducteurAccountsPanel state={state} />
+
       {showForm && (
         <Panel title={editingId ? "Modifier l'utilisateur" : "Nouvel utilisateur"} icon="fa-user-shield">
           <UserForm state={state} editingId={editingId}
-            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || "A" } : emptyUserForm()}
+            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || "A", driverId: editingUser.driverId || "" } : emptyUserForm()}
             onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -1174,19 +1291,20 @@ function UsersPage() {
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Nom</th><th className="px-3 py-2">Identifiant</th><th className="px-3 py-2">Rôle</th>
-              <th className="px-3 py-2">Équipe</th><th className="px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
+              <th className="px-3 py-2">Équipe / Conducteur</th><th className="px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
             {state.users.map(u => {
               const team = u.teamId ? state.teams.find(t => t.id === u.teamId) : null;
+              const driver = u.driverId ? state.drivers.find(d => d.id === u.driverId) : null;
               const isSelf = currentUser.id === u.id;
               return (
                 <tr key={u.id} className="border-t border-border hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-white font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
                   <td className="px-3 py-2 text-slate-300">{u.username}</td>
                   <td className="px-3 py-2 text-slate-400">{ROLE_LABELS[u.role] || u.role}</td>
-                  <td className="px-3 py-2 text-slate-400">{team ? team.nom : "—"}</td>
+                  <td className="px-3 py-2 text-slate-400">{team ? team.nom : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
                   <td className="px-3 py-2">
                     {u.actif !== false
                       ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Actif</span>
@@ -1325,6 +1443,87 @@ function AssistantIntelligentPage() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ==========================================
+// Mon planning (§37) — SEULE page accessible à un compte CONDUCTEUR
+// (isDriverRestricted, pages.js) : lecture seule de SON propre planning,
+// rien d'autre. La demande de congé en libre-service (avec upload du
+// justificatif + validation par le Responsable de Shift + email de
+// confirmation) viendra dans une étape suivante.
+// ==========================================
+function MonPlanningPage() {
+  const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const driver = currentUser && currentUser.driverId ? state.drivers.find(d => d.id === currentUser.driverId) : null;
+  const now = new Date();
+  const [month, setMonth] = useState(now.getUTCMonth() + 1);
+  const [year, setYear] = useState(now.getUTCFullYear());
+
+  const rows = useMemo(() => {
+    if (!driver) return [];
+    const planning = PlanningEngine.generateMonthlyPlanning(month, year, state);
+    return planning.days.map(day => ({ iso: day.iso, assignment: day.assignments.find(a => a.driverId === driver.id) || null }));
+  }, [state, month, year, driver]);
+
+  if (!driver) {
+    return (
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+        <i className="fas fa-triangle-exclamation"></i> Votre compte n'est rattaché à aucune fiche conducteur. Contactez un administrateur.
+      </div>
+    );
+  }
+
+  const team = state.teams.find(t => t.id === driver.teamId);
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Mon planning</h1>
+        <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}{team ? " — " + team.nom : ""}</p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+        <div>
+          <label className={LABEL_CLS}>Mois</label>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
+            {RAPPORT_MOIS_LABELS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Année</label>
+          <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-surface text-slate-400">
+            <tr className="text-left">
+              <th className="px-3 py-2">Date</th><th className="px-3 py-2">Statut</th>
+              <th className="px-3 py-2">Shift</th><th className="px-3 py-2">Vacation</th><th className="px-3 py-2">Zone</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const a = r.assignment;
+              const meta = a ? (RTG_STATUS_META[a.status] || {}) : {};
+              const present = a && a.status === "PRESENT";
+              return (
+                <tr key={r.iso} className="border-t border-border hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-300 whitespace-nowrap">{RTGDate.formatFr(RTGDate.parseISO(r.iso))}</td>
+                  <td className="px-3 py-2">{a ? <span className={`px-1.5 py-0.5 rounded border ${meta.className || ""}`}>{meta.label || a.status}</span> : "—"}</td>
+                  <td className="px-3 py-2 text-slate-300">{present ? ((state.config.shifts.find(s => s.id === a.shift) || {}).label || a.shift) : "—"}</td>
+                  <td className="px-3 py-2 text-slate-300">{present ? (a.vacation || "—") : "—"}</td>
+                  <td className="px-3 py-2 text-slate-300">{present ? (a.zone || "—") : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

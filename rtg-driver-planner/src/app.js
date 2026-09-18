@@ -17,6 +17,7 @@ function App() {
             <Route path="/remplacement" element={<RemplacementPage />} />
             <Route path="/rapport-rh" element={<RapportRHPage />} />
             <Route path="/assistant" element={<AssistantIntelligentPage />} />
+            <Route path="/mon-planning" element={<MonPlanningPage />} />
             <Route path="/utilisateurs" element={<UsersPage />} />
           </Routes>
         </Layout>

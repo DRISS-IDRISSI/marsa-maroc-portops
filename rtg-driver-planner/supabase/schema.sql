@@ -63,11 +63,13 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique,
   nom text not null,
-  role text not null check (role in ('ADMIN', 'RESPONSABLE', 'RESPONSABLE_SHIFT')),
+  role text not null check (role in ('ADMIN', 'RESPONSABLE', 'RESPONSABLE_SHIFT', 'CONDUCTEUR')),
   team_id text references teams(id),   -- uniquement pertinent si role = RESPONSABLE_SHIFT
+  driver_id text references drivers(id), -- uniquement pertinent si role = CONDUCTEUR (§37)
   actif boolean not null default true,
   created_at timestamptz not null default now()
 );
+create unique index if not exists profiles_driver_id_unique on profiles(driver_id) where driver_id is not null;
 
 -- ---------- Congés / Maladies / Absences (même forme, 3 tables comme l'existant) ----------
 create table if not exists conges (
@@ -199,6 +201,12 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
+-- Conducteur rattaché au compte courant (role = CONDUCTEUR uniquement — §37).
+create or replace function current_user_driver() returns text
+language sql stable security definer set search_path = public as $$
+  select driver_id from profiles where id = auth.uid();
+$$;
+
 -- ==========================================
 -- ROW LEVEL SECURITY
 -- ==========================================
@@ -233,6 +241,7 @@ create policy "drivers_select" on drivers for select
     current_user_active() and (
       current_user_role() in ('ADMIN', 'RESPONSABLE')
       or (current_user_role() = 'RESPONSABLE_SHIFT' and team_id = current_user_team())
+      or (current_user_role() = 'CONDUCTEUR' and id = current_user_driver())
     )
   );
 
@@ -261,37 +270,37 @@ create policy "profiles_write_admin" on profiles for all
 
 -- ---------- conges / maladies / absences / heures_exceptionnelles (même règle) ----------
 create policy "conges_select" on conges for select
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or (current_user_role() = 'CONDUCTEUR' and driver_id = current_user_driver())));
 create policy "conges_write" on conges for all
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
   with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
 
 create policy "maladies_select" on maladies for select
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or (current_user_role() = 'CONDUCTEUR' and driver_id = current_user_driver())));
 create policy "maladies_write" on maladies for all
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
   with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
 
 create policy "absences_select" on absences for select
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or (current_user_role() = 'CONDUCTEUR' and driver_id = current_user_driver())));
 create policy "absences_write" on absences for all
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
   with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
 
 create policy "heures_exceptionnelles_select" on heures_exceptionnelles for select
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or (current_user_role() = 'CONDUCTEUR' and driver_id = current_user_driver())));
 create policy "heures_exceptionnelles_write" on heures_exceptionnelles for all
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
   with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
 
 create policy "feries_mouvements_select" on feries_mouvements for select
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or (current_user_role() = 'CONDUCTEUR' and driver_id = current_user_driver())));
 create policy "feries_mouvements_write" on feries_mouvements for all
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
   with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
 
 create policy "manual_overrides_select" on manual_overrides for select
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or (current_user_role() = 'CONDUCTEUR' and driver_id = current_user_driver())));
 create policy "manual_overrides_write" on manual_overrides for all
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
   with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));

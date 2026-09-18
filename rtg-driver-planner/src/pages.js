@@ -693,12 +693,19 @@ function useCurrentUser() {
   return state.users.find(u => u.id === state.currentUserId) || null;
 }
 
-const ROLE_LABELS = { ADMIN: "Administrateur", RESPONSABLE: "Responsable Exploitation", RESPONSABLE_SHIFT: "Responsable de Shift" };
+const ROLE_LABELS = { ADMIN: "Administrateur", RESPONSABLE: "Responsable Exploitation", RESPONSABLE_SHIFT: "Responsable de Shift", CONDUCTEUR: "Conducteur" };
 
 // Un Responsable de Shift ne voit/agit que sur SON équipe (teamId) ; les autres
 // rôles (Admin, Responsable) ont accès à toutes les équipes — §30.
 function isShiftRestricted(user) {
   return !!user && user.role === "RESPONSABLE_SHIFT";
+}
+
+// Un Conducteur n'a accès qu'à SA propre fiche (driverId) — page "Mon
+// planning" uniquement, rien d'autre (§37). Restriction bien plus étroite
+// que RESPONSABLE_SHIFT (une équipe entière) : un conducteur individuel.
+function isDriverRestricted(user) {
+  return !!user && user.role === "CONDUCTEUR";
 }
 
 // ==========================================
