@@ -876,7 +876,17 @@ async function captureNodeAsPng(node, forceWidth) {
     node.style.display = "block";
   }
   try {
-    const canvas = await window.html2canvas(node, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+    // windowWidth/windowHeight = les dimensions RÉELLES du nœud (scrollWidth/
+    // scrollHeight), pas celles de la fenêtre du navigateur au moment de la
+    // capture : sans ça, html2canvas contraint son rendu interne à la
+    // largeur de la fenêtre visible, et un nœud plus large qu'elle (ex. un
+    // document A4 de 210mm affiché à côté d'une barre latérale qui réduit
+    // d'autant la largeur disponible) ressort avec un rapport largeur/hauteur
+    // faussé — déformé une fois étiré sur une page PDF (addFittedImageToPage).
+    const canvas = await window.html2canvas(node, {
+      scale: 2, backgroundColor: "#ffffff", useCORS: true,
+      windowWidth: node.scrollWidth, windowHeight: node.scrollHeight
+    });
     // PNG (sans perte) plutôt que JPEG : un rapport tableau (texte fin,
     // bordures 1px) devient flou/crénelé en JPEG dès qu'on l'étire pour
     // remplir la page — texte qui paraît "dans une autre police" et
