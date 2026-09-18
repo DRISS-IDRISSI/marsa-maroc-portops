@@ -731,15 +731,10 @@ const PRINT_STATUS_BG = {
 
 // Styles pour les rapports imprimables ("papier" clair, indépendant du thème
 // sombre de l'appli) — même convention que le Rapport RH (pages2.js).
-const PRINT_TH = "px-2 py-1.5 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
+const PRINT_TH = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
 const PRINT_TH_CENTER = PRINT_TH + " text-center";
-const PRINT_TD = "px-2 py-1 border-b border-slate-200 whitespace-nowrap";
+const PRINT_TD = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
 const PRINT_TD_CENTER = PRINT_TD + " text-center";
-// Variante sans "whitespace-nowrap" (autorise le retour à la ligne) pour les
-// colonnes Nom/Prénom/Équipe d'un tableau à largeurs de colonnes FIXES
-// (table-layout: fixed) — un nom un peu long doit passer à la ligne plutôt
-// que déborder de sa colonne et casser l'alignement avec le tableau d'à côté.
-const PRINT_TD_WRAP = "px-2 py-1 border-b border-slate-200 break-words";
 // Lignes alternées blanc / bleu ciel sur les tableaux imprimables de
 // conducteurs — demande explicite de l'exploitant, pour mieux distinguer
 // visuellement chaque ligne sur un rapport papier/PDF. Fusionné avec la
@@ -1820,57 +1815,52 @@ function FerieMouvementsPanel({ dateStr, presentDrivers }) {
   );
 }
 
-// Version imprimable (noir sur blanc) d'un bloc vacation.
+// Version imprimable (noir sur blanc) d'un bloc de conducteurs, UN SEUL
+// tableau continu (même structure que le Rapport RH — pages2.js) au lieu
+// d'un tableau par vacation : demande explicite de l'exploitant, qui
+// trouvait la présentation en petits blocs V1/V2 empilés "mal présentée"
+// par rapport au Rapport RH. `rows` contient déjà TOUS les conducteurs du
+// shift (présents des deux vacations + absents + OFF le cas échéant),
+// triés par ordreAffichage — la colonne Vacation distingue V1/V2 par
+// ligne. Colonnes/bordures identiques au Rapport RH (px-2 py-2 / py-1.5,
+// border-b-2/border-b, whitespace-nowrap) pour une présentation homogène
+// entre les deux rapports.
 // showTeamColumn=false quand le rapport est déjà groupé par shift (une seule
 // équipe par shift, mentionnée dans l'en-tête de la section — cf.
 // AffectationDuJour) : répéter l'équipe sur chaque ligne y est alors pur
 // doublon. Reste à `true` par défaut (ex. rapport jour férié, qui liste
 // toutes les équipes ensemble sans section par shift).
-// Largeurs de colonnes FIXES (table-layout: fixed) — demande explicite de
-// l'exploitant : sans largeurs fixes, chaque tableau <table> (un par
-// vacation V1/V2) redimensionne ses colonnes selon SON PROPRE contenu,
-// indépendamment de l'autre — les colonnes Prénom/Vacation/Zone ne
-// s'alignaient donc plus verticalement avec celles de l'autre tableau juste
-// en dessous. Deux jeux de largeurs (avec/sans la colonne Équipe) pour que
-// le total reste 100% dans les deux cas. Colonne "Horaire" retirée : déjà
-// indiquée dans le titre de la section (ex. "Vacation V1 · 07:00 → 11:00",
-// identique pour toute la vacation) — même doublon que la colonne Équipe.
-const SHIFT_BLOCK_COL_W = {
-  withTeam: { mat: "10%", nom: "20%", prenom: "18%", equipe: "17%", vacation: "12%", zone: "23%" },
-  noTeam: { mat: "11%", nom: "24%", prenom: "21%", vacation: "14%", zone: "30%" }
-};
 function ShiftBlockPrintable({ title, rows, showTeamColumn = true }) {
-  const w = showTeamColumn ? SHIFT_BLOCK_COL_W.withTeam : SHIFT_BLOCK_COL_W.noTeam;
   return (
     <div className="mb-3">
-      <div className="text-[11px] font-bold uppercase tracking-wide mb-1">{title} — {rows.length} conducteur{rows.length > 1 ? "s" : ""}</div>
+      {title && <div className="text-[11px] font-bold uppercase tracking-wide mb-1">{title} — {rows.length} conducteur{rows.length > 1 ? "s" : ""}</div>}
       {rows.length === 0 ? (
         <p className="text-[10px] text-slate-500 italic mb-2">Aucun conducteur affecté.</p>
       ) : (
-        <table className="w-full text-[13px] border-collapse mb-2" style={{ tableLayout: "fixed" }}>
+        <table className="w-full text-[13px] border-collapse mb-2">
           <thead>
             <tr>
-              <th className={PRINT_TH} style={{ width: w.mat }}>Mat</th>
-              <th className={PRINT_TH} style={{ width: w.nom }}>Nom</th>
-              <th className={PRINT_TH} style={{ width: w.prenom }}>Prénom</th>
-              {showTeamColumn && <th className={PRINT_TH} style={{ width: w.equipe }}>Équipe</th>}
-              <th className={PRINT_TH_CENTER} style={{ width: w.vacation }}>Vacation</th>
-              <th className={PRINT_TH_CENTER} style={{ width: w.zone }}>Zone</th>
+              <th className={PRINT_TH}>Mat</th>
+              <th className={PRINT_TH}>Nom</th>
+              <th className={PRINT_TH}>Prénom</th>
+              {showTeamColumn && <th className={PRINT_TH}>Équipe</th>}
+              <th className={PRINT_TH_CENTER}>Vacation</th>
+              <th className={PRINT_TH_CENTER}>Zone</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((a, idx) => {
               // Zone sert double emploi : zone d'affectation si présent,
-              // sinon le statut (Repos/Congé/Maladie/Absence/Formation) —
-              // demande explicite de l'exploitant (une seule liste par
-              // vacation, présents et absents confondus).
-              const zoneOrStatut = a.status === "PRESENT" ? a.zone : ((RTG_STATUS_META[a.status] || {}).label || a.status);
+              // sinon le statut (Repos/Congé/Maladie/Absence/Formation/OFF)
+              // — demande explicite de l'exploitant (une seule liste,
+              // présents et absents confondus).
+              const zoneOrStatut = a.status === "PRESENT" ? a.zone : (a.status === "OFF" ? "OFF" : ((RTG_STATUS_META[a.status] || {}).label || a.status));
               return (
                 <tr key={a.driverId} style={printRowStyle(idx, a.vacationBalanceAlert)}>
                   <td className={PRINT_TD}>{a.matricule}</td>
-                  <td className={PRINT_TD_WRAP + " font-medium"}>{a.nom}{a.vacationBalanceAlert ? " (*)" : ""}</td>
-                  <td className={PRINT_TD_WRAP}>{a.prenom}</td>
-                  {showTeamColumn && <td className={PRINT_TD_WRAP}>{a.teamNom}</td>}
+                  <td className={PRINT_TD + " font-medium"}>{a.nom}{a.vacationBalanceAlert ? " (*)" : ""}</td>
+                  <td className={PRINT_TD}>{a.prenom}</td>
+                  {showTeamColumn && <td className={PRINT_TD}>{a.teamNom}</td>}
                   <td className={PRINT_TD_CENTER}>{a.vacation || "—"}</td>
                   <td className={PRINT_TD_CENTER}>{zoneOrStatut}</td>
                 </tr>
@@ -2025,6 +2015,16 @@ function AffectationDuJour() {
   });
   const offRows = assignments.filter(a => a.status === "OFF").sort(byOrdreAffichage);
 
+  // Rapport imprimable : UN SEUL tableau continu par shift (V1 + V2 + OFF
+  // confondus, comme le Rapport RH) au lieu d'un tableau par vacation —
+  // demande explicite de l'exploitant après comparaison avec le Rapport RH.
+  const printRowsByShift = {};
+  state.config.shifts.forEach(s => {
+    const vacRows = grouped[s.id].reduce((acc, g) => acc.concat(g.rows), []);
+    const rows = s.id === "S3" ? vacRows.concat(offRows) : vacRows;
+    printRowsByShift[s.id] = rows.slice().sort(byOrdreAffichage);
+  });
+
   const exportExcel = () => {
     const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
     if (holiday) {
@@ -2174,19 +2174,15 @@ function AffectationDuJour() {
       ) : (
         visibleShifts.map(s => {
           const shiftTeam = state.teams.find(t => teamShiftMap[t.id] === s.id);
-          const includeOff = s.id === "S3" && offRows.length > 0;
-          const shiftCount = grouped[s.id].reduce((n, g) => n + g.rows.length, 0) + (includeOff ? offRows.length : 0);
+          const rows = printRowsByShift[s.id];
           return (
             <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl p-0">
               <PrintHeader
                 subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + " — " + s.label + (s.start ? ` (${s.start} → ${s.end})` : "") + (shiftTeam ? " — " + shiftTeam.nom : "")}
-                count={shiftCount} countLabel="conducteur"
+                count={rows.length} countLabel="conducteur"
               />
               <div>
-                {grouped[s.id].map(({ vacation, rows }) => (
-                  <ShiftBlockPrintable key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} rows={rows} showTeamColumn={false} />
-                ))}
-                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
+                <ShiftBlockPrintable rows={rows} showTeamColumn={false} />
               </div>
               <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
                 Document généré automatiquement par RTG Driver Planner.
