@@ -386,6 +386,20 @@ const RTGStore = (function () {
     set(s => Object.assign({}, s, { conges: s.conges.map(r => r.id === id ? updated : r) }));
     const d = state.drivers.find(dr => dr.id === updated.driverId);
     addAuditEntry({ driverId: updated.driverId, matricule: d ? d.matricule : "", action: decision === "VALIDE" ? "Validation demande de congé" : "Refus demande de congé", details: motifRefus || "" });
+    // Email de confirmation (Edge Function "send-conge-email", voir son
+    // en-tête pour le déploiement) — best-effort : un échec d'envoi (email
+    // absent, secrets Gmail pas encore configurés, fonction pas encore
+    // déployée) ne doit JAMAIS remettre en cause la validation/refus
+    // elle-même, déjà actée en base ci-dessus.
+    if (d && d.email) {
+      try {
+        await sb.functions.invoke("send-conge-email", {
+          body: { to: d.email, driverName: d.nom + " " + d.prenom, dateDebut: updated.dateDebut, dateFin: updated.dateFin, decision: decision, motifRefus: motifRefus || "" }
+        });
+      } catch (e) {
+        console.warn("RTGStore: envoi de l'email de confirmation de congé impossible.", e);
+      }
+    }
     return updated;
   }
 
