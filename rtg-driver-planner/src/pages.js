@@ -826,6 +826,16 @@ function loadPdfLibs() {
 // tout le conteneur capturé, laissant un vide à droite du contenu réel une
 // fois étiré à la page.
 async function captureNodeAsPng(node, forceWidth) {
+  // Toujours forcer une largeur explicite (1200px par défaut) pendant la
+  // capture — jamais laisser le nœud sans largeur : un bloc normalement
+  // display:none, rendu position:fixed hors-écran sans largeur fixée,
+  // n'a pas de base fiable pour résoudre son width:auto (dépend du
+  // navigateur/moteur de rendu) — peut donner un canvas ENORME (fichier PDF
+  // final de plusieurs dizaines de Mo) ou au contraire réduit à son contenu
+  // le plus étroit (rendu minuscule dans un coin de la page une fois
+  // "fit-to-page"), selon le cas. Bug de régression réel rencontré ici :
+  // exportNodesAsPdf appelait cette fonction SANS 3ème argument.
+  const width = forceWidth || 1200;
   const prevDisplay = node.style.display, prevPosition = node.style.position;
   const prevLeft = node.style.left, prevTop = node.style.top, prevWidth = node.style.width;
   const wasHidden = getComputedStyle(node).display === "none";
@@ -833,7 +843,7 @@ async function captureNodeAsPng(node, forceWidth) {
     node.style.position = "fixed";
     node.style.left = "-10000px";
     node.style.top = "0";
-    if (forceWidth) node.style.width = forceWidth + "px";
+    node.style.width = width + "px";
     node.style.display = "block";
   }
   try {
