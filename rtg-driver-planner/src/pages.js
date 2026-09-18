@@ -957,7 +957,7 @@ function PrintHeader({ subtitle, count, countLabel }) {
             au lieu de déborder sur le bloc "Généré le..." à droite — bug
             corrigé, signalé par l'exploitant (chevauchement visible). */}
         <div className="min-w-0">
-          <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
+          <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca</div>
           <div className="text-xs sm:text-sm text-slate-600">{subtitle}</div>
         </div>
       </div>
