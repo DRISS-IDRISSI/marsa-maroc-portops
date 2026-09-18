@@ -800,21 +800,15 @@ function loadPdfLibs() {
   return _pdfLibsPromise;
 }
 
-async function exportNodeAsPdf(node, filename, opts) {
-  const fitOnePage = !!(opts && opts.fitOnePage);
-  // Largeur forcée pendant la capture d'un bloc normalement display:none (voir
-  // plus bas). Toujours fixer une largeur explicite plutôt que laisser le
-  // bloc se dimensionner naturellement : sinon un enfant plus large que le
-  // contenu principal (ex. le titre de l'en-tête) peut élargir tout le
-  // conteneur capturé, laissant un vide à droite du contenu réel une fois
-  // étiré à la page.
-  const forceWidth = opts && "forceWidth" in opts ? opts.forceWidth : 1200;
-  await loadPdfLibs();
-  // Les blocs "papier" (print-report) sont display:none à l'écran, affichés
-  // uniquement par la règle @media print — html2canvas ne peut capturer que
-  // ce qui est effectivement rendu, donc on le rend visible le temps de la
-  // capture (hors écran, pour ne rien perturber visuellement), puis on
-  // remet son état d'origine dans tous les cas (y compris en cas d'erreur).
+// Rend temporairement visible un bloc "papier" (print-report, normalement
+// display:none à l'écran, affiché seulement par la règle @media print —
+// html2canvas ne peut capturer que ce qui est effectivement rendu), le
+// capture en PNG, puis remet son état d'origine dans tous les cas (y compris
+// en cas d'erreur). Largeur forcée pendant la capture : sinon un enfant plus
+// large que le contenu principal (ex. le titre de l'en-tête) peut élargir
+// tout le conteneur capturé, laissant un vide à droite du contenu réel une
+// fois étiré à la page.
+async function captureNodeAsPng(node, forceWidth) {
   const prevDisplay = node.style.display, prevPosition = node.style.position;
   const prevLeft = node.style.left, prevTop = node.style.top, prevWidth = node.style.width;
   const wasHidden = getComputedStyle(node).display === "none";
@@ -827,50 +821,12 @@ async function exportNodeAsPdf(node, filename, opts) {
   }
   try {
     const canvas = await window.html2canvas(node, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const pageWidthMm = pdf.internal.pageSize.getWidth(), pageHeightMm = pdf.internal.pageSize.getHeight();
-    const margin = 5;
-    const usableWidthMm = pageWidthMm - margin * 2, usableHeightMm = pageHeightMm - margin * 2;
-    let imgWidthMm = usableWidthMm;
-    let imgHeightMm = imgWidthMm * canvas.height / canvas.width;
     // PNG (sans perte) plutôt que JPEG : un rapport tableau (texte fin,
     // bordures 1px) devient flou/crénelé en JPEG dès qu'on l'étire pour
     // remplir la page — texte qui paraît "dans une autre police" et
-    // colonnes qui semblent désalignées. Le PNG reste net à n'importe
-    // quel facteur d'agrandissement.
-    const imgData = canvas.toDataURL("image/png");
-
-    if (fitOnePage) {
-      // Occupe toute la LARGEUR de la page, et la hauteur autant que possible
-      // sans dépasser un étirement vertical de maxStretch : un tableau
-      // compact et large mais peu haut (notre cas — un mois entier tient déjà
-      // en largeur avec moins de lignes qu'il n'y a de place en hauteur)
-      // laisserait sinon un grand vide sous le rapport à proportions
-      // d'origine conservées. Mais un étirement NON borné (proportions
-      // d'origine ignorées) crée un effet de moiré sur les bordures fines
-      // répétées du tableau (lignes qui semblent floues/mal alignées, bandes
-      // colorées en alternance) une fois la page rendue — d'où la limite.
-      // Le vide résiduel éventuel (table courte, peu de conducteurs) est
-      // centré verticalement plutôt que collé en haut.
-      const maxStretch = 1.8;
-      const targetHeightMm = Math.min(usableHeightMm, imgHeightMm * maxStretch);
-      const yOffset = margin + (usableHeightMm - targetHeightMm) / 2;
-      pdf.addImage(imgData, "PNG", margin, yOffset, usableWidthMm, targetHeightMm);
-      pdf.save(filename);
-      return;
-    }
-
-    let heightLeftMm = imgHeightMm, offsetMm = 0;
-    pdf.addImage(imgData, "PNG", margin, margin, imgWidthMm, imgHeightMm);
-    heightLeftMm -= usableHeightMm;
-    while (heightLeftMm > 0) {
-      offsetMm += usableHeightMm;
-      pdf.addPage();
-      pdf.addImage(imgData, "PNG", margin, margin - offsetMm, imgWidthMm, imgHeightMm);
-      heightLeftMm -= usableHeightMm;
-    }
-    pdf.save(filename);
+    // colonnes qui semblent désalignées. Le PNG reste net à n'importe quel
+    // facteur d'agrandissement.
+    return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
   } finally {
     if (wasHidden) {
       node.style.display = prevDisplay;
@@ -880,6 +836,77 @@ async function exportNodeAsPdf(node, filename, opts) {
       node.style.width = prevWidth;
     }
   }
+}
+
+// Place une image capturée sur la page COURANTE d'un jsPDF déjà créé, en
+// l'étirant pour occuper toute la LARGEUR de la page et la hauteur autant que
+// possible sans dépasser un étirement vertical de maxStretch : un tableau
+// compact et large mais peu haut laisserait sinon un grand vide sous le
+// rapport à proportions d'origine conservées. Mais un étirement NON borné
+// (proportions ignorées) crée un effet de moiré sur les bordures fines
+// répétées du tableau (lignes floues/mal alignées, bandes colorées en
+// alternance) une fois la page rendue — d'où la limite. Le vide résiduel
+// éventuel (table courte, peu de conducteurs) est centré verticalement
+// plutôt que collé en haut.
+function addFittedImageToPage(pdf, img) {
+  const pageWidthMm = pdf.internal.pageSize.getWidth(), pageHeightMm = pdf.internal.pageSize.getHeight();
+  const margin = 5;
+  const usableWidthMm = pageWidthMm - margin * 2, usableHeightMm = pageHeightMm - margin * 2;
+  const imgHeightMm = usableWidthMm * img.height / img.width;
+  const maxStretch = 1.8;
+  const targetHeightMm = Math.min(usableHeightMm, imgHeightMm * maxStretch);
+  const yOffset = margin + (usableHeightMm - targetHeightMm) / 2;
+  pdf.addImage(img.dataUrl, "PNG", margin, yOffset, usableWidthMm, targetHeightMm);
+}
+
+async function exportNodeAsPdf(node, filename, opts) {
+  const fitOnePage = !!(opts && opts.fitOnePage);
+  const forceWidth = opts && "forceWidth" in opts ? opts.forceWidth : 1200;
+  await loadPdfLibs();
+  const img = await captureNodeAsPng(node, forceWidth);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+
+  if (fitOnePage) {
+    addFittedImageToPage(pdf, img);
+    pdf.save(filename);
+    return;
+  }
+
+  const pageWidthMm = pdf.internal.pageSize.getWidth(), pageHeightMm = pdf.internal.pageSize.getHeight();
+  const margin = 5;
+  const usableWidthMm = pageWidthMm - margin * 2, usableHeightMm = pageHeightMm - margin * 2;
+  const imgWidthMm = usableWidthMm;
+  const imgHeightMm = imgWidthMm * img.height / img.width;
+  let heightLeftMm = imgHeightMm, offsetMm = 0;
+  pdf.addImage(img.dataUrl, "PNG", margin, margin, imgWidthMm, imgHeightMm);
+  heightLeftMm -= usableHeightMm;
+  while (heightLeftMm > 0) {
+    offsetMm += usableHeightMm;
+    pdf.addPage();
+    pdf.addImage(img.dataUrl, "PNG", margin, margin - offsetMm, imgWidthMm, imgHeightMm);
+    heightLeftMm -= usableHeightMm;
+  }
+  pdf.save(filename);
+}
+
+// Un PDF, une page PAR nœud fourni — CHAQUE nœud occupe sa propre page en
+// entier (fit-to-page, cf. addFittedImageToPage), jamais étalé sur plusieurs
+// pages ni mélangé avec le nœud suivant. Utilisé par l'Affectation du jour
+// pour qu'un shift donné (une seule équipe, § en-tête de section) tienne
+// toujours sur UNE SEULE page — demande explicite de l'exploitant — au lieu
+// d'un découpage arbitraire à cheval sur deux pages en cas de repos/congés
+// nombreux ce jour-là.
+async function exportNodesAsPdf(nodes, filename, forceWidth) {
+  await loadPdfLibs();
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  for (let i = 0; i < nodes.length; i++) {
+    const img = await captureNodeAsPng(nodes[i], forceWidth);
+    if (i > 0) pdf.addPage();
+    addFittedImageToPage(pdf, img);
+  }
+  pdf.save(filename);
 }
 
 function ExportPdfButton({ onClick, busy }) {
@@ -1236,6 +1263,19 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
   );
 }
 
+// La colonne Zone sert double emploi : la zone d'affectation si le
+// conducteur est présent, sinon son statut (Repos/Congé/Maladie/Absence/
+// Formation) — demande explicite de l'exploitant, pour intégrer présents ET
+// absents d'une même vacation dans UN SEUL tableau plutôt qu'un bloc "Repos
+// & congés" séparé.
+function ZoneOrStatutBadge({ a }) {
+  if (a.status === "PRESENT") {
+    return <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{a.zone}</span>;
+  }
+  const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "bg-slate-700/40 text-slate-300 border-slate-600/40" };
+  return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>;
+}
+
 function ShiftBlock({ title, icon, rows }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
@@ -1255,7 +1295,7 @@ function ShiftBlock({ title, icon, rows }) {
               <tr className="text-left border-b border-border">
                 <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="hidden sm:table-cell py-1.5 pr-3">Prénom</th>
                 <th className="hidden sm:table-cell py-1.5 pr-3">Équipe</th><th className="py-1.5 pr-3">Vacation</th><th className="hidden sm:table-cell py-1.5 pr-3">Horaire</th>
-                <th className="py-1.5 pr-3">Zone</th><th className="hidden sm:table-cell py-1.5 pr-3">Statut</th>
+                <th className="py-1.5 pr-3">Zone</th>
               </tr>
             </thead>
             <tbody>
@@ -1269,10 +1309,9 @@ function ShiftBlock({ title, icon, rows }) {
                   </td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
-                  <td className="py-1.5 pr-3"><span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-300 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span></td>
-                  <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime}–{a.endTime}</td>
-                  <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{a.zone}</span></td>
-                  <td className="hidden sm:table-cell py-1.5 pr-3 text-emerald-400">{a.status}</td>
+                  <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-300 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span> : "—"}</td>
+                  <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime ? `${a.startTime}–${a.endTime}` : "—"}</td>
+                  <td className="py-1.5 pr-3"><ZoneOrStatutBadge a={a} /></td>
                 </tr>
               ))}
             </tbody>
@@ -1749,7 +1788,12 @@ function FerieMouvementsPanel({ dateStr, presentDrivers }) {
 }
 
 // Version imprimable (noir sur blanc) d'un bloc vacation.
-function ShiftBlockPrintable({ title, rows }) {
+// showTeamColumn=false quand le rapport est déjà groupé par shift (une seule
+// équipe par shift, mentionnée dans l'en-tête de la section — cf.
+// AffectationDuJour) : répéter l'équipe sur chaque ligne y est alors pur
+// doublon. Reste à `true` par défaut (ex. rapport jour férié, qui liste
+// toutes les équipes ensemble sans section par shift).
+function ShiftBlockPrintable({ title, rows, showTeamColumn = true }) {
   return (
     <div className="mb-3">
       <div className="text-[11px] font-bold uppercase tracking-wide mb-1">{title} — {rows.length} conducteur{rows.length > 1 ? "s" : ""}</div>
@@ -1760,21 +1804,29 @@ function ShiftBlockPrintable({ title, rows }) {
           <thead>
             <tr>
               <th className={PRINT_TH}>Mat</th><th className={PRINT_TH}>Nom</th><th className={PRINT_TH}>Prénom</th>
-              <th className={PRINT_TH}>Équipe</th><th className={PRINT_TH}>Vacation</th><th className={PRINT_TH}>Horaire</th><th className={PRINT_TH}>Zone</th>
+              {showTeamColumn && <th className={PRINT_TH}>Équipe</th>}
+              <th className={PRINT_TH}>Vacation</th><th className={PRINT_TH}>Horaire</th><th className={PRINT_TH}>Zone</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(a => (
-              <tr key={a.driverId} style={a.vacationBalanceAlert ? { color: "#b91c1c" } : undefined}>
-                <td className={PRINT_TD}>{a.matricule}</td>
-                <td className={PRINT_TD + " font-medium"}>{a.nom}{a.vacationBalanceAlert ? " (*)" : ""}</td>
-                <td className={PRINT_TD}>{a.prenom}</td>
-                <td className={PRINT_TD}>{a.teamNom}</td>
-                <td className={PRINT_TD_CENTER}>{a.vacation}</td>
-                <td className={PRINT_TD}>{a.startTime}–{a.endTime}</td>
-                <td className={PRINT_TD_CENTER}>{a.zone}</td>
-              </tr>
-            ))}
+            {rows.map(a => {
+              // Zone sert double emploi : zone d'affectation si présent,
+              // sinon le statut (Repos/Congé/Maladie/Absence/Formation) —
+              // demande explicite de l'exploitant (une seule liste par
+              // vacation, présents et absents confondus).
+              const zoneOrStatut = a.status === "PRESENT" ? a.zone : ((RTG_STATUS_META[a.status] || {}).label || a.status);
+              return (
+                <tr key={a.driverId} style={a.vacationBalanceAlert ? { color: "#b91c1c" } : undefined}>
+                  <td className={PRINT_TD}>{a.matricule}</td>
+                  <td className={PRINT_TD + " font-medium"}>{a.nom}{a.vacationBalanceAlert ? " (*)" : ""}</td>
+                  <td className={PRINT_TD}>{a.prenom}</td>
+                  {showTeamColumn && <td className={PRINT_TD}>{a.teamNom}</td>}
+                  <td className={PRINT_TD_CENTER}>{a.vacation || "—"}</td>
+                  <td className={PRINT_TD}>{a.startTime ? `${a.startTime}–${a.endTime}` : "—"}</td>
+                  <td className={PRINT_TD_CENTER}>{zoneOrStatut}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -1813,52 +1865,7 @@ function FerieMouvementsPrintable({ dateStr, presentDrivers }) {
   );
 }
 
-// Repos et congés du jour, pour le shift concerné (un conducteur en repos ou
-// en congé reste rattaché au shift de son équipe ce jour-là, même s'il n'est
-// pas affecté) — demandé explicitement en plus des conducteurs présents.
-function ReposCongesBlock({ rows }) {
-  const nav = useNavigate();
-  const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
-  return (
-    <div className="bg-card rounded-xl border border-border p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <i className="fas fa-bed text-orange-400 text-sm"></i>
-        <h3 className="text-white text-sm font-semibold">Repos &amp; congés</h3>
-        <span className="ml-auto text-xs text-slate-500">{rows.length} conducteur{rows.length > 1 ? "s" : ""}</span>
-      </div>
-      {rows.length === 0 ? (
-        <p className="text-xs text-slate-500 italic">Aucun conducteur en repos ou en congé.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="text-slate-400">
-              <tr className="text-left border-b border-border">
-                <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="hidden sm:table-cell py-1.5 pr-3">Prénom</th>
-                <th className="hidden sm:table-cell py-1.5 pr-3">Équipe</th><th className="py-1.5 pr-3">Statut</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(a => {
-                const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "text-slate-400" };
-                return (
-                  <tr key={a.driverId} className="border-b border-border/50">
-                    <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
-                    <td className="py-1.5 pr-3 text-white font-medium"><button onClick={() => goToDriver(a.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{a.nom}</button></td>
-                    <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
-                    <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
-                    <td className="py-1.5 pr-3"><span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReposCongesPrintable({ rows }) {
+function ReposCongesPrintable({ rows, showTeamColumn = true }) {
   if (rows.length === 0) return null;
   return (
     <div className="mb-3">
@@ -1867,7 +1874,8 @@ function ReposCongesPrintable({ rows }) {
         <thead>
           <tr>
             <th className={PRINT_TH}>Mat</th><th className={PRINT_TH}>Nom</th><th className={PRINT_TH}>Prénom</th>
-            <th className={PRINT_TH}>Équipe</th><th className={PRINT_TH}>Statut</th>
+            {showTeamColumn && <th className={PRINT_TH}>Équipe</th>}
+            <th className={PRINT_TH}>Statut</th>
           </tr>
         </thead>
         <tbody>
@@ -1878,7 +1886,7 @@ function ReposCongesPrintable({ rows }) {
                 <td className={PRINT_TD}>{a.matricule}</td>
                 <td className={PRINT_TD + " font-medium"}>{a.nom}</td>
                 <td className={PRINT_TD}>{a.prenom}</td>
-                <td className={PRINT_TD}>{a.teamNom}</td>
+                {showTeamColumn && <td className={PRINT_TD}>{a.teamNom}</td>}
                 <td className={PRINT_TD}>{meta.label}</td>
               </tr>
             );
@@ -1915,30 +1923,54 @@ function AffectationDuJour() {
   const effectiveShiftFilter = shiftRestricted ? ownShiftId : shiftFilter;
   const visibleShifts = effectiveShiftFilter === "all" ? state.config.shifts : state.config.shifts.filter(s => s.id === effectiveShiftFilter);
 
+  const holiday = HolidayEngine.getHoliday(dateStr, state.config);
+
+  const presentDrivers = assignments.filter(a => a.status === "PRESENT");
+
+  // Un conducteur absent (repos, congé, maladie, absence, formation) reste
+  // rattaché au shift de son équipe ce jour-là (le shift/vacation/zone ne
+  // sont calculés par le moteur que pour les conducteurs présents) — on
+  // retrouve donc ce shift via son équipe, et sa vacation via
+  // driver.initialVacation (bloc FIXE, jamais recalculé au jour le jour —
+  // cf. restDayEngine.js), pour l'intégrer directement dans le même tableau
+  // que les présents de sa vacation plutôt qu'un bloc "Repos & congés" à
+  // part — demande explicite de l'exploitant : une seule liste par
+  // vacation, la colonne Zone affichant soit la zone d'affectation (présent)
+  // soit le statut (Repos/Congé/Maladie/Absence/Formation).
+  const ABSENT_STATUSES = ["REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION"];
+  const driverById = {};
+  state.drivers.forEach(d => { driverById[d.id] = d; });
+  const teamShiftMap = {};
+  const dateObj = RTGDate.parseISO(dateStr);
+  state.teams.forEach(t => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
+  const absentByShift = {};
+  state.config.shifts.forEach(s => {
+    absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id);
+  });
+
+  // Même ordre que le Planning Mensuel (ordreAffichage, rempli par l'import
+  // Excel — §35 ; nuls en dernier, tri stable sinon) — demande explicite de
+  // l'exploitant : maintenant que présents ET absents partagent le même
+  // tableau, ils doivent rester dans l'ordre habituel de l'équipe, pas
+  // "présents d'abord puis absents en vrac à la fin".
+  const byOrdreAffichage = (a, b) => {
+    const oa = (driverById[a.driverId] || {}).ordreAffichage, ob = (driverById[b.driverId] || {}).ordreAffichage;
+    if (oa == null && ob == null) return 0;
+    if (oa == null) return 1;
+    if (ob == null) return -1;
+    return oa - ob;
+  };
+
   const grouped = {};
   state.config.shifts.forEach(s => {
     grouped[s.id] = (state.config.vacations[s.id] || []).map(v => ({
       vacation: v,
       rows: assignments.filter(a => a.shift === s.id && a.vacation === v.id && a.status === "PRESENT")
+        .concat(absentByShift[s.id].filter(a => (driverById[a.driverId] || {}).initialVacation === v.id))
+        .sort(byOrdreAffichage)
     }));
   });
-
-  const offRows = assignments.filter(a => a.status === "OFF");
-  const holiday = HolidayEngine.getHoliday(dateStr, state.config);
-
-  const presentDrivers = assignments.filter(a => a.status === "PRESENT");
-
-  // Un conducteur en repos ou en congé reste rattaché au shift de son équipe
-  // ce jour-là (le shift/vacation ne sont calculés par le moteur que pour les
-  // conducteurs présents) — on retrouve donc ce shift via son équipe pour
-  // pouvoir afficher repos/congés séparément dans chaque section de shift.
-  const teamShiftMap = {};
-  const dateObj = RTGDate.parseISO(dateStr);
-  state.teams.forEach(t => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
-  const reposCongesByShift = {};
-  state.config.shifts.forEach(s => {
-    reposCongesByShift[s.id] = assignments.filter(a => (a.status === "REPOS" || a.status === "CONGE") && teamShiftMap[a.teamId] === s.id);
-  });
+  const offRows = assignments.filter(a => a.status === "OFF").sort(byOrdreAffichage);
 
   const exportExcel = () => {
     const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
@@ -1955,9 +1987,13 @@ function AffectationDuJour() {
     const rows = [];
     visibleShifts.forEach(s => {
       grouped[s.id].forEach(({ vacation, rows: vrows }) => {
-        vrows.forEach(a => rows.push([s.label, vacation.id, a.matricule, a.nom, a.prenom, a.teamNom, `${a.startTime}-${a.endTime}`, a.zone, "Présent"]));
+        vrows.forEach(a => {
+          const statusLabel = (RTG_STATUS_META[a.status] || {}).label || a.status;
+          rows.push([s.label, vacation.id, a.matricule, a.nom, a.prenom, a.teamNom,
+            a.startTime ? `${a.startTime}-${a.endTime}` : "", a.zone || "",
+            a.status === "PRESENT" ? "Présent" : statusLabel]);
+        });
       });
-      reposCongesByShift[s.id].forEach(a => rows.push([s.label, "", a.matricule, a.nom, a.prenom, a.teamNom, "", "", a.status === "REPOS" ? "Repos" : "Congé"]));
     });
     if (offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3")) {
       offRows.forEach(a => rows.push(["Shift 3", "", a.matricule, a.nom, a.prenom, a.teamNom, "", "", "OFF"]));
@@ -1965,14 +2001,29 @@ function AffectationDuJour() {
     downloadCSV(`affectation-${dateStr}${suffix}.csv`, headers, rows);
   };
 
-  const printRef = useRef(null);
+  // Un conteneur "papier" DISTINCT par shift (au lieu d'un seul bloc pour
+  // tous les shifts visibles) : chaque shift n'a qu'une seule équipe (§
+  // teamShiftMap ci-dessus — mentionnée dans l'en-tête de section plutôt que
+  // répétée par ligne), et l'exploitant veut que CE shift tienne toujours
+  // sur une seule page PDF, jamais à cheval sur deux si les repos/congés du
+  // jour sont nombreux (voir exportNodesAsPdf — une page par nœud, chacune
+  // "fit-to-page" indépendamment des autres).
+  const holidayPrintRef = useRef(null);
+  const shiftPrintRefs = useRef({});
   const [pdfBusy, setPdfBusy] = useState(false);
   const exportPdf = async () => {
-    if (!printRef.current) return;
     setPdfBusy(true);
     try {
       const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
-      await exportNodeAsPdf(printRef.current, `affectation-${dateStr}${suffix}.pdf`);
+      const filename = `affectation-${dateStr}${suffix}.pdf`;
+      if (holiday) {
+        if (!holidayPrintRef.current) return;
+        await exportNodeAsPdf(holidayPrintRef.current, filename, { fitOnePage: true });
+        return;
+      }
+      const nodes = visibleShifts.map(s => shiftPrintRefs.current[s.id]).filter(Boolean);
+      if (nodes.length === 0) return;
+      await exportNodesAsPdf(nodes, filename);
     } catch (e) {
       alert(e.message || String(e));
     } finally {
@@ -2035,7 +2086,6 @@ function AffectationDuJour() {
                 <ShiftBlock key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} icon="fa-clock" rows={rows} />
               ))}
             </div>
-            <ReposCongesBlock rows={reposCongesByShift[s.id]} />
           </div>
         ))}
 
@@ -2044,36 +2094,49 @@ function AffectationDuJour() {
         )}
       </div>
 
-      {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de l'appli. */}
-      <div ref={printRef} className="print-report bg-white text-slate-900 rounded-xl p-0">
-        <PrintHeader
-          subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "") + (effectiveShiftFilter !== "all" ? " — " + (state.config.shifts.find(s => s.id === effectiveShiftFilter) || {}).label : "")}
-          count={holiday ? presentDrivers.length : assignments.length} countLabel={holiday ? "conducteur présent" : "conducteur affecté"}
-        />
-        {holiday ? (
+      {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de
+          l'appli. Jour férié : un seul bloc/page. Sinon : UN BLOC PAR SHIFT
+          (chacun sa propre équipe, mentionnée dans son en-tête), exporté
+          ensuite une page PDF par bloc (cf. exportPdf/exportNodesAsPdf). */}
+      {holiday ? (
+        <div ref={holidayPrintRef} className="print-report bg-white text-slate-900 rounded-xl p-0">
+          <PrintHeader
+            subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "")}
+            count={presentDrivers.length} countLabel="conducteur présent"
+          />
           <div>
             <p className="text-xs mb-3">Jour férié — {holiday.label} — journée chômée, aucune affectation générée.</p>
             <FerieMouvementsPrintable dateStr={dateStr} presentDrivers={presentDrivers} />
             <ReposCongesPrintable rows={assignments.filter(a => a.status === "REPOS" || a.status === "CONGE")} />
           </div>
-        ) : (
-          <div>
-            {visibleShifts.map(s => (
-              <div key={s.id} className="mb-3">
-                <div className="text-xs font-bold uppercase tracking-wide mb-1 border-b border-slate-300 pb-1">{s.label} ({s.start} → {s.end})</div>
-                {grouped[s.id].map(({ vacation, rows }) => (
-                  <ShiftBlockPrintable key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} rows={rows} />
-                ))}
-                <ReposCongesPrintable rows={reposCongesByShift[s.id]} />
-              </div>
-            ))}
-            {offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3") && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} />}
+          <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+            Document généré automatiquement par RTG Driver Planner.
           </div>
-        )}
-        <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
-          Document généré automatiquement par RTG Driver Planner.
         </div>
-      </div>
+      ) : (
+        visibleShifts.map(s => {
+          const shiftTeam = state.teams.find(t => teamShiftMap[t.id] === s.id);
+          const includeOff = s.id === "S3" && offRows.length > 0;
+          const shiftCount = grouped[s.id].reduce((n, g) => n + g.rows.length, 0) + (includeOff ? offRows.length : 0);
+          return (
+            <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl p-0">
+              <PrintHeader
+                subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + " — " + s.label + (s.start ? ` (${s.start} → ${s.end})` : "") + (shiftTeam ? " — " + shiftTeam.nom : "")}
+                count={shiftCount} countLabel="conducteur"
+              />
+              <div>
+                {grouped[s.id].map(({ vacation, rows }) => (
+                  <ShiftBlockPrintable key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} rows={rows} showTeamColumn={false} />
+                ))}
+                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+                Document généré automatiquement par RTG Driver Planner.
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
