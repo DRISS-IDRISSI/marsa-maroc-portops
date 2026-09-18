@@ -1930,19 +1930,23 @@ function AffectationDuJour() {
   // Un conducteur absent (repos, congé, maladie, absence, formation) reste
   // rattaché au shift de son équipe ce jour-là (le shift/vacation/zone ne
   // sont calculés par le moteur que pour les conducteurs présents) — on
-  // retrouve donc ce shift via son équipe, et sa vacation via
-  // driver.initialVacation (bloc FIXE, jamais recalculé au jour le jour —
-  // cf. restDayEngine.js), pour l'intégrer directement dans le même tableau
-  // que les présents de sa vacation plutôt qu'un bloc "Repos & congés" à
-  // part — demande explicite de l'exploitant : une seule liste par
-  // vacation, la colonne Zone affichant soit la zone d'affectation (présent)
-  // soit le statut (Repos/Congé/Maladie/Absence/Formation).
+  // retrouve donc ce shift via son équipe. Pour la vacation, il faut le
+  // label AFFICHÉ ce jour précis par son bloc (VacationRotationEngine —
+  // bascule quotidienne du bloc ENTIER), PAS driver.initialVacation tel
+  // quel : ce dernier n'est que le label de départ du bloc à
+  // rotationReferenceDate, il ne correspond au label du jour que certains
+  // jours sur deux (bug corrigé : un absent d'un bloc affichant "V1"
+  // aujourd'hui apparaissait sous "Vacation V2" — son identité fixe — alors
+  // que ses collègues PRÉSENTS du même bloc, eux, apparaissaient bien sous
+  // "Vacation V1", le label du jour).
   const ABSENT_STATUSES = ["REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION"];
   const driverById = {};
   state.drivers.forEach(d => { driverById[d.id] = d; });
   const teamShiftMap = {};
   const dateObj = RTGDate.parseISO(dateStr);
   state.teams.forEach(t => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
+  const vacationLabelToday = {};
+  state.drivers.forEach(d => { vacationLabelToday[d.id] = VacationRotationEngine.getVacationForDate(d, dateObj, state); });
   const absentByShift = {};
   state.config.shifts.forEach(s => {
     absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id);
@@ -1966,7 +1970,7 @@ function AffectationDuJour() {
     grouped[s.id] = (state.config.vacations[s.id] || []).map(v => ({
       vacation: v,
       rows: assignments.filter(a => a.shift === s.id && a.vacation === v.id && a.status === "PRESENT")
-        .concat(absentByShift[s.id].filter(a => (driverById[a.driverId] || {}).initialVacation === v.id))
+        .concat(absentByShift[s.id].filter(a => vacationLabelToday[a.driverId] === v.id))
         .sort(byOrdreAffichage)
     }));
   });
