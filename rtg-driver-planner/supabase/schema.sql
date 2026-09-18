@@ -53,6 +53,14 @@ create table if not exists drivers (
   -- que l'appli et le fichier de l'exploitant se comparent ligne à ligne.
   -- NULL = pas encore importé, ce conducteur reste affiché après les autres.
   ordre_affichage integer,
+  -- Solde de congé annuel (§40) : conge_solde_report = reliquat (jours
+  -- ouvrables) reportable depuis avant la mise en service de l'appli, saisi
+  -- manuellement par un ADMIN à partir des archives RH ; conge_solde_report_annee
+  -- = année à laquelle ce reliquat s'applique. Le solde se recalcule ensuite
+  -- automatiquement chaque année à partir des congés enregistrés dans
+  -- l'appli (voir CongeBalanceEngine côté frontend).
+  conge_solde_report integer,
+  conge_solde_report_annee integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

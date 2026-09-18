@@ -64,7 +64,7 @@ const LABEL_CLS = "block text-[10px] uppercase tracking-wider text-slate-500 mb-
 // 1. Conducteurs (CRUD complet — §28)
 // ==========================================
 function emptyDriverForm(lockedTeamId) {
-  return { matricule: "", nom: "", prenom: "", email: "", teamId: lockedTeamId || "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "" };
+  return { matricule: "", nom: "", prenom: "", email: "", teamId: lockedTeamId || "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "", soldeReport: "", soldeReportAnnee: "" };
 }
 
 function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId }) {
@@ -128,6 +128,22 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
         </div>
         <div><label className={LABEL_CLS}>Date d'entrée</label><input type="date" className={FIELD_CLS} value={form.dateEntree} onChange={e => setForm(f => Object.assign({}, f, { dateEntree: e.target.value }))} /></div>
         <div className="sm:col-span-2"><label className={LABEL_CLS}>Observation</label><input className={FIELD_CLS} value={form.observation} onChange={e => setForm(f => Object.assign({}, f, { observation: e.target.value }))} /></div>
+      </div>
+      <div className="border-t border-border pt-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Solde de congé — reliquat antérieur à l'appli (saisie unique, à partir des archives RH)</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className={LABEL_CLS}>Solde reporté (jours ouvrables)</label>
+            <input type="number" min="0" step="1" placeholder="ex. 12" className={FIELD_CLS} value={form.soldeReport}
+              onChange={e => setForm(f => Object.assign({}, f, { soldeReport: e.target.value }))} />
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Applicable à partir de l'année</label>
+            <input type="number" min="2000" step="1" placeholder="ex. 2026" className={FIELD_CLS} value={form.soldeReportAnnee}
+              onChange={e => setForm(f => Object.assign({}, f, { soldeReportAnnee: e.target.value }))} />
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1.5">Une fois renseigné, le solde disponible se recalcule automatiquement chaque année suivante (droit de 26j/an + report non expiré − jours de congé déjà pris dans l'appli).</p>
       </div>
       <div className="flex gap-2">
         <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : (editingId ? "Enregistrer" : "Créer le conducteur")}</button>
@@ -235,7 +251,7 @@ function DriversPage() {
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
           <DriverForm state={state} lockedTeamId={shiftRestricted ? currentUser.teamId : null}
-            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
+            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
             editingId={editingId} onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -271,7 +287,8 @@ function DriversPage() {
             <tr className="text-left">
               <th className="px-3 py-2">Mat</th><th className="px-3 py-2">Nom</th><th className="hidden sm:table-cell px-3 py-2">Prénom</th>
               <th className="px-3 py-2">Équipe</th><th className="hidden sm:table-cell px-3 py-2">Shift auj.</th><th className="hidden sm:table-cell px-3 py-2">Zone init.</th>
-              <th className="hidden sm:table-cell px-3 py-2">Bloc vacation</th><th className="hidden sm:table-cell px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
+              <th className="hidden sm:table-cell px-3 py-2">Bloc vacation</th><th className="hidden sm:table-cell px-3 py-2">Statut</th>
+              <th className="hidden sm:table-cell px-3 py-2">Solde congé</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -293,6 +310,7 @@ function DriversPage() {
                         ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Actif</span>
                         : <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400" title={d.motifDepart ? DEPART_MOTIF_LABELS[d.motifDepart] || d.motifDepart : ""}>Inactif{d.motifDepart ? " — " + (DEPART_MOTIF_LABELS[d.motifDepart] || d.motifDepart) : ""}</span>}
                     </td>
+                    <td className="hidden sm:table-cell px-3 py-2"><CongeSoldeBadge driver={d} state={state} /></td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-300">Modifier</button>
@@ -305,7 +323,7 @@ function DriversPage() {
                   </tr>
                   {historyFor === d.id && (
                     <tr className="bg-surface/40">
-                      <td colSpan="9" className="px-4 py-3">
+                      <td colSpan="10" className="px-4 py-3">
                         <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Historique — {d.nom} {d.prenom}</div>
                         {state.auditLog.filter(a => a.driverId === d.id).length === 0
                           ? <p className="text-xs text-slate-500 italic">Aucune entrée.</p>
@@ -379,6 +397,21 @@ function DriverSelect({ state, value, onChange, onlyActive, teamId }) {
 function driverLabel(state, driverId) {
   const d = state.drivers.find(x => x.id === driverId);
   return d ? d.matricule + " — " + d.nom + " " + d.prenom : "(conducteur supprimé)";
+}
+
+// Badge "solde de congé" (§40) réutilisé sur la fiche Conducteur, la page
+// Congés (responsable) et Mes Congés (conducteur) — voir CongeBalanceEngine.
+function CongeSoldeBadge({ driver, state }) {
+  if (!driver) return <span className="text-slate-600">—</span>;
+  const solde = CongeBalanceEngine.soldeDisponible(driver, state);
+  if (!solde) return <span className="text-slate-600" title="Solde de départ non renseigné (fiche conducteur)">—</span>;
+  const cls = solde.disponible <= 0 ? "bg-red-500/20 text-red-300" : solde.disponible <= 5 ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-400";
+  return (
+    <span className={`px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${cls}`}
+      title={`Droit ${solde.droit}j + report ${solde.report}j − pris ${solde.pris}j en ${solde.annee}`}>
+      {solde.disponible}j disponibles
+    </span>
+  );
 }
 
 // ==========================================
@@ -594,17 +627,18 @@ function CongesPage() {
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
-              <th className="px-3 py-2">Statut</th><th className="px-3 py-2">Justificatif</th>
+              <th className="px-3 py-2">Statut</th><th className="hidden sm:table-cell px-3 py-2">Solde</th><th className="px-3 py-2">Justificatif</th>
               <th className="px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
             {records.length === 0 && (
-              <tr><td colSpan="8" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
+              <tr><td colSpan="9" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
             {records.map(r => {
               const meta = CONGE_STATUT_META[r.statut] || CONGE_STATUT_META.VALIDE;
               const isPending = r.statut === "EN_ATTENTE";
+              const rDriver = state.drivers.find(dr => dr.id === r.driverId);
               return (
                 <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
@@ -614,6 +648,7 @@ function CongesPage() {
                     <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>
                     {r.statut === "REFUSE" && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
                   </td>
+                  <td className="hidden sm:table-cell px-3 py-2"><CongeSoldeBadge driver={rDriver} state={state} /></td>
                   <td className="px-3 py-2"><CongeJustificatifLink path={r.justificatifPath} /></td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                   <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
@@ -1942,6 +1977,15 @@ function MesCongesPage() {
     return String(d.getUTCMonth() + 1).padStart(2, "0") + "/" + d.getUTCFullYear();
   }, [state.conges, driver]);
 
+  // Solde de congé (§40) : disponible à ce jour, et jours ouvrables que la
+  // demande en cours de saisie consommerait (fériés exclus, dimanche compté
+  // comme travaillé) — pour que le conducteur voie l'impact avant d'envoyer.
+  const solde = useMemo(() => driver ? CongeBalanceEngine.soldeDisponible(driver, state) : null, [driver, state]);
+  const joursDemandes = useMemo(() => {
+    if (!driver || form.dateFin < form.dateDebut) return 0;
+    return CongeBalanceEngine.countJoursOuvrables(form.dateDebut, form.dateFin, state.config);
+  }, [driver, form.dateDebut, form.dateFin, state.config]);
+
   if (!driver) {
     return (
       <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
@@ -1997,6 +2041,23 @@ function MesCongesPage() {
         <h1 className="text-2xl font-bold text-white">Mes congés</h1>
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}</p>
       </div>
+
+      <Panel title="Solde de congé" icon="fa-calendar-check">
+        {solde ? (
+          <div className="flex items-center gap-4 flex-wrap text-sm">
+            <div><span className="text-2xl font-bold text-white">{solde.disponible}</span> <span className="text-slate-400">jour{solde.disponible > 1 ? "s" : ""} ouvrable{solde.disponible > 1 ? "s" : ""} disponible{solde.disponible > 1 ? "s" : ""}</span></div>
+            <div className="text-[11px] text-slate-500">Droit {solde.annee} : {solde.droit}j + report : {solde.report}j − déjà pris {solde.annee} : {solde.pris}j</div>
+            {joursDemandes > 0 && (
+              <div className={`text-xs px-2 py-1 rounded ${joursDemandes > solde.disponible ? "bg-red-500/20 text-red-300" : "bg-marine-700 text-slate-300"}`}>
+                Cette demande décompterait {joursDemandes} jour{joursDemandes > 1 ? "s" : ""} ouvrable{joursDemandes > 1 ? "s" : ""}
+                {joursDemandes > solde.disponible ? " — dépasse le solde disponible" : ""}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500 italic">Solde non encore renseigné par votre responsable — contactez-le pour connaître vos droits restants.</p>
+        )}
+      </Panel>
 
       <Panel title="Nouvelle demande de congé" icon="fa-umbrella-beach">
         <div className="space-y-3">
