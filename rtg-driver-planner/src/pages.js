@@ -734,6 +734,18 @@ const PRINT_STATUS_BG = {
 const PRINT_TH = "px-2 py-1.5 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
 const PRINT_TD = "px-2 py-1 border-b border-slate-200 whitespace-nowrap";
 const PRINT_TD_CENTER = PRINT_TD + " text-center";
+// Lignes alternées blanc / bleu ciel sur les tableaux imprimables de
+// conducteurs — demande explicite de l'exploitant, pour mieux distinguer
+// visuellement chaque ligne sur un rapport papier/PDF. Fusionné avec la
+// couleur d'alerte "vacation en surnombre" (texte rouge) quand elle
+// s'applique — les deux peuvent coexister sur une même ligne.
+const PRINT_ROW_ALT_BG = "#e0f2fe";
+function printRowStyle(index, vacationBalanceAlert) {
+  const style = {};
+  if (index % 2 === 1) style.backgroundColor = PRINT_ROW_ALT_BG;
+  if (vacationBalanceAlert) style.color = "#b91c1c";
+  return style;
+}
 // Variante compacte (Planning mensuel imprimable) : bordures fines partout
 // (comme le modèle Excel réel) et espacement minimal, pour faire tenir un
 // mois complet (jusqu'à 31 jours) sur une seule page malgré un nombre de
@@ -1809,14 +1821,14 @@ function ShiftBlockPrintable({ title, rows, showTeamColumn = true }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(a => {
+            {rows.map((a, idx) => {
               // Zone sert double emploi : zone d'affectation si présent,
               // sinon le statut (Repos/Congé/Maladie/Absence/Formation) —
               // demande explicite de l'exploitant (une seule liste par
               // vacation, présents et absents confondus).
               const zoneOrStatut = a.status === "PRESENT" ? a.zone : ((RTG_STATUS_META[a.status] || {}).label || a.status);
               return (
-                <tr key={a.driverId} style={a.vacationBalanceAlert ? { color: "#b91c1c" } : undefined}>
+                <tr key={a.driverId} style={printRowStyle(idx, a.vacationBalanceAlert)}>
                   <td className={PRINT_TD}>{a.matricule}</td>
                   <td className={PRINT_TD + " font-medium"}>{a.nom}{a.vacationBalanceAlert ? " (*)" : ""}</td>
                   <td className={PRINT_TD}>{a.prenom}</td>
@@ -1847,10 +1859,10 @@ function FerieMouvementsPrintable({ dateStr, presentDrivers }) {
           </tr>
         </thead>
         <tbody>
-          {presentDrivers.map(a => {
+          {presentDrivers.map((a, idx) => {
             const rec = RTGStore.getFerieMouvements(dateStr, a.driverId);
             return (
-              <tr key={a.driverId}>
+              <tr key={a.driverId} style={printRowStyle(idx)}>
                 <td className={PRINT_TD}>{a.matricule}</td>
                 <td className={PRINT_TD + " font-medium"}>{a.nom}</td>
                 <td className={PRINT_TD}>{a.prenom}</td>
@@ -1879,10 +1891,10 @@ function ReposCongesPrintable({ rows, showTeamColumn = true }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(a => {
+          {rows.map((a, idx) => {
             const meta = RTG_STATUS_META[a.status] || { label: a.status };
             return (
-              <tr key={a.driverId}>
+              <tr key={a.driverId} style={printRowStyle(idx)}>
                 <td className={PRINT_TD}>{a.matricule}</td>
                 <td className={PRINT_TD + " font-medium"}>{a.nom}</td>
                 <td className={PRINT_TD}>{a.prenom}</td>
