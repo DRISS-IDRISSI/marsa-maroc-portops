@@ -68,12 +68,15 @@ function AuthGate({ children }) {
   const loc = useLocation();
   const nav = useNavigate();
   const currentUser = state.users.find(u => u.id === state.currentUserId) || null;
-  // Un compte CONDUCTEUR (§37) n'a qu'une seule page : "Mon planning". Toute
-  // autre URL (y compris l'accueil) redirige dessus — les policies RLS
-  // limitent déjà les DONNÉES visibles, ce garde-fou évite en plus d'exposer
-  // l'interface des autres pages (même vide de données pertinentes).
+  // Un compte CONDUCTEUR (§37/§39) n'a accès qu'à un jeu de pages restreint :
+  // "Mon planning", "Mes congés", et — en lecture seule, comme un
+  // Responsable de Shift — Planning mensuel et Affectation du jour de son
+  // équipe. Toute autre URL (y compris l'accueil) redirige vers "Mon
+  // planning" — les policies RLS limitent déjà les DONNÉES visibles, ce
+  // garde-fou évite en plus d'exposer l'interface des autres pages.
+  const CONDUCTEUR_ALLOWED_PATHS = ["/mon-planning", "/mes-conges", "/planning", "/affectation"];
   useEffect(() => {
-    if (currentUser && isDriverRestricted(currentUser) && loc.pathname !== "/mon-planning" && loc.pathname !== "/mes-conges") {
+    if (currentUser && isDriverRestricted(currentUser) && CONDUCTEUR_ALLOWED_PATHS.indexOf(loc.pathname) === -1) {
       nav("/mon-planning", { replace: true });
     }
   }, [currentUser, loc.pathname]);
@@ -111,11 +114,13 @@ function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Un compte CONDUCTEUR (§37) n'a qu'un seul lien — voir AuthGate, qui
-  // redirige déjà toute autre URL vers cette page.
+  // Un compte CONDUCTEUR (§37/§39) — voir AuthGate pour la liste des URL
+  // autorisées, dont ces liens sont le reflet exact.
   const links = isDriverRestricted(currentUser) ? [
     { to: "/mon-planning", icon: "fa-calendar-check", label: "Mon planning" },
-    { to: "/mes-conges", icon: "fa-umbrella-beach", label: "Mes congés" }
+    { to: "/mes-conges", icon: "fa-umbrella-beach", label: "Mes congés" },
+    { to: "/planning", icon: "fa-calendar-alt", label: "Planning mensuel" },
+    { to: "/affectation", icon: "fa-clipboard-list", label: "Affectation du jour" }
   ] : [
     { to: "/", icon: "fa-chart-line", label: "Accueil" },
     { to: "/planning", icon: "fa-calendar-alt", label: "Planning mensuel" },

@@ -701,11 +701,32 @@ function isShiftRestricted(user) {
   return !!user && user.role === "RESPONSABLE_SHIFT";
 }
 
-// Un Conducteur n'a accès qu'à SA propre fiche (driverId) — page "Mon
-// planning" uniquement, rien d'autre (§37). Restriction bien plus étroite
-// que RESPONSABLE_SHIFT (une équipe entière) : un conducteur individuel.
+// Un Conducteur n'a accès qu'à un jeu de pages restreint : "Mon planning",
+// "Mes congés" (§37/§38), et — comme un Responsable de Shift, mais en
+// lecture seule — Planning mensuel et Affectation du jour de SON équipe
+// (§39, demande explicite de l'exploitant : le conducteur veut voir le
+// planning de son shift, pas seulement sa propre ligne).
 function isDriverRestricted(user) {
   return !!user && user.role === "CONDUCTEUR";
+}
+
+// Vrai pour RESPONSABLE_SHIFT (équipe) ET CONDUCTEUR (déduite de sa fiche
+// conducteur) — les deux rôles dont l'accès à Planning mensuel/Affectation
+// du jour se limite à UNE équipe. Le Conducteur reste en lecture seule
+// (canEditPlanning ne liste pas CONDUCTEUR — voir PlanningMensuel).
+function isTeamRestricted(user) {
+  return isShiftRestricted(user) || isDriverRestricted(user);
+}
+
+// Équipe effective pour ce filtrage : team_id direct pour RESPONSABLE_SHIFT,
+// déduite de la fiche conducteur liée pour CONDUCTEUR.
+function restrictedTeamId(user, state) {
+  if (isShiftRestricted(user)) return user.teamId;
+  if (isDriverRestricted(user)) {
+    const driver = state.drivers.find(d => d.id === user.driverId);
+    return driver ? driver.teamId : null;
+  }
+  return null;
 }
 
 // ==========================================
@@ -1627,12 +1648,18 @@ function PlanningGridPrintable({ planning, drivers, config, teams }) {
 function PlanningMensuel() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
-  const shiftRestricted = isShiftRestricted(currentUser);
+  // isTeamRestricted couvre RESPONSABLE_SHIFT ET CONDUCTEUR (§39, demande
+  // explicite de l'exploitant : le conducteur voit le planning de son
+  // équipe, en lecture seule) — restrictedTeamId déduit l'équipe pour
+  // chacun (team_id direct, ou celle de la fiche conducteur liée).
+  const shiftRestricted = isTeamRestricted(currentUser);
+  const ownTeamId = restrictedTeamId(currentUser, state);
   // ADMIN, RESPONSABLE (Exploitation) et RESPONSABLE_SHIFT peuvent forcer
   // manuellement une affectation depuis cette grille, notamment pour
   // équilibrer à la main les vacations V1/V2 quand l'algorithme ne suffit
   // pas (§32) — RESPONSABLE_SHIFT reste de toute façon cantonné à sa
-  // propre équipe via effectiveTeamId/lockTeam ci-dessous.
+  // propre équipe via effectiveTeamId/lockTeam ci-dessous. CONDUCTEUR n'y
+  // figure pas : lecture seule, jamais d'édition.
   const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"].indexOf(currentUser.role) !== -1;
   // L'import Excel modifie potentiellement des dizaines d'affectations d'un
   // coup : réservé à l'ADMIN/RESPONSABLE (pas au RESPONSABLE_SHIFT), à la
@@ -1642,10 +1669,10 @@ function PlanningMensuel() {
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
-  const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
+  const [teamId, setTeamId] = useState(shiftRestricted ? ownTeamId : "all");
   const [detailLevel, setDetailLevel] = useState("vacation");
 
-  const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
+  const effectiveTeamId = shiftRestricted ? ownTeamId : teamId;
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
   // Trie par ordreAffichage (rempli par l'import Excel — §35) pour que la
   // grille se compare ligne à ligne avec le fichier réel de l'exploitant ;
@@ -1666,7 +1693,7 @@ function PlanningMensuel() {
     ? (() => {
         const anomalies = planning.validation.anomalies.filter(a => {
           const d = state.drivers.find(dr => dr.id === a.driverId);
-          return d && d.teamId === currentUser.teamId;
+          return d && d.teamId === ownTeamId;
         });
         return { valid: anomalies.length === 0, anomalies: anomalies, count: anomalies.length };
       })()
@@ -1959,7 +1986,12 @@ function ReposCongesPrintable({ rows, showTeamColumn = true }) {
 function AffectationDuJour() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
-  const shiftRestricted = isShiftRestricted(currentUser);
+  // isTeamRestricted couvre RESPONSABLE_SHIFT ET CONDUCTEUR (§39, demande
+  // explicite de l'exploitant : le conducteur voit l'affectation du jour de
+  // son équipe, en lecture seule — cette page n'a de toute façon aucune
+  // action d'édition).
+  const shiftRestricted = isTeamRestricted(currentUser);
+  const ownTeamId = restrictedTeamId(currentUser, state);
   // Pré-remplissage depuis l'Assistant intelligent (lien "Voir l'affectation"
   // sur une alerte datée — ?date=YYYY-MM-DD) : sinon, aujourd'hui par défaut.
   const [searchParams] = useSearchParams();
@@ -1970,15 +2002,16 @@ function AffectationDuJour() {
   const assignments = useMemo(() => {
     try {
       const all = PlanningEngine.generateDailyAssignments(dateStr, state);
-      return shiftRestricted ? all.filter(a => a.teamId === currentUser.teamId) : all;
+      return shiftRestricted ? all.filter(a => a.teamId === ownTeamId) : all;
     } catch (e) { return []; }
-  }, [state, dateStr, shiftRestricted, currentUser]);
+  }, [state, dateStr, shiftRestricted, ownTeamId]);
 
-  // Un Responsable de Shift n'a qu'une seule équipe donc qu'un seul shift
-  // pertinent ce jour-là (les 2 autres sections seraient vides) : on le
-  // détermine automatiquement plutôt que de lui proposer le sélecteur.
+  // Un Responsable de Shift (ou un Conducteur) n'a qu'une seule équipe donc
+  // qu'un seul shift pertinent ce jour-là (les 2 autres sections seraient
+  // vides) : on le détermine automatiquement plutôt que de proposer le
+  // sélecteur.
   const dateObjForShift = RTGDate.parseISO(dateStr);
-  const ownTeam = shiftRestricted ? state.teams.find(t => t.id === currentUser.teamId) : null;
+  const ownTeam = shiftRestricted ? state.teams.find(t => t.id === ownTeamId) : null;
   const ownShiftId = ownTeam ? ShiftRotationEngine.getTeamShiftForDate(ownTeam, dateObjForShift, state.config) : null;
   const effectiveShiftFilter = shiftRestricted ? ownShiftId : shiftFilter;
   const visibleShifts = effectiveShiftFilter === "all" ? state.config.shifts : state.config.shifts.filter(s => s.id === effectiveShiftFilter);
@@ -2170,7 +2203,7 @@ function AffectationDuJour() {
       {holiday ? (
         <div ref={holidayPrintRef} className="print-report bg-white text-slate-900 rounded-xl p-0">
           <PrintHeader
-            subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === currentUser.teamId) || {}).nom : "")}
+            subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === ownTeamId) || {}).nom : "")}
             count={presentDrivers.length} countLabel="conducteur présent"
           />
           <div>
