@@ -732,6 +732,7 @@ const PRINT_STATUS_BG = {
 // Styles pour les rapports imprimables ("papier" clair, indépendant du thème
 // sombre de l'appli) — même convention que le Rapport RH (pages2.js).
 const PRINT_TH = "px-2 py-1.5 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
+const PRINT_TH_CENTER = PRINT_TH + " text-center";
 const PRINT_TD = "px-2 py-1 border-b border-slate-200 whitespace-nowrap";
 const PRINT_TD_CENTER = PRINT_TD + " text-center";
 // Variante sans "whitespace-nowrap" (autorise le retour à la ligne) pour les
@@ -1848,8 +1849,8 @@ function ShiftBlockPrintable({ title, rows, showTeamColumn = true }) {
               <th className={PRINT_TH} style={{ width: w.nom }}>Nom</th>
               <th className={PRINT_TH} style={{ width: w.prenom }}>Prénom</th>
               {showTeamColumn && <th className={PRINT_TH} style={{ width: w.equipe }}>Équipe</th>}
-              <th className={PRINT_TH} style={{ width: w.vacation }}>Vacation</th>
-              <th className={PRINT_TH} style={{ width: w.zone }}>Zone</th>
+              <th className={PRINT_TH_CENTER} style={{ width: w.vacation }}>Vacation</th>
+              <th className={PRINT_TH_CENTER} style={{ width: w.zone }}>Zone</th>
             </tr>
           </thead>
           <tbody>
