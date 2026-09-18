@@ -1805,14 +1805,53 @@ function SignaturePad({ canvasRef, onChange }) {
 // moment de l'envoi (MesCongesPage.submit) — ce que le conducteur voit à
 // l'écran est exactement ce qui part au responsable.
 const CONGE_DOC_CODE = "ENCAAPCGRHS10";
-// Format A4 (210 × 297mm, comme la page papier réelle) — demande explicite
-// de l'exploitant, plutôt qu'une carte compacte. overflow-x-auto permet de
-// faire défiler horizontalement sur un petit écran (mobile) sans déformer
-// les proportions du document.
-function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, signatureCanvasRef, onSignatureChange }) {
+// Réduit à l'échelle (transform: scale, pas de redimensionnement du DOM) un
+// document de dimensions FIXES (par défaut 210×297mm, format A4) pour qu'il
+// tienne dans la largeur disponible — sans ça, sur un écran étroit
+// (mobile), le document déborde et se retrouve coupé (l'exploitant l'a
+// signalé par capture d'écran) plutôt que simplement rétréci comme le
+// ferait un aperçu avant impression classique. Le transform:scale ne
+// s'applique qu'à ce WRAPPER — l'élément capturé par html2canvas
+// (CongeFormPrintable.formRef, un cran plus bas, jamais transformé
+// lui-même) garde ses vraies dimensions 210×297mm : html2canvas clone
+// uniquement le sous-arbre du nœud ciblé, sans hériter des transforms de
+// ses ancêtres, donc capture le document à sa taille réelle quel que soit
+// le niveau de réduction visuelle appliqué ici pour l'affichage.
+function A4ScaledPreview({ widthMm, heightMm, children }) {
+  const outerRef = useRef(null);
+  const [scale, setScale] = useState(1);
+  const mmToPx = 96 / 25.4;
+  const naturalWidthPx = widthMm * mmToPx;
+  const naturalHeightPx = heightMm * mmToPx;
+
+  useEffect(() => {
+    const compute = () => {
+      if (!outerRef.current) return;
+      const available = outerRef.current.clientWidth;
+      setScale(available > 0 ? Math.min(1, available / naturalWidthPx) : 1);
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, [naturalWidthPx]);
+
   return (
-    <div className="overflow-x-auto">
-      <div className="bg-white text-slate-900 shadow-lg text-sm leading-snug mx-auto"
+    <div ref={outerRef} className="w-full overflow-hidden" style={{ height: naturalHeightPx * scale }}>
+      <div style={{ width: naturalWidthPx, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Format A4 (210 × 297mm, comme la page papier réelle) — demande explicite
+// de l'exploitant, réduit à l'écran si besoin par A4ScaledPreview
+// ci-dessus (sans jamais changer ses dimensions RÉELLES, capturées telles
+// quelles par html2canvas à l'envoi/export via formRef, posé directement
+// sur CE nœud — jamais sur son wrapper transformé).
+function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, signatureCanvasRef, onSignatureChange, formRef }) {
+  return (
+      <div ref={formRef} className="bg-white text-slate-900 shadow-lg text-sm leading-snug"
         style={{ width: "210mm", minHeight: "297mm", padding: "16mm 18mm", boxSizing: "border-box" }}>
         <div className="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4 mb-5">
           <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-14 w-auto shrink-0" />
@@ -1860,7 +1899,6 @@ function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, sign
           <div className="text-center text-xs font-semibold uppercase mt-4">Chef du Département</div>
         </div>
       </div>
-    </div>
   );
 }
 
@@ -1969,10 +2007,10 @@ function MesCongesPage() {
 
           <div>
             <label className={LABEL_CLS}>Aperçu — signez directement sur le formulaire ci-dessous</label>
-            <div ref={formNodeRef}>
+            <A4ScaledPreview widthMm={210} heightMm={297}>
               <CongeFormPrintable driver={driver} dateDebut={form.dateDebut} dateFin={form.dateFin} dernierCongePris={dernierCongePris}
-                signatureCanvasRef={signatureCanvasRef} onSignatureChange={setHasSignature} />
-            </div>
+                signatureCanvasRef={signatureCanvasRef} onSignatureChange={setHasSignature} formRef={formNodeRef} />
+            </A4ScaledPreview>
           </div>
 
           <div className="flex gap-2 flex-wrap">
