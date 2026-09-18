@@ -932,7 +932,13 @@ async function exportNodeAsPdf(node, filename, opts) {
   await loadPdfLibs();
   const img = await captureNodeAsPng(node, forceWidth);
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ orientation: orientation, unit: "mm", format: "a4" });
+  // compress:true = indispensable : sans elle, jsPDF écrit l'image capturée
+  // (PNG, avec canal alpha) TELLE QUELLE dans le flux du PDF, sans la moindre
+  // compression — un comble pour un PNG. Constaté concrètement : un PDF de
+  // 12+ Mo pour un simple formulaire A4, dont la taille correspondait
+  // EXACTEMENT à largeur × hauteur × (3+1) octets (RGB + alpha bruts). Cette
+  // option active la compression deflate de TOUS les flux du document.
+  const pdf = new jsPDF({ orientation: orientation, unit: "mm", format: "a4", compress: true });
 
   if (fitOnePage) {
     addFittedImageToPage(pdf, img);
@@ -967,7 +973,9 @@ async function exportNodeAsPdf(node, filename, opts) {
 async function exportNodesAsPdf(nodes, filename, forceWidth, orientation) {
   await loadPdfLibs();
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ orientation: orientation || "landscape", unit: "mm", format: "a4" });
+  // compress:true : voir le commentaire équivalent dans exportNodeAsPdf —
+  // sans cette option, jsPDF stocke les images capturées sans compression.
+  const pdf = new jsPDF({ orientation: orientation || "landscape", unit: "mm", format: "a4", compress: true });
   for (let i = 0; i < nodes.length; i++) {
     const img = await captureNodeAsPng(nodes[i], forceWidth);
     if (i > 0) pdf.addPage();
