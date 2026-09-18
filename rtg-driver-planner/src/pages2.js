@@ -1722,23 +1722,176 @@ function MonPlanningPage() {
   );
 }
 
+// Convertit une dataURL (canvas.toDataURL / captureNodeAsPng) en File
+// uploadable via Supabase Storage — évite d'avoir à changer submitCongeRequest
+// (pages2.js) : le formulaire signé généré ci-dessous devient simplement LE
+// justificatif, uploadé exactement comme une photo l'aurait été.
+function dataUrlToFile(dataUrl, filename) {
+  const parts = dataUrl.split(",");
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/png";
+  const bin = atob(parts[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
+
+// Signature manuscrite — un simple <canvas> sur lequel dessiner (souris,
+// doigt ou stylet via l'API Pointer Events, unifiée). Elle est capturée avec
+// le reste du formulaire par html2canvas au moment de l'envoi (voir
+// MesCongesPage.submit) : pas besoin d'exporter son contenu séparément, le
+// canvas fait partie du DOM capturé comme n'importe quel autre élément.
+function SignaturePad({ canvasRef, onChange }) {
+  const drawingRef = useRef(false);
+  const lastRef = useRef(null);
+
+  // Le canvas est étiré en CSS (w-full) mais garde sa résolution de dessin
+  // fixe (width/height ci-dessous) — sans ce facteur d'échelle, le trait
+  // dessiné se désynchronise du curseur dès que la largeur affichée diffère
+  // de la résolution interne.
+  const getPos = e => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    };
+  };
+
+  const start = e => {
+    e.preventDefault();
+    drawingRef.current = true;
+    lastRef.current = getPos(e);
+    canvasRef.current.setPointerCapture(e.pointerId);
+  };
+  const move = e => {
+    if (!drawingRef.current) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(lastRef.current.x, lastRef.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastRef.current = pos;
+    onChange(true);
+  };
+  const end = () => { drawingRef.current = false; };
+  const clear = () => {
+    const canvas = canvasRef.current;
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    onChange(false);
+  };
+
+  return (
+    <div>
+      <canvas ref={canvasRef} width={360} height={110}
+        onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end}
+        style={{ touchAction: "none" }} className="bg-white border border-slate-400 rounded w-full cursor-crosshair" />
+      <button type="button" onClick={clear} className="mt-1 text-[10px] text-slate-500 hover:text-slate-800 underline">Effacer</button>
+    </div>
+  );
+}
+
+// Reproduction du formulaire papier officiel "Demande de congé
+// administratif" (TC3PC, document ENCAAPCGRHS10) — demande explicite de
+// l'exploitant : même structure/affichage, rempli automatiquement à partir
+// de la fiche du conducteur, signé numériquement. Ce composant EST
+// l'aperçu : affiché en direct dans la page (jamais masqué comme les blocs
+// "print-report" des autres rapports), il est capturé tel quel en image au
+// moment de l'envoi (MesCongesPage.submit) — ce que le conducteur voit à
+// l'écran est exactement ce qui part au responsable.
+const CONGE_DOC_CODE = "ENCAAPCGRHS10";
+function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, signatureCanvasRef, onSignatureChange }) {
+  return (
+    <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-5 sm:p-6 mx-auto max-w-xl text-[13px] leading-snug">
+      <div className="flex items-start justify-between gap-3 border-b-2 border-slate-800 pb-3 mb-3">
+        <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-10 w-auto shrink-0" />
+        <div className="text-right">
+          <div className="text-sm font-bold uppercase">Demande de congé administratif</div>
+          <div className="text-xs">Personnel 5 à 18</div>
+          <div className="flex items-center justify-end gap-1 mt-1 text-[9px]">
+            <span className="font-semibold mr-0.5">Document :</span>
+            {CONGE_DOC_CODE.split("").map((c, i) => (
+              <span key={i} className="inline-flex items-center justify-center w-3.5 h-3.5 border border-slate-800 font-bold">{c}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="text-center text-xs font-bold uppercase underline mb-3">À remplir par l'intéressé</div>
+      <div className="space-y-1.5 mb-4">
+        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Nom et Prénom</span><span>: <span className="font-semibold">{driver.nom} {driver.prenom}</span> — Mle {driver.matricule}</span></div>
+        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Fonction</span><span>: Conducteur RTG</span></div>
+        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Entité</span><span>: TC3PC</span></div>
+        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Dernier congé pris</span><span>: {dernierCongePris || "—"}</span></div>
+        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Date début de congé</span><span>: {dateDebut ? RTGDate.formatFr(RTGDate.parseISO(dateDebut)) : "—"}</span></div>
+        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Date fin du congé</span><span>: {dateFin ? RTGDate.formatFr(RTGDate.parseISO(dateFin)) : "—"} <span className="italic text-slate-500">(incluse)</span></span></div>
+      </div>
+
+      <div className="flex items-end justify-between gap-4 mb-4">
+        <div>Casablanca, le {RTGDate.formatFr(RTGDate.parseISO(RTGDate.toISO(new Date())))}</div>
+        <div className="text-center">
+          <div className="text-[11px] font-semibold uppercase mb-1">Signature de l'intéressé</div>
+          <SignaturePad canvasRef={signatureCanvasRef} onChange={onSignatureChange} />
+        </div>
+      </div>
+
+      <div className="border-t-2 border-slate-800 pt-3">
+        <div className="text-center text-xs font-bold uppercase mb-2">À remplir par le responsable</div>
+        <div className="mb-1">Avis du responsable direct : ..............................</div>
+        <div className="mb-3">Intérimaire proposé : ..............................</div>
+        <div className="text-right mb-3">Casablanca, le .....................</div>
+        <div className="grid grid-cols-2 gap-4 text-[11px] font-semibold uppercase text-center">
+          <div>Visa Chef de Service</div>
+          <div>Chef de Division</div>
+        </div>
+        <div className="text-center text-[11px] font-semibold uppercase mt-3">Chef du Département</div>
+      </div>
+    </div>
+  );
+}
+
 // ==========================================
-// Mes congés (§38) — DEUXIÈME page accessible à un compte CONDUCTEUR
-// (avec "Mon planning") : demande de congé en libre-service, justificatif
-// obligatoire, transmise EN_ATTENTE jusqu'à validation par le Responsable
-// de Shift (page Congés). Aucun effet sur le planning tant qu'elle n'est
-// pas VALIDE (voir AbsenceEngine.activeConges).
+// Mes congés (§38/§40) — DEUXIÈME page accessible à un compte CONDUCTEUR
+// (avec "Mon planning") : demande de congé en libre-service. Le conducteur
+// remplit les dates puis signe DIRECTEMENT sur une reproduction du
+// formulaire papier officiel (CongeFormPrintable ci-dessus, affichée en
+// direct comme aperçu) ; à l'envoi, ce formulaire rempli+signé est capturé
+// en image et devient le justificatif — transmis EN_ATTENTE jusqu'à
+// validation par le Responsable de Shift (page Congés). Aucun effet sur le
+// planning tant qu'elle n'est pas VALIDE (voir AbsenceEngine.activeConges).
 // ==========================================
 function MesCongesPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const driver = currentUser && currentUser.driverId ? state.drivers.find(d => d.id === currentUser.driverId) : null;
   const [form, setForm] = useState({ dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
-  const [file, setFile] = useState(null);
+  const [hasSignature, setHasSignature] = useState(false);
+  const signatureCanvasRef = useRef(null);
+  const formNodeRef = useRef(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const myRequests = driver ? state.conges.filter(c => c.driverId === driver.id).slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut)) : [];
+
+  // "Dernier congé pris" (comme sur le formulaire papier, format MM/AAAA) :
+  // le congé VALIDE le plus récent déjà terminé — calculé automatiquement,
+  // pas besoin que le conducteur s'en souvienne.
+  const dernierCongePris = useMemo(() => {
+    if (!driver) return "";
+    const todayIso = RTGDate.toISO(new Date());
+    const past = (state.conges || [])
+      .filter(c => c.driverId === driver.id && c.statut !== "EN_ATTENTE" && c.statut !== "REFUSE" && c.dateFin < todayIso)
+      .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+    if (past.length === 0) return "";
+    const d = RTGDate.parseISO(past[0].dateDebut);
+    return String(d.getUTCMonth() + 1).padStart(2, "0") + "/" + d.getUTCFullYear();
+  }, [state.conges, driver]);
 
   if (!driver) {
     return (
@@ -1748,14 +1901,41 @@ function MesCongesPage() {
     );
   }
 
+  const clearSignature = () => {
+    if (!signatureCanvasRef.current) return;
+    const c = signatureCanvasRef.current;
+    c.getContext("2d").clearRect(0, 0, c.width, c.height);
+    setHasSignature(false);
+  };
+
+  const downloadPdf = async () => {
+    if (!formNodeRef.current) return;
+    setPdfBusy(true);
+    try {
+      await loadPdfLibs();
+      await exportNodeAsPdf(formNodeRef.current, `demande-conge-${driver.matricule}-${form.dateDebut}.pdf`, { fitOnePage: true, orientation: "portrait", forceWidth: 800 });
+    } catch (e) {
+      alert("Erreur d'export PDF : " + (e && e.message ? e.message : "réessayez."));
+    }
+    setPdfBusy(false);
+  };
+
+  // Le formulaire rempli + signé (CongeFormPrintable, affiché en direct
+  // comme aperçu) est capturé en image au moment de l'envoi et devient LE
+  // justificatif — même mécanisme de stockage que l'ancien upload manuel
+  // (RTGStore.submitCongeRequest), rien à changer côté backend.
   const submit = async () => {
     if (form.dateFin < form.dateDebut) { setError("La date de fin doit être après la date de début."); return; }
-    if (!file) { setError("Le justificatif (photo ou scan de la demande signée) est obligatoire."); return; }
+    if (!hasSignature) { setError("Signez le formulaire ci-dessous avant d'envoyer votre demande."); return; }
+    if (!formNodeRef.current) return;
     setError(""); setSubmitting(true);
     try {
+      await loadPdfLibs();
+      const png = await captureNodeAsPng(formNodeRef.current, 800);
+      const file = dataUrlToFile(png.dataUrl, `demande-conge-${driver.matricule}-${form.dateDebut}.png`);
       await RTGStore.submitCongeRequest({ driverId: driver.id, dateDebut: form.dateDebut, dateFin: form.dateFin, commentaire: form.commentaire, file: file });
       setForm({ dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
-      setFile(null);
+      clearSignature();
     } catch (e) {
       setError("Erreur d'envoi : " + (e && e.message ? e.message : "réessayez."));
     }
@@ -1776,16 +1956,25 @@ function MesCongesPage() {
             <div><label className={LABEL_CLS}>Date début</label><input type="date" className={FIELD_CLS} value={form.dateDebut} onChange={e => setForm(f => Object.assign({}, f, { dateDebut: e.target.value }))} /></div>
             <div><label className={LABEL_CLS}>Date fin</label><input type="date" className={FIELD_CLS} value={form.dateFin} onChange={e => setForm(f => Object.assign({}, f, { dateFin: e.target.value }))} /></div>
             <div className="sm:col-span-2"><label className={LABEL_CLS}>Commentaire (optionnel)</label><input className={FIELD_CLS} value={form.commentaire} onChange={e => setForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
-            <div className="sm:col-span-2">
-              <label className={LABEL_CLS}>Justificatif (photo ou scan de la demande signée)</label>
-              <input type="file" accept="image/*,.pdf" onChange={e => setFile(e.target.files[0] || null)}
-                className="block w-full text-xs text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-marine-700 file:text-white file:text-xs" />
+          </div>
+
+          <div>
+            <label className={LABEL_CLS}>Aperçu — signez directement sur le formulaire ci-dessous</label>
+            <div ref={formNodeRef}>
+              <CongeFormPrintable driver={driver} dateDebut={form.dateDebut} dateFin={form.dateFin} dernierCongePris={dernierCongePris}
+                signatureCanvasRef={signatureCanvasRef} onSignatureChange={setHasSignature} />
             </div>
           </div>
-          <button onClick={submit} disabled={submitting} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
-            {submitting ? "Envoi en cours..." : "Envoyer la demande"}
-          </button>
-          <p className="text-[11px] text-slate-500">Votre demande sera transmise à votre Responsable de Shift pour validation. Suivez son statut ci-dessous.</p>
+
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={submit} disabled={submitting} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
+              {submitting ? "Envoi en cours..." : "Envoyer la demande à mon responsable"}
+            </button>
+            <button onClick={downloadPdf} disabled={pdfBusy} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-700 text-white hover:bg-marine-600 disabled:opacity-60">
+              <i className="fas fa-file-pdf mr-1.5"></i>{pdfBusy ? "Génération..." : "Télécharger en PDF"}
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-500">Votre demande (avec ce formulaire signé) sera transmise à votre Responsable de Shift pour validation. Suivez son statut ci-dessous.</p>
         </div>
       </Panel>
 
