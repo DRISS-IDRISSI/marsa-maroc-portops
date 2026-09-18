@@ -1860,10 +1860,11 @@ function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, sign
             <div className="text-sm">Personnel 5 à 18</div>
             <div className="flex items-center justify-end mt-2 text-[10px] leading-none">
               <span className="font-semibold mr-1 leading-none">Document :</span>
-              <div style={{ display: "table", borderCollapse: "collapse" }}>
+              <div className="flex">
                 {CONGE_DOC_CODE.split("").map((c, i) => (
-                  <span key={i} className="text-center border border-slate-800 font-bold"
-                    style={{ display: "table-cell", verticalAlign: "middle", width: "16px", height: "16px" }}>{c}</span>
+                  <span key={i} className={`relative inline-block w-4 h-4 border border-slate-800 ${i > 0 ? "-ml-px" : ""}`}>
+                    <span className="absolute font-bold" style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>{c}</span>
+                  </span>
                 ))}
               </div>
             </div>
