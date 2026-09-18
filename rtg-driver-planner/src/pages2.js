@@ -1788,7 +1788,7 @@ function SignaturePad({ canvasRef, onChange }) {
 
   return (
     <div>
-      <canvas ref={canvasRef} width={360} height={110}
+      <canvas ref={canvasRef} width={460} height={150}
         onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end}
         style={{ touchAction: "none" }} className="bg-white border border-slate-400 rounded w-full cursor-crosshair" />
       <button type="button" onClick={clear} className="mt-1 text-[10px] text-slate-500 hover:text-slate-800 underline">Effacer</button>
@@ -1805,51 +1805,58 @@ function SignaturePad({ canvasRef, onChange }) {
 // moment de l'envoi (MesCongesPage.submit) — ce que le conducteur voit à
 // l'écran est exactement ce qui part au responsable.
 const CONGE_DOC_CODE = "ENCAAPCGRHS10";
+// Format A4 (210 × 297mm, comme la page papier réelle) — demande explicite
+// de l'exploitant, plutôt qu'une carte compacte. overflow-x-auto permet de
+// faire défiler horizontalement sur un petit écran (mobile) sans déformer
+// les proportions du document.
 function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, signatureCanvasRef, onSignatureChange }) {
   return (
-    <div className="bg-white text-slate-900 rounded-xl border border-slate-300 p-5 sm:p-6 mx-auto max-w-xl text-[13px] leading-snug">
-      <div className="flex items-start justify-between gap-3 border-b-2 border-slate-800 pb-3 mb-3">
-        <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-10 w-auto shrink-0" />
-        <div className="text-right">
-          <div className="text-sm font-bold uppercase">Demande de congé administratif</div>
-          <div className="text-xs">Personnel 5 à 18</div>
-          <div className="flex items-center justify-end gap-1 mt-1 text-[9px]">
-            <span className="font-semibold mr-0.5">Document :</span>
-            {CONGE_DOC_CODE.split("").map((c, i) => (
-              <span key={i} className="inline-flex items-center justify-center w-3.5 h-3.5 border border-slate-800 font-bold">{c}</span>
-            ))}
+    <div className="overflow-x-auto">
+      <div className="bg-white text-slate-900 shadow-lg text-sm leading-snug mx-auto"
+        style={{ width: "210mm", minHeight: "297mm", padding: "16mm 18mm", boxSizing: "border-box" }}>
+        <div className="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4 mb-5">
+          <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-14 w-auto shrink-0" />
+          <div className="text-right">
+            <div className="text-base font-bold uppercase">Demande de congé administratif</div>
+            <div className="text-sm">Personnel 5 à 18</div>
+            <div className="flex items-center justify-end gap-1 mt-2 text-[10px]">
+              <span className="font-semibold mr-1">Document :</span>
+              {CONGE_DOC_CODE.split("").map((c, i) => (
+                <span key={i} className="inline-flex items-center justify-center w-4 h-4 border border-slate-800 font-bold">{c}</span>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="text-center text-xs font-bold uppercase underline mb-3">À remplir par l'intéressé</div>
-      <div className="space-y-1.5 mb-4">
-        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Nom et Prénom</span><span>: <span className="font-semibold">{driver.nom} {driver.prenom}</span> — Mle {driver.matricule}</span></div>
-        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Fonction</span><span>: Conducteur RTG</span></div>
-        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Entité</span><span>: TC3PC</span></div>
-        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Dernier congé pris</span><span>: {dernierCongePris || "—"}</span></div>
-        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Date début de congé</span><span>: {dateDebut ? RTGDate.formatFr(RTGDate.parseISO(dateDebut)) : "—"}</span></div>
-        <div className="flex flex-wrap gap-x-2"><span className="w-44 shrink-0 text-slate-600">Date fin du congé</span><span>: {dateFin ? RTGDate.formatFr(RTGDate.parseISO(dateFin)) : "—"} <span className="italic text-slate-500">(incluse)</span></span></div>
-      </div>
-
-      <div className="flex items-end justify-between gap-4 mb-4">
-        <div>Casablanca, le {RTGDate.formatFr(RTGDate.parseISO(RTGDate.toISO(new Date())))}</div>
-        <div className="text-center">
-          <div className="text-[11px] font-semibold uppercase mb-1">Signature de l'intéressé</div>
-          <SignaturePad canvasRef={signatureCanvasRef} onChange={onSignatureChange} />
+        <div className="text-center text-sm font-bold uppercase underline mb-4">À remplir par l'intéressé</div>
+        <div className="space-y-2.5 mb-6">
+          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Nom et Prénom</span><span>: <span className="font-semibold">{driver.nom} {driver.prenom}</span> — Mle {driver.matricule}</span></div>
+          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Fonction</span><span>: Conducteur RTG</span></div>
+          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Entité</span><span>: TC3PC</span></div>
+          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Dernier congé pris</span><span>: {dernierCongePris || "—"}</span></div>
+          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Date début de congé</span><span>: {dateDebut ? RTGDate.formatFr(RTGDate.parseISO(dateDebut)) : "—"}</span></div>
+          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Date fin du congé</span><span>: {dateFin ? RTGDate.formatFr(RTGDate.parseISO(dateFin)) : "—"} <span className="italic text-slate-500">(incluse)</span></span></div>
         </div>
-      </div>
 
-      <div className="border-t-2 border-slate-800 pt-3">
-        <div className="text-center text-xs font-bold uppercase mb-2">À remplir par le responsable</div>
-        <div className="mb-1">Avis du responsable direct : ..............................</div>
-        <div className="mb-3">Intérimaire proposé : ..............................</div>
-        <div className="text-right mb-3">Casablanca, le .....................</div>
-        <div className="grid grid-cols-2 gap-4 text-[11px] font-semibold uppercase text-center">
-          <div>Visa Chef de Service</div>
-          <div>Chef de Division</div>
+        <div className="flex items-end justify-between gap-6 mb-8">
+          <div>Casablanca, le {RTGDate.formatFr(RTGDate.parseISO(RTGDate.toISO(new Date())))}</div>
+          <div className="text-center">
+            <div className="text-xs font-semibold uppercase mb-1.5">Signature de l'intéressé</div>
+            <SignaturePad canvasRef={signatureCanvasRef} onChange={onSignatureChange} />
+          </div>
         </div>
-        <div className="text-center text-[11px] font-semibold uppercase mt-3">Chef du Département</div>
+
+        <div className="border-t-2 border-slate-800 pt-4">
+          <div className="text-center text-sm font-bold uppercase mb-3">À remplir par le responsable</div>
+          <div className="mb-2">Avis du responsable direct : ..............................</div>
+          <div className="mb-4">Intérimaire proposé : ..............................</div>
+          <div className="text-right mb-4">Casablanca, le .....................</div>
+          <div className="grid grid-cols-2 gap-4 text-xs font-semibold uppercase text-center">
+            <div>Visa Chef de Service</div>
+            <div>Chef de Division</div>
+          </div>
+          <div className="text-center text-xs font-semibold uppercase mt-4">Chef du Département</div>
+        </div>
       </div>
     </div>
   );
