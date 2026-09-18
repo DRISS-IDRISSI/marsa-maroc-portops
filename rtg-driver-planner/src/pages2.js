@@ -1862,7 +1862,7 @@ function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, sign
               <span className="font-semibold mr-1 leading-none">Document :</span>
               <div className="flex">
                 {CONGE_DOC_CODE.split("").map((c, i) => (
-                  <span key={i} className={`inline-flex items-center justify-center w-4 h-4 border border-slate-800 font-bold leading-none ${i > 0 ? "-ml-px" : ""}`}>{c}</span>
+                  <span key={i} className={`inline-block text-center w-4 h-4 border border-slate-800 font-bold ${i > 0 ? "-ml-px" : ""}`} style={{ lineHeight: "16px" }}>{c}</span>
                 ))}
               </div>
             </div>
