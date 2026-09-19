@@ -7,7 +7,7 @@
 // juste après la mise à jour du statut en base — voir ce fichier pour le
 // payload exact envoyé.
 //
-// Envoi via SMTP Gmail (compte technique dédié, ex. gestioneffectif@gmail.com)
+// Envoi via SMTP Gmail (compte technique dédié, ex. marsamarocrth@gmail.com)
 // avec un "mot de passe d'application" Gmail — PAS le mot de passe normal du
 // compte (Gmail exige une validation en 2 étapes pour en générer un, voir
 // myaccount.google.com/apppasswords).
@@ -17,7 +17,7 @@
 //   1. Project > Edge Functions > Create a new function > nommez-la
 //      "send-conge-email" > collez le contenu de ce fichier > Deploy.
 //   2. Project > Edge Functions > Secrets (ou Manage secrets) > ajoutez :
-//        GMAIL_USER = gestioneffectif@gmail.com (ou l'adresse choisie)
+//        GMAIL_USER = marsamarocrth@gmail.com (ou l'adresse choisie)
 //        GMAIL_APP_PASSWORD = le mot de passe d'application Gmail (16
 //        caractères, PAS le mot de passe normal du compte) — ne JAMAIS
 //        coller ce mot de passe ailleurs qu'ici.
