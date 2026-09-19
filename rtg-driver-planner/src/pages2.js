@@ -2280,6 +2280,8 @@ function MesMouvementsPage() {
 function MouvementsRtgPage() {
   const state = useRtgState();
   const now = new Date();
+  const [tab, setTab] = useState("detail");
+
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
   const [rows, setRows] = useState([]);
@@ -2287,6 +2289,7 @@ function MouvementsRtgPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (tab !== "detail") return;
     setLoading(true);
     setError("");
     const dim = RTGDate.daysInMonth(month, year);
@@ -2296,7 +2299,60 @@ function MouvementsRtgPage() {
       .then(setRows)
       .catch(e => setError(e && e.message ? e.message : "Chargement impossible."))
       .finally(() => setLoading(false));
-  }, [month, year]);
+  }, [tab, month, year]);
+
+  // ---- Onglet "Total par conducteur" : période libre (date à date), une
+  // ligne par conducteur avec le total de chaque type de mouvement — sur le
+  // modèle du rapport Excel fourni par l'exploitant. ----
+  const monthStartIso = RTGDate.toISO(RTGDate.makeDate(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const todayIsoForTotal = RTGDate.toISO(now);
+  const [dateDebut, setDateDebut] = useState(monthStartIso);
+  const [dateFin, setDateFin] = useState(todayIsoForTotal);
+  const [totalRows, setTotalRows] = useState([]);
+  const [totalLoading, setTotalLoading] = useState(false);
+  const [totalError, setTotalError] = useState("");
+
+  useEffect(() => {
+    if (tab !== "total") return;
+    setTotalLoading(true);
+    setTotalError("");
+    RTGStore.fetchMouvementsTos({ dateFrom: dateDebut, dateTo: dateFin })
+      .then(setTotalRows)
+      .catch(e => setTotalError(e && e.message ? e.message : "Chargement impossible."))
+      .finally(() => setTotalLoading(false));
+  }, [tab, dateDebut, dateFin]);
+
+  const totalByDriver = useMemo(() => {
+    const map = {};
+    totalRows.forEach(r => {
+      const key = r.driverId || ("_" + r.loginTos);
+      if (!map[key]) {
+        map[key] = { driverId: r.driverId, loginTos: r.loginTos, nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, totalMvmt: 0 };
+      }
+      MOUVEMENTS_TOS_COLUMNS.forEach(c => { map[key][c.key] += r[c.key] || 0; });
+      map[key].totalMvmt += r.totalMvmt || 0;
+    });
+    return Object.values(map).sort((a, b) => {
+      const da = a.driverId ? state.drivers.find(d => d.id === a.driverId) : null;
+      const db = b.driverId ? state.drivers.find(d => d.id === b.driverId) : null;
+      return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
+    });
+  }, [totalRows, state.drivers]);
+
+  const totalUnmatchedLogins = [...new Set(totalRows.filter(r => !r.driverId).map(r => r.loginTos))];
+  const totalGrandTotal = totalRows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
+
+  const exportTotalExcel = () => {
+    const headers = ["Matricule", "Nom", "Prénom", "Équipe"].concat(MOUVEMENTS_TOS_COLUMNS.map(c => c.label)).concat(["Total"]);
+    const dataRows = totalByDriver.map(g => {
+      const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
+      const team = d ? state.teams.find(t => t.id === d.teamId) : null;
+      return [d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"), team ? team.nom : ""]
+        .concat(MOUVEMENTS_TOS_COLUMNS.map(c => g[c.key]))
+        .concat([g.totalMvmt]);
+    });
+    downloadCSV(`mouvements-rtg-total-${dateDebut}-${dateFin}.csv`, headers, dataRows);
+  };
 
   // Regroupe par journée (la plus récente en premier) puis par shift — même
   // logique de lecture que l'Affectation du jour, plus naturelle pour un
@@ -2331,9 +2387,16 @@ function MouvementsRtgPage() {
     <div className="space-y-4 fade-in">
       <div>
         <h1 className="text-2xl font-bold text-white">Mouvements RTG</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS — par journée et par shift</p>
+        <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS</p>
       </div>
 
+      <div className="flex gap-2">
+        <button onClick={() => setTab("detail")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "detail" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Détail par jour/shift</button>
+        <button onClick={() => setTab("total")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "total" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Total par conducteur (période)</button>
+      </div>
+
+      {tab === "detail" && (
+      <>
       <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
         <div>
           <label className={LABEL_CLS}>Mois</label>
@@ -2405,6 +2468,70 @@ function MouvementsRtgPage() {
           ))}
         </div>
       ))}
+      </>
+      )}
+
+      {tab === "total" && (
+      <>
+      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+        <div>
+          <label className={LABEL_CLS}>Date début</label>
+          <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} className={FIELD_CLS} />
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Date fin</label>
+          <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} className={FIELD_CLS} />
+        </div>
+        <button onClick={exportTotalExcel} disabled={totalByDriver.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50">
+          <i className="fas fa-file-excel mr-1.5"></i>Excel
+        </button>
+        {!totalLoading && totalRows.length > 0 && (
+          <div className="ml-auto text-xs text-slate-400">{totalByDriver.length} conducteur{totalByDriver.length > 1 ? "s" : ""} — <span className="text-white font-bold">{totalGrandTotal}</span> mouvements au total</div>
+        )}
+      </div>
+
+      {totalError && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{totalError}</div>}
+
+      {totalUnmatchedLogins.length > 0 && (
+        <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+          <i className="fas fa-triangle-exclamation mr-1.5"></i>
+          {totalUnmatchedLogins.length} login{totalUnmatchedLogins.length > 1 ? "s" : ""} TOS non rattaché{totalUnmatchedLogins.length > 1 ? "s" : ""} à un conducteur de l'application : {totalUnmatchedLogins.join(", ")}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-surface text-slate-400">
+            <tr className="text-left">
+              <th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Nom</th><th className="px-3 py-2">Prénom</th><th className="px-3 py-2">Équipe</th>
+              {MOUVEMENTS_TOS_COLUMNS.map(c => <th key={c.key} className="px-3 py-2 text-center">{c.label}</th>)}
+              <th className="px-3 py-2 text-center font-bold">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {totalLoading && <tr><td colSpan={MOUVEMENTS_TOS_COLUMNS.length + 5} className="px-3 py-6 text-center text-slate-500 italic">Chargement...</td></tr>}
+            {!totalLoading && totalByDriver.length === 0 && (
+              <tr><td colSpan={MOUVEMENTS_TOS_COLUMNS.length + 5} className="px-3 py-6 text-center text-slate-500 italic">Aucun mouvement importé pour cette période.</td></tr>
+            )}
+            {!totalLoading && totalByDriver.map(g => {
+              const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
+              const team = d ? state.teams.find(t => t.id === d.teamId) : null;
+              return (
+                <tr key={g.driverId || g.loginTos} className="border-t border-border hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-white">{d ? d.matricule : <span className="text-amber-400">{g.loginTos}</span>}</td>
+                  <td className="px-3 py-2 text-white">{d ? d.nom : "(non rattaché)"}</td>
+                  <td className="px-3 py-2 text-slate-300">{d ? d.prenom : ""}</td>
+                  <td className="px-3 py-2 text-slate-300">{team ? team.nom : "—"}</td>
+                  {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-300">{g[c.key]}</td>)}
+                  <td className="px-3 py-2 text-center text-white font-bold">{g.totalMvmt}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      </>
+      )}
     </div>
   );
 }
