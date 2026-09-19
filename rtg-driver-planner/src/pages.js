@@ -290,6 +290,19 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     }
   };
 
+  const [staleVacationResult, setStaleVacationResult] = useState(null);
+  const doClearStaleVacation = async () => {
+    setStep("resetting");
+    try {
+      const result = await RTGStore.bulkClearStaleVacationOverrides(team.id, month, year);
+      setStaleVacationResult(result);
+      setStep("staleVacationDone");
+    } catch (e) {
+      setError(e.message || String(e));
+      setStep("error");
+    }
+  };
+
   const handleFile = async file => {
     setStep("parsing");
     setError("");
@@ -548,7 +561,29 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
               <button onClick={() => setStep("fullResetConfirm")} className="block text-[11px] text-red-400 hover:text-red-300 underline">
                 Remise à zéro complète du planning (repos + congés + maladies, y compris modifications manuelles) pour cette équipe et ce mois
               </button>
+              <button onClick={() => setStep("staleVacationConfirm")} className="block text-[11px] text-sky-400 hover:text-sky-300 underline">
+                Corriger les vacations (V1/V2) devenues obsolètes après une mise à jour du moteur, pour cette équipe et ce mois
+              </button>
             </div>
+          </div>
+        )}
+
+        {step === "staleVacationConfirm" && (
+          <div className="space-y-3">
+            <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+              <i className="fas fa-triangle-exclamation mr-1.5"></i>Recherche, parmi les affectations manuelles "Présent" de <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}, celles dont la vacation (V1/V2) ne correspond plus au calcul automatique à jour, et les supprime (le calcul automatique corrigé s'applique alors). Les repos, congés et remplacements forcés manuellement ne sont jamais touchés.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={doClearStaleVacation} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Rechercher et corriger</button>
+              <button onClick={() => setStep("pick")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        )}
+
+        {step === "staleVacationDone" && staleVacationResult && (
+          <div className="space-y-2 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{staleVacationResult.cleared} affectation(s) obsolète(s) corrigée(s) sur {staleVacationResult.checked} vérifiée(s).</p>
+            <button onClick={() => setStep("pick")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Fermer</button>
           </div>
         )}
 

@@ -569,6 +569,40 @@ const RTGStore = (function () {
     return { overridesDeleted: overridesCount, congesDeleted: congesCount, maladiesDeleted: maladiesCount };
   }
 
+  // Corrige/supprime en masse les affectations manuelles (import Excel ou
+  // autre) dont la VACATION (V1/V2) ne correspond plus au calcul automatique
+  // à jour — typiquement après une correction du moteur de rotation
+  // (ex. règle samedi/dimanche/lundi du 3ème shift) : les jours importés
+  // avant ce correctif restent figés sur l'ancienne valeur tant qu'on ne les
+  // supprime pas un par un. Ne touche QUE les affectations où le statut est
+  // "PRESENT" avec une vacation renseignée ET différente de la valeur
+  // recalculée — jamais les repos/congés/remplacements forcés manuellement,
+  // qui restent des décisions volontaires à conserver telles quelles.
+  async function bulkClearStaleVacationOverrides(teamId, month, year) {
+    const team = state.teams.find(t => t.id === teamId);
+    if (!team) return { checked: 0, cleared: 0 };
+    const driverIds = new Set(state.drivers.filter(d => d.teamId === teamId).map(d => d.id));
+    const mm = String(month).padStart(2, "0");
+    const prefix = year + "-" + mm + "-";
+    const toClear = [];
+    Object.keys(state.manualOverrides).forEach(key => {
+      const iso = key.slice(0, 10);
+      const driverId = key.slice(11);
+      if (!iso.startsWith(prefix) || !driverIds.has(driverId)) return;
+      const override = state.manualOverrides[key];
+      if (override.status !== "PRESENT" || !override.vacation) return;
+      const driver = state.drivers.find(d => d.id === driverId);
+      if (!driver) return;
+      const correct = VacationRotationEngine.getVacationForDate(driver, RTGDate.parseISO(iso), state, team);
+      if (correct && correct !== override.vacation) toClear.push({ iso, driverId });
+    });
+    for (const { iso, driverId } of toClear) {
+      await deleteManualOverride(iso, driverId, "Nettoyage vacation obsolète (correctif rotation samedi/dimanche/lundi)");
+    }
+    addAuditEntry({ action: "Nettoyage vacations obsolètes", details: team.nom + " — " + mm + "/" + year + " — " + toClear.length + " affectation(s) corrigée(s)" });
+    return { checked: Object.keys(state.manualOverrides).length, cleared: toClear.length };
+  }
+
   // ---------- Mouvements réalisés un jour férié, PAR CONDUCTEUR PRÉSENT (§31) ----------
 
   function getFerieMouvements(isoDate, driverId) {
@@ -744,7 +778,7 @@ const RTGStore = (function () {
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
     addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
-    setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank,
+    setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank, bulkClearStaleVacationOverrides,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
     updateTeam,
