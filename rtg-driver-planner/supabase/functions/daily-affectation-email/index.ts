@@ -240,6 +240,8 @@ const VacationRotationEngine = {
 // dernier appelle PlanningEngine.getDailyStatus — sans effet réel puisque
 // tous les appels ont lieu dans des corps de méthode, jamais à la
 // déclaration, mais gardé dans cet ordre pour rester lisible). ----------
+const FIXED_ABSENCE_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION"];
+
 const PlanningEngine = {
   getDailyStatus(driver: any, date: Date, state: any, teams: any[]) {
     const iso = RTGDate.toISO(date);
@@ -300,7 +302,8 @@ const PlanningEngine = {
       let shift = b.shift, vacation = b.vacation, zone = b.zone, startTime = b.startTime, endTime = b.endTime;
       let source = "AUTO";
       let finalStatus = b.status;
-      const override = state.manualOverrides[isoDate + "_" + driver.id];
+      const isFixedAbsence = FIXED_ABSENCE_STATUSES.indexOf(b.status) !== -1;
+      const override = isFixedAbsence ? null : state.manualOverrides[isoDate + "_" + driver.id];
       if (override) {
         if (override.shift !== undefined) shift = override.shift;
         if (override.vacation !== undefined) vacation = override.vacation;

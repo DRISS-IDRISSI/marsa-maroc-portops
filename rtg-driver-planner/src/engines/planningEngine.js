@@ -4,6 +4,8 @@
 // génération du planning mensuel complet.
 // ==========================================
 
+const FIXED_ABSENCE_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION"];
+
 const PlanningEngine = {
   // Statut d'un conducteur à une date donnée, AVANT toute modification manuelle.
   // Ordre de priorité : congé/maladie/absence/formation figés > jour férié (chômé
@@ -90,13 +92,18 @@ const PlanningEngine = {
       ZoneBalancingEngine.assignZonesForSlot(groups[key], state.config.zones);
     });
 
-    // Passe 3 : applique les affectations manuelles par-dessus le résultat auto.
+    // Passe 3 : applique les affectations manuelles par-dessus le résultat auto —
+    // SAUF si le statut de base est un enregistrement figé (congé/maladie/
+    // absence/formation, via AbsenceEngine). Une affectation manuelle laissée
+    // par un import antérieur (ex. import Excel) ne doit jamais masquer un
+    // congé/maladie saisi après coup sur la même date : le figé gagne toujours.
     return base.map(b => {
       const driver = b.driver, team = b.team;
       let shift = b.shift, vacation = b.vacation, zone = b.zone, startTime = b.startTime, endTime = b.endTime;
       let source = "AUTO";
       let finalStatus = b.status;
-      const override = state.manualOverrides[isoDate + "_" + driver.id];
+      const isFixedAbsence = FIXED_ABSENCE_STATUSES.indexOf(b.status) !== -1;
+      const override = isFixedAbsence ? null : state.manualOverrides[isoDate + "_" + driver.id];
       if (override) {
         if (override.shift !== undefined) shift = override.shift;
         if (override.vacation !== undefined) vacation = override.vacation;
