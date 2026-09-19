@@ -1243,7 +1243,7 @@ Deno.serve(async _req => {
     let testEmail: string | null = null;
     try {
       const body = await _req.json();
-      if (body && typeof body.testEmail === "string" && body.testEmail.trim()) testEmail = body.testEmail.trim();
+      if (body && typeof body.testEmail === "string" && body.testEmail.trim()) testEmail = body.testEmail.trim().toLowerCase();
     } catch { /* corps vide ou non-JSON — comportement normal (cron) */ }
 
     const { data: profiles, error: profilesError } = testEmail
