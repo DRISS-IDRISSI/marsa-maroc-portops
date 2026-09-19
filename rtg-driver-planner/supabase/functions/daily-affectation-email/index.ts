@@ -7,13 +7,24 @@
 // src/engines/*.js, aucun n'a de dépendance navigateur, voir leur en-tête
 // respectif) et l'envoie par email :
 //   - à chaque RESPONSABLE_SHIFT actif (avec un email renseigné,
-//     profiles.email) : UNIQUEMENT les conducteurs de SA propre équipe ;
+//     profiles.email) : UNIQUEMENT les conducteurs de SA propre équipe,
+//     en PIÈCE JOINTE PDF (1 fichier — son shift du jour) ;
 //   - à chaque RESPONSABLE et ADMIN actif (avec un email renseigné) :
-//     TOUTES les équipes.
+//     TOUTES les équipes, en PIÈCE JOINTE PDF (3 fichiers — un par shift).
 //
-// Format : un tableau HTML simple (pas une reproduction pixel du rapport
-// PDF de l'appli — celui-ci est capturé via html2canvas depuis un vrai
-// navigateur, indisponible dans une Edge Function serverless).
+// Les PDF reproduisent la même structure que le rapport "Affectation du
+// jour" exporté depuis l'appli (§ ShiftBlockPrintable/PrintHeader,
+// pages.js) : en-tête TC3PC, une section par VACATION (V1/V2) avec son
+// tableau Mat/Nom/Prénom/Vacation/Zone, lignes alternées, section OFF
+// (Shift 3 dimanche) si concernée — générés ici en PDF VECTORIEL (pdf-lib),
+// PAS par capture d'écran (html2canvas, utilisé par l'appli, dépend d'un
+// vrai navigateur, indisponible en Edge Function). Rendu net à toute
+// résolution, mais sans le logo graphique TC3PC (texte seul) : éviter une
+// dépendance réseau supplémentaire (récupération de l'image) qui
+// ferait échouer tout l'envoi si elle échoue.
+//
+// Le corps de l'email reste un tableau HTML simple (aperçu rapide dans la
+// boîte de réception) — les PDF joints sont la version faisant référence.
 //
 // SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut,
 // automatiquement disponibles ici. Réutilise GMAIL_USER / GMAIL_APP_PASSWORD
@@ -27,6 +38,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -1005,7 +1017,9 @@ function splitEmails(raw: string) {
   return raw.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 }
 
-async function sendAffectationEmail(client: SMTPClient, to: string, isoDate: string, html: string) {
+type PdfAttachment = { filename: string; bytes: Uint8Array };
+
+async function sendAffectationEmail(client: SMTPClient, to: string, isoDate: string, html: string, pdfAttachments: PdfAttachment[]) {
   const recipients = splitEmails(to);
   if (recipients.length === 0) return;
   await client.send({
@@ -1015,8 +1029,194 @@ async function sendAffectationEmail(client: SMTPClient, to: string, isoDate: str
     // content:"auto" génère automatiquement la version texte brut (fallback
     // pour les clients mail qui n'affichent pas le HTML) à partir de "html".
     content: "auto",
-    html
+    html,
+    attachments: pdfAttachments.map(a => ({ filename: a.filename, contentType: "application/pdf", encoding: "binary", content: a.bytes }))
   });
+}
+
+// ==========================================
+// Génération des PDF joints — reproduit ShiftBlockPrintable/PrintHeader
+// (pages.js) : en-tête TC3PC (texte, sans le logo graphique — voir
+// commentaire d'en-tête du fichier), une section par VACATION (V1/V2),
+// tableau Mat/Nom/Prénom/Vacation/Zone avec lignes alternées, section OFF
+// (Shift 3 dimanche) si concernée. Rendu vectoriel via pdf-lib — pas de
+// capture d'écran (html2canvas, indisponible côté serveur).
+// ==========================================
+const A4_WIDTH = 595.28, A4_HEIGHT = 841.89, PAGE_MARGIN = 36;
+const ROW_ALT_BG = rgb(0.878, 0.949, 0.996); // #e0f2fe, identique à l'appli
+const ALERT_COLOR = rgb(0.725, 0.11, 0.11); // #b91c1c, identique à l'appli
+
+type PdfCursor = { doc: any; page: any; font: any; boldFont: any; y: number };
+
+function newPdfCursor(doc: any, font: any, boldFont: any): PdfCursor {
+  return { doc, page: doc.addPage([A4_WIDTH, A4_HEIGHT]), font, boldFont, y: A4_HEIGHT - PAGE_MARGIN };
+}
+
+function ensureSpace(cursor: PdfCursor, needed: number) {
+  if (cursor.y - needed < PAGE_MARGIN) {
+    cursor.page = cursor.doc.addPage([A4_WIDTH, A4_HEIGHT]);
+    cursor.y = A4_HEIGHT - PAGE_MARGIN;
+  }
+}
+
+function formatDateFrNumeric(isoDate: string) {
+  // Même format que RTGDate.formatFr côté frontend (pages.js) : DD/MM/YYYY.
+  const [y, m, d] = isoDate.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function drawReportHeader(cursor: PdfCursor, subtitle: string, generatedLabel: string, countLabel: string) {
+  ensureSpace(cursor, 60);
+  const topY = cursor.y;
+  cursor.page.drawText("TC3PC — Terminal à Conteneurs 3 du Port de Casablanca", { x: PAGE_MARGIN, y: topY - 12, size: 13, font: cursor.boldFont, color: rgb(0.04, 0.08, 0.15) });
+  cursor.page.drawText(subtitle, { x: PAGE_MARGIN, y: topY - 27, size: 9, font: cursor.font, color: rgb(0.35, 0.38, 0.45) });
+  const genW = cursor.font.widthOfTextAtSize(generatedLabel, 8);
+  cursor.page.drawText(generatedLabel, { x: A4_WIDTH - PAGE_MARGIN - genW, y: topY - 10, size: 8, font: cursor.font, color: rgb(0.4, 0.4, 0.45) });
+  const countW = cursor.font.widthOfTextAtSize(countLabel, 8);
+  cursor.page.drawText(countLabel, { x: A4_WIDTH - PAGE_MARGIN - countW, y: topY - 23, size: 8, font: cursor.font, color: rgb(0.4, 0.4, 0.45) });
+  cursor.y = topY - 40;
+  cursor.page.drawLine({ start: { x: PAGE_MARGIN, y: cursor.y }, end: { x: A4_WIDTH - PAGE_MARGIN, y: cursor.y }, thickness: 1.5, color: rgb(0.1, 0.12, 0.18) });
+  cursor.y -= 18;
+}
+
+const PDF_COLUMNS = [
+  { label: "Mat", width: 65 },
+  { label: "Nom", width: 150 },
+  { label: "Prénom", width: 130 },
+  { label: "Vacation", width: 75, align: "center" as const },
+  { label: "Zone", width: A4_WIDTH - 2 * PAGE_MARGIN - (65 + 150 + 130 + 75), align: "center" as const }
+];
+
+function drawSectionTable(cursor: PdfCursor, sectionTitle: string, rows: { cells: string[]; alert: boolean }[]) {
+  ensureSpace(cursor, 34);
+  cursor.page.drawText(sectionTitle.toUpperCase(), { x: PAGE_MARGIN, y: cursor.y, size: 10, font: cursor.boldFont, color: rgb(0.04, 0.08, 0.15) });
+  cursor.y -= 16;
+  const totalWidth = PDF_COLUMNS.reduce((s, c) => s + c.width, 0);
+
+  if (rows.length === 0) {
+    cursor.page.drawText("Aucun conducteur affecté.", { x: PAGE_MARGIN, y: cursor.y, size: 8, font: cursor.font, color: rgb(0.5, 0.5, 0.5) });
+    cursor.y -= 18;
+    return;
+  }
+
+  ensureSpace(cursor, 22);
+  let x = PAGE_MARGIN;
+  PDF_COLUMNS.forEach(col => {
+    cursor.page.drawText(col.label, { x, y: cursor.y, size: 9, font: cursor.boldFont, color: rgb(0, 0, 0) });
+    x += col.width;
+  });
+  cursor.y -= 6;
+  cursor.page.drawLine({ start: { x: PAGE_MARGIN, y: cursor.y }, end: { x: PAGE_MARGIN + totalWidth, y: cursor.y }, thickness: 1.2, color: rgb(0.6, 0.6, 0.65) });
+  cursor.y -= 12;
+
+  rows.forEach((row, idx) => {
+    ensureSpace(cursor, 16);
+    if (idx % 2 === 1) {
+      cursor.page.drawRectangle({ x: PAGE_MARGIN - 2, y: cursor.y - 3, width: totalWidth + 4, height: 14, color: ROW_ALT_BG });
+    }
+    let cx = PAGE_MARGIN;
+    row.cells.forEach((cellText, i) => {
+      const col = PDF_COLUMNS[i];
+      const font = i === 1 ? cursor.boldFont : cursor.font;
+      const color = row.alert ? ALERT_COLOR : rgb(0.05, 0.05, 0.08);
+      let tx = cx;
+      if (col.align === "center") {
+        const textWidth = font.widthOfTextAtSize(cellText, 9);
+        tx = cx + (col.width - textWidth) / 2;
+      }
+      cursor.page.drawText(cellText, { x: tx, y: cursor.y, size: 9, font, color });
+      cx += col.width;
+    });
+    cursor.y -= 14;
+  });
+  cursor.y -= 8;
+}
+
+async function buildShiftReportPdf(dateIso: string, shiftDef: any, teamNom: string, groups: any[], offRows: any[]) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+  const cursor = newPdfCursor(doc, font, boldFont);
+
+  const totalCount = groups.reduce((n, g) => n + g.rows.length, 0) + offRows.length;
+  // "->" plutôt que "→" : la police standard PDF (encodage WinAnsi) ne sait
+  // pas encoder la flèche unicode "→" (plante à la génération) — sans
+  // incidence visuelle notable pour ce texte.
+  const subtitle = `Rapport d'affectation journalière — RTG — ${formatDateFrNumeric(dateIso)} — ${shiftDef.label}${shiftDef.start ? ` (${shiftDef.start} -> ${shiftDef.end})` : ""} — ${teamNom}`;
+  const now = new Date();
+  const generatedLabel = `Généré le ${now.toLocaleDateString("fr-FR")} à ${now.toLocaleTimeString("fr-FR")}`;
+  const countLabel = `${totalCount} conducteur${totalCount > 1 ? "s" : ""}`;
+  drawReportHeader(cursor, subtitle, generatedLabel, countLabel);
+
+  groups.forEach((g: any) => {
+    const sectionTitle = `Vacation ${g.vacation.id} · ${g.vacation.start} -> ${g.vacation.end} — ${g.rows.length} conducteur${g.rows.length > 1 ? "s" : ""}`;
+    const rows = g.rows.map((a: any) => ({
+      cells: [
+        a.matricule,
+        a.nom + (a.vacationBalanceAlert ? " (*)" : ""),
+        a.prenom,
+        a.vacation || "—",
+        a.status === "PRESENT" ? (a.zone || "—") : (STATUS_LABELS[a.status] || a.status)
+      ],
+      alert: !!a.vacationBalanceAlert
+    }));
+    drawSectionTable(cursor, sectionTitle, rows);
+  });
+
+  if (offRows.length > 0) {
+    const rows = offRows.map((a: any) => ({ cells: [a.matricule, a.nom, a.prenom, "—", "OFF"], alert: false }));
+    drawSectionTable(cursor, `OFF — Shift 3 dimanche — ${offRows.length} conducteur${offRows.length > 1 ? "s" : ""}`, rows);
+  }
+
+  cursor.page.drawText("Document généré automatiquement par RTG Driver Planner.", { x: PAGE_MARGIN, y: PAGE_MARGIN / 2, size: 7, font, color: rgb(0.5, 0.5, 0.55) });
+
+  return await doc.save();
+}
+
+// Reproduit exactement le regroupement de pages.js (AffectationDuJourPage) :
+// un conducteur absent (repos/congé/maladie/absence/formation) n'a pas de
+// `shift`/`vacation` calculé par PlanningEngine (seuls les présents en ont)
+// — on le rattache donc au shift de SON ÉQUIPE ce jour-là (teamShiftMap) et
+// à la vacation ACTUELLEMENT AFFICHÉE par son bloc (VacationRotationEngine),
+// jamais driver.initialVacation tel quel (qui ne correspond au jour que
+// un jour sur deux).
+function buildAllShiftReports(assignments: any[], state: any, dateIso: string) {
+  const dateObj = RTGDate.parseISO(dateIso);
+  const ABSENT_STATUSES = ["REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION"];
+  const driverById: Record<string, any> = {};
+  state.drivers.forEach((d: any) => { driverById[d.id] = d; });
+  const teamShiftMap: Record<string, string> = {};
+  state.teams.forEach((t: any) => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
+  const vacationLabelToday: Record<string, string | null> = {};
+  state.drivers.forEach((d: any) => { vacationLabelToday[d.id] = VacationRotationEngine.getVacationForDate(d, dateObj, state); });
+  const byOrdreAffichage = (a: any, b: any) => {
+    const oa = (driverById[a.driverId] || {}).ordreAffichage, ob = (driverById[b.driverId] || {}).ordreAffichage;
+    if (oa == null && ob == null) return 0;
+    if (oa == null) return 1;
+    if (ob == null) return -1;
+    return oa - ob;
+  };
+
+  const offRowsAll = assignments.filter((a: any) => a.status === "OFF").sort(byOrdreAffichage);
+  const reports: Record<string, { teamNom: string; groups: any[]; offRows: any[] }> = {};
+
+  state.config.shifts.forEach((s: any) => {
+    const team = state.teams.find((t: any) => teamShiftMap[t.id] === s.id);
+    if (!team) return;
+    const teamAssignments = assignments.filter((a: any) => a.teamId === team.id);
+    const absent = teamAssignments.filter((a: any) => ABSENT_STATUSES.indexOf(a.status) !== -1);
+    const vacationDefs = state.config.vacations[s.id] || [];
+    const groups = vacationDefs.map((v: any) => ({
+      vacation: v,
+      rows: teamAssignments.filter((a: any) => a.shift === s.id && a.vacation === v.id && a.status === "PRESENT")
+        .concat(absent.filter((a: any) => vacationLabelToday[a.driverId] === v.id))
+        .sort(byOrdreAffichage)
+    }));
+    const offRows = s.id === "S3" ? offRowsAll.filter((a: any) => a.teamId === team.id) : [];
+    reports[s.id] = { teamNom: team.nom, groups, offRows };
+  });
+
+  return { reports, teamShiftMap };
 }
 
 // ==========================================
@@ -1039,6 +1239,20 @@ Deno.serve(async _req => {
 
     const teamById: Record<string, any> = {};
     state.teams.forEach((t: any) => { teamById[t.id] = t; });
+    const shiftDefById: Record<string, any> = {};
+    (state.config.shifts || []).forEach((s: any) => { shiftDefById[s.id] = s; });
+
+    // Un PDF par shift qui a effectivement une équipe ce jour-là (voir
+    // buildAllShiftReports) — généré UNE SEULE FOIS, puis réutilisé pour
+    // chaque destinataire concerné (les 3 pour un Responsable/Admin, celui
+    // de sa propre équipe pour un Responsable de Shift).
+    const { reports, teamShiftMap } = buildAllShiftReports(assignments, state, todayIso);
+    const pdfByShift: Record<string, PdfAttachment> = {};
+    for (const shiftId of Object.keys(reports)) {
+      const r = reports[shiftId];
+      const bytes = await buildShiftReportPdf(todayIso, shiftDefById[shiftId] || { id: shiftId, label: shiftId }, r.teamNom, r.groups, r.offRows);
+      pdfByShift[shiftId] = { filename: `affectation-${todayIso}-${shiftId}.pdf`, bytes };
+    }
 
     const { data: profiles, error: profilesError } = await admin
       .from("profiles").select("id,nom,username,role,team_id,email,actif")
@@ -1070,8 +1284,13 @@ Deno.serve(async _req => {
       }
       const scopeLabel = isShiftScoped ? "Équipe : " + ((teamById[p.team_id] || {}).nom || p.team_id) : "Toutes les équipes";
       const html = renderAffectationHtml(todayIso, scoped, scopeLabel);
+      // PDF joint(s) : le shift de sa propre équipe pour un Responsable de
+      // Shift, les 3 shifts du jour pour un Responsable/Admin.
+      const pdfAttachments: PdfAttachment[] = isShiftScoped
+        ? (pdfByShift[teamShiftMap[p.team_id]] ? [pdfByShift[teamShiftMap[p.team_id]]] : [])
+        : ["S1", "S2", "S3"].map(s => pdfByShift[s]).filter(Boolean);
       try {
-        await sendAffectationEmail(client, p.email, todayIso, html);
+        await sendAffectationEmail(client, p.email, todayIso, html, pdfAttachments);
         sent++;
       } catch (e) {
         errors.push(p.email + ": " + (e && (e as Error).message ? (e as Error).message : String(e)));
