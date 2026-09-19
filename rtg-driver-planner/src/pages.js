@@ -1143,6 +1143,23 @@ function Cell({ assignment, detailLevel, onEdit, weekStart }) {
 // vacations V1/V2 quand l'algorithme automatique ne suffit pas.
 const EDITABLE_STATUSES = ["PRESENT", "REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "OFF"];
 
+// Chaque zone de stockage (A-H) est physiquement divisée en 2 blocs ; un
+// conducteur peut être affecté à toute la zone (seul, se déplaçant entre les
+// 2 blocs) ou à un seul bloc (zone doublée, ex. "01B"/"02B" — même convention
+// de préfixe que ZoneBalancingEngine.assignZonesForSlot). Le sélecteur manuel
+// doit pouvoir choisir ces 3 formes pour chaque zone, pas seulement la lettre
+// seule, sinon impossible de forcer à la main un conducteur sur un bloc précis
+// d'une zone doublée.
+function buildManualZoneOptions(zones) {
+  const options = [];
+  (zones || []).forEach(z => {
+    options.push({ value: z, label: `${z} — zone entière (1 seul conducteur)` });
+    options.push({ value: "01" + z, label: `01${z} — bloc 1` });
+    options.push({ value: "02" + z, label: `02${z} — bloc 2` });
+  });
+  return options;
+}
+
 function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }) {
   const [status, setStatus] = useState(assignment.status);
   const [vacation, setVacation] = useState(assignment.vacation || "V1");
@@ -1153,6 +1170,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
   const team = teams.find(t => t.id === driver.teamId);
   const shift = assignment.shift || (team ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(iso), config) : null);
   const vacDefs = shift ? (config.vacations[shift] || []) : [];
+  const zoneOptions = buildManualZoneOptions(config.zones);
 
   const save = async () => {
     setSaving(true);
@@ -1206,7 +1224,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
               <div className="flex-1">
                 <label className={LABEL_CLS}>Zone</label>
                 <select className={FIELD_CLS} value={zone} onChange={e => setZone(e.target.value)}>
-                  {config.zones.map(z => <option key={z} value={z}>{z}</option>)}
+                  {zoneOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
             </div>
