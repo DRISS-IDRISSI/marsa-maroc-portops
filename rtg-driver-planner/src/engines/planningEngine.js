@@ -64,7 +64,7 @@ const PlanningEngine = {
       let vacationBalanceAlert = false, restCorrection = null;
       if (status === "PRESENT" && team) {
         shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-        vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
+        vacation = VacationRotationEngine.getVacationForDate(driver, date, state, team);
         zone = ZoneRotationEngine.getZoneForDate(driver, date, state, teams);
         const vacDefs = state.config.vacations[shift] || [];
         const vacDef = vacDefs.find(v => v.id === vacation);

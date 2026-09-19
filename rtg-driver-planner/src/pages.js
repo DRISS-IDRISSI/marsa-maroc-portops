@@ -475,7 +475,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         const date = RTGDate.parseISO(r.iso);
         const driver = drivers.find(d => d.id === r.driverId);
         const shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-        const vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
+        const vacation = VacationRotationEngine.getVacationForDate(driver, date, state, team);
         const vacDef = (state.config.vacations[shift] || []).find(v => v.id === vacation);
 
         const slotKey = r.iso + "_" + shift + "_" + vacation;
@@ -2097,7 +2097,7 @@ function AffectationDuJour() {
   const dateObj = RTGDate.parseISO(dateStr);
   state.teams.forEach(t => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
   const vacationLabelToday = {};
-  state.drivers.forEach(d => { vacationLabelToday[d.id] = VacationRotationEngine.getVacationForDate(d, dateObj, state); });
+  state.drivers.forEach(d => { vacationLabelToday[d.id] = VacationRotationEngine.getVacationForDate(d, dateObj, state, state.teams.find(t => t.id === d.teamId)); });
   const absentByShift = {};
   state.config.shifts.forEach(s => {
     absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id);

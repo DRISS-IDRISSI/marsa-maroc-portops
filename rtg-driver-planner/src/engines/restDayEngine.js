@@ -625,7 +625,7 @@ const RestDayEngine = {
       ["V1", "V2"].forEach(block => {
         const blockStub = { id: "__block_" + block, initialVacation: block };
         for (let d = 1; d <= dim; d++) {
-          labelForBlock[block][d] = VacationRotationEngine.getVacationForDate(blockStub, RTGDate.makeDate(year, month, d), state);
+          labelForBlock[block][d] = VacationRotationEngine.getVacationForDate(blockStub, RTGDate.makeDate(year, month, d), state, team);
         }
       });
 

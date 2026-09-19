@@ -215,7 +215,7 @@ const HolidayEngine = {
 const VacationRotationEngine = {
   _cache: {} as Record<string, any>,
   clearCache() { this._cache = {}; },
-  getVacationForDate(driver: any, date: Date, state: any) {
+  getVacationForDate(driver: any, date: Date, state: any, team?: any) {
     const iso = RTGDate.toISO(date);
     const key = driver.id + "_" + iso;
     if (this._cache[key] !== undefined) return this._cache[key];
@@ -225,7 +225,13 @@ const VacationRotationEngine = {
     let cursor = refDate;
     while (cursor.getTime() < date.getTime()) {
       const next = RTGDate.addDays(cursor, 1);
-      const freeze = state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next);
+      let freeze = state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next);
+      // Dimanche chômé (3ème shift) : geler aussi samedi->dimanche, pour que
+      // le lundi reprenne la vacation du samedi (dernier jour travaillé) —
+      // sans effet pour S1/S2 (dimanche travaillé normalement).
+      if (!freeze && team && state.config.offShift3Dimanche && RTGDate.isSunday(next)) {
+        if (ShiftRotationEngine.getTeamShiftForDate(team, cursor, state.config) === "S3") freeze = true;
+      }
       if (!freeze) toggles++;
       cursor = next;
     }
@@ -273,7 +279,7 @@ const PlanningEngine = {
       let vacationBalanceAlert = false, restCorrection = null;
       if (status === "PRESENT" && team) {
         shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-        vacation = VacationRotationEngine.getVacationForDate(driver, date, state);
+        vacation = VacationRotationEngine.getVacationForDate(driver, date, state, team);
         zone = ZoneRotationEngine.getZoneForDate(driver, date, state, teams);
         const vacDefs = state.config.vacations[shift] || [];
         const vacDef = vacDefs.find((v: any) => v.id === vacation);
@@ -730,7 +736,7 @@ const RestDayEngine: any = {
       ["V1", "V2"].forEach(block => {
         const blockStub = { id: "__block_" + block, initialVacation: block };
         for (let d = 1; d <= dim; d++) {
-          labelForBlock[block][d] = VacationRotationEngine.getVacationForDate(blockStub, RTGDate.makeDate(year, month, d), state);
+          labelForBlock[block][d] = VacationRotationEngine.getVacationForDate(blockStub, RTGDate.makeDate(year, month, d), state, team);
         }
       });
 
@@ -1171,7 +1177,7 @@ function buildAllShiftReports(assignments: any[], state: any, dateIso: string) {
   const teamShiftMap: Record<string, string> = {};
   state.teams.forEach((t: any) => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
   const vacationLabelToday: Record<string, string | null> = {};
-  state.drivers.forEach((d: any) => { vacationLabelToday[d.id] = VacationRotationEngine.getVacationForDate(d, dateObj, state); });
+  state.drivers.forEach((d: any) => { vacationLabelToday[d.id] = VacationRotationEngine.getVacationForDate(d, dateObj, state, state.teams.find((t: any) => t.id === d.teamId)); });
   const byOrdreAffichage = (a: any, b: any) => {
     const oa = (driverById[a.driverId] || {}).ordreAffichage, ob = (driverById[b.driverId] || {}).ordreAffichage;
     if (oa == null && ob == null) return 0;

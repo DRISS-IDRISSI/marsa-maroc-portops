@@ -17,7 +17,7 @@ const VacationRotationEngine = {
     this._cache = {};
   },
 
-  getVacationForDate(driver, date, state) {
+  getVacationForDate(driver, date, state, team) {
     const iso = RTGDate.toISO(date);
     const key = driver.id + "_" + iso;
     if (this._cache[key] !== undefined) return this._cache[key];
@@ -29,7 +29,17 @@ const VacationRotationEngine = {
     let cursor = refDate;
     while (cursor.getTime() < date.getTime()) {
       const next = RTGDate.addDays(cursor, 1);
-      const freeze = state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next);
+      let freeze = state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next);
+      // Dimanche chômé (3ème shift) : la bascule samedi->dimanche est ELLE
+      // AUSSI gelée, pour que le lundi reprenne exactement la même vacation
+      // que le samedi (dernier jour réellement travaillé) — au lieu
+      // d'hériter de celle, basculée une fois, du dimanche chômé. Ne
+      // s'applique qu'à l'équipe effectivement en S3 ce dimanche-là ; pour
+      // S1/S2 (dimanche normalement travaillé), seule la bascule
+      // dimanche->lundi ci-dessus reste gelée, comportement inchangé.
+      if (!freeze && team && state.config.offShift3Dimanche && RTGDate.isSunday(next)) {
+        if (ShiftRotationEngine.getTeamShiftForDate(team, cursor, state.config) === "S3") freeze = true;
+      }
       if (!freeze) toggles++;
       cursor = next;
     }
