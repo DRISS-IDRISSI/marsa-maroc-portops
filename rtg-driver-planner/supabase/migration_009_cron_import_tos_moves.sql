@@ -17,11 +17,11 @@
 --   - Les secrets TOS_GMAIL_USER et TOS_GMAIL_APP_PASSWORD doivent déjà
 --     être configurés (Edge Functions > Secrets).
 --
--- Fréquence : toutes les 30 minutes. Le TOS envoie un rapport à la fin de
--- chaque shift (S1/S2/S3, horaires précis non garantis) — un intervalle de
--- 30 min capture les 3 rapports quotidiens avec un délai raisonnable, sans
--- dépendre d'une heure d'envoi exacte. Un passage qui ne trouve aucun
--- nouvel email ne fait rien (recherche des emails NON LUS uniquement).
+-- Fréquence : toutes les 5 minutes. Le TOS envoie un rapport à la fin de
+-- chaque shift (S1/S2/S3, horaires précis non garantis) ; un intervalle
+-- court réduit le délai avant que le mouvement soit visible dans l'appli.
+-- Le job est très léger (quelques emails max par passage, dédoublonnés
+-- par contrainte en base), donc sans risque à cette fréquence.
 -- ==========================================
 
 create extension if not exists pg_cron with schema extensions;
@@ -33,7 +33,7 @@ select cron.unschedule('import-tos-moves') where exists (
 
 select cron.schedule(
   'import-tos-moves',
-  '*/30 * * * *',
+  '*/5 * * * *',
   $$
   select net.http_post(
     url := 'https://<VOTRE_PROJECT_REF>.supabase.co/functions/v1/import-tos-moves',
