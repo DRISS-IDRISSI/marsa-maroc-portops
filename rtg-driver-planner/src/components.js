@@ -5,11 +5,60 @@ const { useLocation, useNavigate } = ReactRouterDOM;
 // Connexion (§30) — écran plein écran tant qu'aucun utilisateur n'est
 // connecté ; AuthGate l'affiche à la place de l'appli (pas de sidebar/topbar).
 // ==========================================
+// Formulaire "Mot de passe oublié ?" (§41) — envoie l'identifiant à l'Edge
+// Function request-password-reset, qui répond toujours un message générique
+// (jamais de confirmation/infirmation sur l'existence d'un compte, pour ne
+// pas permettre l'énumération des identifiants). Un mot de passe temporaire
+// est envoyé par email si un compte actif avec une adresse connue existe.
+function ForgotPasswordForm({ onBack }) {
+  const [username, setUsername] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async e => {
+    e.preventDefault();
+    if (!username.trim()) return;
+    setSubmitting(true);
+    setError(""); setMessage("");
+    try {
+      const { data, error: fnError } = await sb.functions.invoke("request-password-reset", { body: { username: username.trim() } });
+      if (fnError) throw fnError;
+      setMessage((data && data.message) || "Si un compte correspond à cet identifiant, un email a été envoyé à l'adresse enregistrée.");
+    } catch (err) {
+      setError("Erreur : " + (err && err.message ? err.message : "réessayez plus tard."));
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <form onSubmit={submit} className="w-full max-w-sm bg-card border border-border rounded-xl p-6 space-y-4 fade-in">
+      <div className="text-center mb-2">
+        <h1 className="text-lg font-bold text-white">Mot de passe oublié</h1>
+        <p className="text-xs text-slate-500 mt-1">Un mot de passe temporaire sera envoyé à l'email enregistré sur votre compte.</p>
+      </div>
+      {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+      {message && <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">{message}</div>}
+      <div>
+        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Identifiant</label>
+        <input autoFocus disabled={submitting} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full" value={username} onChange={e => setUsername(e.target.value)} />
+      </div>
+      <button type="submit" disabled={submitting} className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
+        {submitting ? "Envoi..." : "Envoyer"}
+      </button>
+      <button type="button" onClick={onBack} className="w-full text-xs text-slate-400 hover:text-white">
+        <i className="fas fa-arrow-left mr-1.5"></i>Retour à la connexion
+      </button>
+    </form>
+  );
+}
+
 function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
 
   const submit = async e => {
     e.preventDefault();
@@ -22,6 +71,14 @@ function LoginPage() {
     }
     setSubmitting(false);
   };
+
+  if (forgotMode) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-port px-4">
+        <ForgotPasswordForm onBack={() => setForgotMode(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-port px-4">
@@ -44,6 +101,9 @@ function LoginPage() {
         </div>
         <button type="submit" disabled={submitting} className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
           {submitting ? "Connexion..." : "Se connecter"}
+        </button>
+        <button type="button" onClick={() => setForgotMode(true)} className="w-full text-xs text-slate-400 hover:text-white">
+          Mot de passe oublié ?
         </button>
       </form>
     </div>
@@ -74,7 +134,7 @@ function AuthGate({ children }) {
   // équipe. Toute autre URL (y compris l'accueil) redirige vers "Mon
   // planning" — les policies RLS limitent déjà les DONNÉES visibles, ce
   // garde-fou évite en plus d'exposer l'interface des autres pages.
-  const CONDUCTEUR_ALLOWED_PATHS = ["/mon-planning", "/mes-conges", "/planning", "/affectation"];
+  const CONDUCTEUR_ALLOWED_PATHS = ["/mon-planning", "/mes-conges", "/planning", "/affectation", "/mon-compte"];
   useEffect(() => {
     if (currentUser && isDriverRestricted(currentUser) && CONDUCTEUR_ALLOWED_PATHS.indexOf(loc.pathname) === -1) {
       nav("/mon-planning", { replace: true });
@@ -170,6 +230,11 @@ function Sidebar() {
             </div>
           )}
           {!collapsed && (
+            <button onClick={() => nav("/mon-compte")} title="Mon compte — changer mon mot de passe" className="text-slate-500 hover:text-orange-400 shrink-0">
+              <i className="fas fa-key"></i>
+            </button>
+          )}
+          {!collapsed && (
             <button onClick={() => RTGStore.logout()} title="Déconnexion" className="text-slate-500 hover:text-red-400 shrink-0">
               <i className="fas fa-right-from-bracket"></i>
             </button>
@@ -218,6 +283,64 @@ function Topbar() {
         <span className="flex items-center gap-1.5 text-xs"><span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span><span className="hidden sm:inline">En ligne</span></span>
       </div>
     </header>
+  );
+}
+
+// ==========================================
+// Mon compte (§41) — changer son propre mot de passe, accessible à TOUS les
+// rôles (y compris CONDUCTEUR, voir AuthGate/Sidebar). Réutilise le
+// mécanisme déjà présent dans RTGStore.updateUser (branche "userId ===
+// currentUserId" -> sb.auth.updateUser({password})), jusqu'ici uniquement
+// atteignable via la page Utilisateurs réservée à l'ADMIN.
+// ==========================================
+function ChangePasswordPage() {
+  const currentUser = useCurrentUser();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async e => {
+    e.preventDefault();
+    setError(""); setSuccess(false);
+    if (password.length < 6) { setError("Le mot de passe doit contenir au moins 6 caractères."); return; }
+    if (password !== confirm) { setError("Les deux mots de passe ne correspondent pas."); return; }
+    setSaving(true);
+    try {
+      await RTGStore.updateUser(currentUser.id, { password: password });
+      setSuccess(true);
+      setPassword(""); setConfirm("");
+    } catch (err) {
+      setError("Erreur : " + (err && err.message ? err.message : "réessayez."));
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-4 fade-in max-w-md">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Mon compte</h1>
+        <p className="text-slate-400 text-sm mt-0.5">{currentUser ? currentUser.nom + " — " + currentUser.username : ""}</p>
+      </div>
+      <Panel title="Changer mon mot de passe" icon="fa-key">
+        <form onSubmit={submit} className="space-y-3">
+          {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+          {success && <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">Mot de passe modifié avec succès.</div>}
+          <div>
+            <label className={LABEL_CLS}>Nouveau mot de passe</label>
+            <input type="password" disabled={saving} className={FIELD_CLS} value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Confirmer le mot de passe</label>
+            <input type="password" disabled={saving} className={FIELD_CLS} value={confirm} onChange={e => setConfirm(e.target.value)} />
+          </div>
+          <button type="submit" disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
+            {saving ? "Enregistrement..." : "Changer le mot de passe"}
+          </button>
+        </form>
+      </Panel>
+    </div>
   );
 }
 

@@ -1242,7 +1242,7 @@ const ROLE_OPTIONS = [
 ];
 
 function emptyUserForm() {
-  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: "A", driverId: "" };
+  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: "A", driverId: "", email: "" };
 }
 
 function UserForm({ state, initial, editingId, onCancel, onSaved }) {
@@ -1264,7 +1264,8 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
     const payload = {
       nom: form.nom.trim(), username: form.username.trim(), role: form.role,
       teamId: form.role === "RESPONSABLE_SHIFT" ? form.teamId : null,
-      driverId: form.role === "CONDUCTEUR" ? form.driverId : null
+      driverId: form.role === "CONDUCTEUR" ? form.driverId : null,
+      email: form.role === "CONDUCTEUR" ? null : (form.email || "").trim()
     };
     if (form.password) payload.password = form.password;
 
@@ -1304,6 +1305,12 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
             <select className={FIELD_CLS} value={form.teamId} onChange={e => setForm(f => Object.assign({}, f, { teamId: e.target.value }))}>
               {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
             </select>
+          </div>
+        )}
+        {form.role !== "CONDUCTEUR" && (
+          <div>
+            <label className={LABEL_CLS}>Email (pour "mot de passe oublié")</label>
+            <input type="email" className={FIELD_CLS} value={form.email} onChange={e => setForm(f => Object.assign({}, f, { email: e.target.value }))} />
           </div>
         )}
         {form.role === "CONDUCTEUR" && (
@@ -1510,7 +1517,7 @@ function UsersPage() {
       {showForm && (
         <Panel title={editingId ? "Modifier l'utilisateur" : "Nouvel utilisateur"} icon="fa-user-shield">
           <UserForm state={state} editingId={editingId}
-            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || "A", driverId: editingUser.driverId || "" } : emptyUserForm()}
+            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || "A", driverId: editingUser.driverId || "", email: editingUser.email || "" } : emptyUserForm()}
             onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}

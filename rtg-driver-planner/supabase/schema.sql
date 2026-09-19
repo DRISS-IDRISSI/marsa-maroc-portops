@@ -76,6 +76,10 @@ create table if not exists profiles (
   team_id text references teams(id),   -- uniquement pertinent si role = RESPONSABLE_SHIFT
   driver_id text references drivers(id), -- uniquement pertinent si role = CONDUCTEUR (§37)
   actif boolean not null default true,
+  -- Email personnel (ADMIN/RESPONSABLE/RESPONSABLE_SHIFT) pour "mot de passe
+  -- oublié" (§41) — pour un CONDUCTEUR, l'email vient de drivers.email via
+  -- driver_id, ce champ reste vide.
+  email text,
   created_at timestamptz not null default now()
 );
 create unique index if not exists profiles_driver_id_unique on profiles(driver_id) where driver_id is not null;

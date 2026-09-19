@@ -20,6 +20,7 @@ function App() {
             <Route path="/mon-planning" element={<MonPlanningPage />} />
             <Route path="/mes-conges" element={<MesCongesPage />} />
             <Route path="/utilisateurs" element={<UsersPage />} />
+            <Route path="/mon-compte" element={<ChangePasswordPage />} />
           </Routes>
         </Layout>
       </AuthGate>

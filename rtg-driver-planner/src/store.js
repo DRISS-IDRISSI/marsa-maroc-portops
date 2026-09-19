@@ -82,7 +82,7 @@ const RTGStore = (function () {
     };
   }
   function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
-  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, driverId: r.driver_id, actif: r.actif }; }
+  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, driverId: r.driver_id, actif: r.actif, email: r.email || "" }; }
   function mapRecordRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   // Congés uniquement (§38) : mêmes champs de base + le workflow de demande
   // en libre-service (statut / justificatif / refus / validation). Un congé
@@ -592,6 +592,7 @@ const RTGStore = (function () {
       id: authData.user.id, username: input.username.trim(), nom: input.nom.trim(), role: input.role,
       team_id: input.role === "RESPONSABLE_SHIFT" ? input.teamId : null,
       driver_id: input.role === "CONDUCTEUR" ? input.driverId : null,
+      email: input.role === "CONDUCTEUR" ? null : (input.email || null),
       actif: true
     };
     const { data, error } = await sb.from("profiles").insert(row).select().single();
@@ -610,6 +611,7 @@ const RTGStore = (function () {
     if ("teamId" in patch) dbPatch.team_id = patch.teamId;
     if ("driverId" in patch) dbPatch.driver_id = patch.driverId;
     if ("actif" in patch) dbPatch.actif = patch.actif;
+    if ("email" in patch) dbPatch.email = patch.email || null;
 
     if (patch.password) {
       if (userId === state.currentUserId) {
