@@ -19,6 +19,8 @@ function App() {
             <Route path="/assistant" element={<AssistantIntelligentPage />} />
             <Route path="/mon-planning" element={<MonPlanningPage />} />
             <Route path="/mes-conges" element={<MesCongesPage />} />
+            <Route path="/mes-mouvements" element={<MesMouvementsPage />} />
+            <Route path="/mouvements-rtg" element={<MouvementsRtgPage />} />
             <Route path="/utilisateurs" element={<UsersPage />} />
             <Route path="/mon-compte" element={<ChangePasswordPage />} />
           </Routes>

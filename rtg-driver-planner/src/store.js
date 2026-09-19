@@ -101,6 +101,15 @@ const RTGStore = (function () {
   function mapFerieMvtRow(r) { return { id: r.id, date: r.date, driverId: r.driver_id, mouvements: r.mouvements, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at, updatedAt: r.updated_at }; }
   function mapOverrideRow(r) { return { shift: r.shift, vacation: r.vacation, zone: r.zone, status: r.status, startTime: r.start_time, endTime: r.end_time, motif: r.motif, details: r.details, createdAt: r.created_at, updatedAt: r.updated_at }; }
   function mapAuditRow(r) { return { id: r.id, date: r.date, utilisateur: r.utilisateur, driverId: r.driver_id, matricule: r.matricule, action: r.action, details: r.details }; }
+  function mapMouvementTosRow(r) {
+    return {
+      id: r.id, driverId: r.driver_id, loginTos: r.login_tos, dateTravail: r.date_travail, shift: r.shift,
+      engin: r.engin, facility: r.facility,
+      nombreIn: r.nombre_in, nombreOut: r.nombre_out, nombreMove: r.nombre_move, nombreShifting: r.nombre_shifting,
+      nombreDisch: r.nombre_disch, nombreLoad: r.nombre_load, nombreAutre: r.nombre_autre, totalMvmt: r.total_mvmt,
+      matchNote: r.match_note, createdAt: r.created_at
+    };
+  }
 
   // ---------- Chargement complet depuis Supabase ----------
 
@@ -568,6 +577,22 @@ const RTGStore = (function () {
     addAuditEntry({ driverId: driverId, matricule: d ? d.matricule : "", action: "Mouvements jour férié", details: isoDate + " — " + mouvements + " mouvement(s)" });
   }
 
+  // ---------- Mouvements RTG importés depuis le TOS ----------
+  // Table potentiellement volumineuse (plusieurs centaines de lignes/jour à
+  // terme) : volontairement JAMAIS chargée dans `state` au démarrage comme
+  // le reste (congés, heures exceptionnelles...) — chaque page qui en a
+  // besoin interroge Supabase directement avec sa propre plage de dates,
+  // RLS s'occupant déjà de restreindre ce qui est visible par rôle/équipe.
+  async function fetchMouvementsTos({ driverId, dateFrom, dateTo } = {}) {
+    let query = sb.from("mouvements_tos").select("*").order("date_travail", { ascending: false }).order("shift");
+    if (driverId) query = query.eq("driver_id", driverId);
+    if (dateFrom) query = query.gte("date_travail", dateFrom);
+    if (dateTo) query = query.lte("date_travail", dateTo);
+    const { data, error } = await query;
+    if (error) { console.error(error); throw error; }
+    return (data || []).map(mapMouvementTosRow);
+  }
+
   // ---------- Utilisateurs / authentification (§30) ----------
   //
   // Les comptes et rôles vivent maintenant dans Supabase Auth + la table
@@ -684,6 +709,7 @@ const RTGStore = (function () {
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
     updateTeam,
-    getFerieMouvements, setFerieMouvements
+    getFerieMouvements, setFerieMouvements,
+    fetchMouvementsTos
   };
 })();
