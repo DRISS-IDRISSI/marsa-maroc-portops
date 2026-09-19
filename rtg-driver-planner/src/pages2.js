@@ -2298,29 +2298,40 @@ function MouvementsRtgPage() {
       .finally(() => setLoading(false));
   }, [month, year]);
 
-  const byDriver = useMemo(() => {
-    const map = {};
+  // Regroupe par journée (la plus récente en premier) puis par shift — même
+  // logique de lecture que l'Affectation du jour, plus naturelle pour un
+  // responsable que la liste plate par conducteur.
+  const byDay = useMemo(() => {
+    const days = {};
     rows.forEach(r => {
-      const key = r.driverId || ("_" + r.loginTos);
-      if (!map[key]) map[key] = { driverId: r.driverId, loginTos: r.loginTos, rows: [], total: 0 };
-      map[key].rows.push(r);
-      map[key].total += r.totalMvmt || 0;
+      if (!days[r.dateTravail]) days[r.dateTravail] = {};
+      const shiftKey = r.shift || "—";
+      if (!days[r.dateTravail][shiftKey]) days[r.dateTravail][shiftKey] = [];
+      days[r.dateTravail][shiftKey].push(r);
     });
-    return Object.values(map).sort((a, b) => {
-      const da = a.driverId ? state.drivers.find(d => d.id === a.driverId) : null;
-      const db = b.driverId ? state.drivers.find(d => d.id === b.driverId) : null;
-      return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
-    });
+    return Object.keys(days).sort((a, b) => b.localeCompare(a)).map(dateIso => ({
+      dateIso,
+      shifts: Object.keys(days[dateIso]).sort().map(shift => {
+        const shiftRows = days[dateIso][shift].slice().sort((a, b) => {
+          const da = a.driverId ? state.drivers.find(d => d.id === a.driverId) : null;
+          const db = b.driverId ? state.drivers.find(d => d.id === b.driverId) : null;
+          return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz") || a.engin.localeCompare(b.engin);
+        });
+        const total = shiftRows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
+        return { shift, rows: shiftRows, total };
+      })
+    }));
   }, [rows, state.drivers]);
 
   const unmatched = rows.filter(r => !r.driverId);
   const unmatchedLogins = [...new Set(unmatched.map(r => r.loginTos))];
+  const grandTotal = rows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
 
   return (
     <div className="space-y-4 fade-in">
       <div>
         <h1 className="text-2xl font-bold text-white">Mouvements RTG</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés par conducteur, importés automatiquement depuis le rapport TOS</p>
+        <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS — par journée et par shift</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
@@ -2334,6 +2345,9 @@ function MouvementsRtgPage() {
           <label className={LABEL_CLS}>Année</label>
           <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
         </div>
+        {!loading && rows.length > 0 && (
+          <div className="ml-auto text-xs text-slate-400">{rows.length} ligne{rows.length > 1 ? "s" : ""} — <span className="text-white font-bold">{grandTotal}</span> mouvements au total</div>
+        )}
       </div>
 
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
@@ -2345,42 +2359,52 @@ function MouvementsRtgPage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
-            <tr className="text-left">
-              <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Équipe</th>
-              <th className="px-3 py-2 text-center">Jours avec mouvement</th><th className="px-3 py-2 text-center">Total mouvements</th>
-              <th className="px-3 py-2">Détail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && <tr><td colSpan="5" className="px-3 py-6 text-center text-slate-500 italic">Chargement...</td></tr>}
-            {!loading && byDriver.length === 0 && (
-              <tr><td colSpan="5" className="px-3 py-6 text-center text-slate-500 italic">Aucun mouvement importé pour cette période.</td></tr>
-            )}
-            {!loading && byDriver.map(g => {
-              const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
-              const team = d ? state.teams.find(t => t.id === d.teamId) : null;
-              const daysSet = new Set(g.rows.map(r => r.dateTravail));
-              const sortedRows = g.rows.slice().sort((a, b) => a.dateTravail.localeCompare(b.dateTravail));
-              return (
-                <tr key={g.driverId || g.loginTos} className="border-t border-border hover:bg-marine-600/10 align-top">
-                  <td className="px-3 py-2 text-white">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{g.loginTos} (non rattaché)</span>}</td>
-                  <td className="px-3 py-2 text-slate-300">{team ? team.nom : "—"}</td>
-                  <td className="px-3 py-2 text-center text-slate-300">{daysSet.size}</td>
-                  <td className="px-3 py-2 text-center text-white font-bold">{g.total}</td>
-                  <td className="px-3 py-2 text-slate-400">
-                    {sortedRows.map(r => (
-                      <div key={r.id}>{r.dateTravail} · {r.shift} · {r.engin} · {r.totalMvmt} mvt{r.matchNote ? <span className="text-amber-400"> — {r.matchNote}</span> : null}</div>
-                    ))}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {loading && <div className="text-xs text-slate-500 italic px-1">Chargement...</div>}
+      {!loading && byDay.length === 0 && (
+        <div className="text-xs text-slate-500 italic px-1">Aucun mouvement importé pour cette période.</div>
+      )}
+
+      {!loading && byDay.map(day => (
+        <div key={day.dateIso} className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-2.5 bg-surface border-b border-border font-semibold text-white text-sm">
+            {RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}
+          </div>
+          {day.shifts.map(s => (
+            <div key={s.shift} className="border-b border-border last:border-b-0">
+              <div className="px-4 py-1.5 text-[11px] uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                <span>Shift {s.shift}</span>
+                <span className="text-slate-400">{s.total} mouvement{s.total > 1 ? "s" : ""}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-slate-500">
+                    <tr className="text-left">
+                      <th className="px-4 py-1">Conducteur</th><th className="px-3 py-1">Équipe</th><th className="px-3 py-1">Engin</th>
+                      {MOUVEMENTS_TOS_COLUMNS.map(c => <th key={c.key} className="px-3 py-1 text-center">{c.label}</th>)}
+                      <th className="px-3 py-1 text-center font-bold">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {s.rows.map(r => {
+                      const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
+                      const team = d ? state.teams.find(t => t.id === d.teamId) : null;
+                      return (
+                        <tr key={r.id} className="border-t border-border/60 hover:bg-marine-600/10">
+                          <td className="px-4 py-1.5 text-white">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
+                          <td className="px-3 py-1.5 text-slate-300">{team ? team.nom : "—"}</td>
+                          <td className="px-3 py-1.5 text-slate-300">{r.engin}</td>
+                          {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-300">{r[c.key]}</td>)}
+                          <td className="px-3 py-1.5 text-center text-white font-bold">{r.totalMvmt}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
