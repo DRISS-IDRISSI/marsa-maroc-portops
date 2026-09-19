@@ -26,10 +26,15 @@
 // (driver_id = null, match_note renseigné) pour rester visible et corrigeable
 // plutôt que d'être silencieusement perdu.
 //
-// Un email n'est marqué comme LU qu'après un import réussi (ou s'il ne
-// contient clairement aucune pièce jointe .xls pertinente) — en cas d'erreur
-// (pièce jointe illisible, etc.), il reste NON LU pour être retenté au
-// prochain passage, et l'erreur remonte dans la réponse de la fonction.
+// Les emails traités sont recherchés par DATE (derniers jours), pas par
+// statut lu/non lu : le statut "lu" d'un email peut changer à tout moment
+// (n'importe quelle consultation de la boîte via l'interface Gmail marque
+// l'email comme lu), ce qui le ferait disparaître définitivement de la
+// recherche si on se basait dessus. Comme l'insertion des mouvements est
+// une upsert avec contrainte anti-doublon (login_tos, date_travail, shift,
+// engin), retraiter plusieurs fois le même email ne crée aucun doublon —
+// c'est donc sans risque de le revoir à chaque exécution pendant sa fenêtre
+// de rétention.
 //
 // Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
 //   - TOS_GMAIL_USER : marsamarocrth@gmail.com
@@ -144,7 +149,11 @@ Deno.serve(async _req => {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
     try {
-      const uids: number[] = await client.search({ seen: false, subject: SUBJECT_FILTER }, { uid: true });
+      // Fenêtre de recherche large (7 jours) : couvre les week-ends et les
+      // éventuels retards d'acheminement, sans dépendre du statut lu/non lu.
+      const since = new Date();
+      since.setUTCDate(since.getUTCDate() - 7);
+      const uids: number[] = await client.search({ since, subject: SUBJECT_FILTER }, { uid: true });
 
       for (const uid of uids) {
         let markSeen = false;
@@ -157,7 +166,7 @@ Deno.serve(async _req => {
 
           if (!xlsAttachment) {
             skippedNoAttachment++;
-            markSeen = true; // rien à faire pour cet email, pas la peine d'y revenir
+            markSeen = true; // pour la propreté visuelle de la boîte, sans effet sur le traitement
           } else {
             const wb = XLSX.read(xlsAttachment.content, { type: "buffer", cellDates: true });
             const sheet = wb.Sheets[RTG_SHEET_NAME];
