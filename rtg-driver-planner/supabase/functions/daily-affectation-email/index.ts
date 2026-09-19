@@ -935,75 +935,24 @@ const STATUS_LABELS: Record<string, string> = {
   PRESENT: "Présent", REPOS: "Repos", CONGE: "Congé", MALADIE: "Maladie",
   ABSENCE: "Absence", FORMATION: "Formation", OFF: "Off (Shift 3 dimanche)", FERIE: "Jour férié"
 };
-const SHIFT_LABELS: Record<string, string> = { S1: "Shift 1 (07:00-15:00)", S2: "Shift 2 (15:00-23:00)", S3: "Shift 3 (23:00-07:00)" };
 
 function formatDateFr(isoDate: string) {
   const d = RTGDate.parseISO(isoDate);
   return d.toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-function renderAffectationHtml(isoDate: string, assignments: any[], scopeLabel: string) {
-  const bucketed: Record<string, any[]> = {};
-  assignments.forEach(a => {
-    const key = a.shift || "—";
-    (bucketed[key] = bucketed[key] || []).push(a);
-  });
-  const shiftKeys = Object.keys(bucketed).sort();
-  // Les conducteurs sans shift ce jour-là (REPOS/CONGÉ/...) vont dans une
-  // section à part, en fin d'email, pour ne pas encombrer la vue des
-  // présents par créneau.
-  const noShiftKey = "—";
-  const withShift = shiftKeys.filter(k => k !== noShiftKey);
-  const withoutShift = bucketed[noShiftKey] || [];
-
-  const rowsHtml = (list: any[]) => list
-    .slice()
-    .sort((a, b) => (a.teamNom || "").localeCompare(b.teamNom || "") || (a.vacation || "").localeCompare(b.vacation || "") || a.nom.localeCompare(b.nom))
-    .map(a => `
-      <tr>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${a.matricule}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${a.nom}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${a.prenom}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${a.teamNom || "—"}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${a.vacation || "—"}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${a.startTime && a.endTime ? a.startTime + "-" + a.endTime : "—"}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${a.zone || "—"}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${STATUS_LABELS[a.status] || a.status}</td>
-      </tr>`).join("");
-
-  const tableHeader = `
-    <tr style="background:#0B1426;color:#fff;">
-      <th style="padding:6px 10px;text-align:left;">Mat.</th>
-      <th style="padding:6px 10px;text-align:left;">Nom</th>
-      <th style="padding:6px 10px;text-align:left;">Prénom</th>
-      <th style="padding:6px 10px;text-align:left;">Équipe</th>
-      <th style="padding:6px 10px;text-align:left;">Vacation</th>
-      <th style="padding:6px 10px;text-align:left;">Horaires</th>
-      <th style="padding:6px 10px;text-align:left;">Zone</th>
-      <th style="padding:6px 10px;text-align:left;">Statut</th>
-    </tr>`;
-
-  const sections = withShift.map(shiftKey => `
-    <h3 style="font-family:Arial,sans-serif;color:#0B1426;margin:20px 0 8px;">${SHIFT_LABELS[shiftKey] || shiftKey}</h3>
-    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;">
-      ${tableHeader}
-      ${rowsHtml(bucketed[shiftKey])}
-    </table>`).join("");
-
-  const restSection = withoutShift.length > 0 ? `
-    <h3 style="font-family:Arial,sans-serif;color:#0B1426;margin:20px 0 8px;">Repos / Congé / Maladie / Absence / Férié</h3>
-    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;">
-      ${tableHeader}
-      ${rowsHtml(withoutShift)}
-    </table>` : "";
-
+// Corps de l'email : un message court, le détail est dans les PDF joints
+// (voir buildShiftReportPdf) — demande explicite de l'exploitant, qui ne
+// veut plus le tableau HTML complet dans le corps du message.
+function renderShortEmailHtml(isoDate: string, isShiftScoped: boolean, teamNom: string | null) {
+  const bodyLine = isShiftScoped
+    ? `Veuillez trouver ci-joint l'affectation du jour de votre équipe${teamNom ? " (" + teamNom + ")" : ""}.`
+    : "Veuillez trouver ci-joint les affectations du jour des 3 shifts.";
   return `
     <div style="font-family:Arial,sans-serif;color:#1a1a1a;">
-      <h2 style="color:#0B1426;">Affectation du jour — ${formatDateFr(isoDate)}</h2>
-      <p style="color:#475569;font-size:13px;">${scopeLabel}</p>
-      ${sections}
-      ${restSection}
-      <p style="color:#94a3b8;font-size:11px;margin-top:24px;">Message automatique — RTG Driver Planner, Marsa Maroc TC3PC.</p>
+      <p>Bonjour,</p>
+      <p>${bodyLine}</p>
+      <p style="color:#94a3b8;font-size:11px;margin-top:24px;">Message automatique — RTG Driver Planner, Marsa Maroc TC3PC — ${formatDateFr(isoDate)}.</p>
     </div>`;
 }
 
@@ -1046,10 +995,33 @@ const A4_WIDTH = 595.28, A4_HEIGHT = 841.89, PAGE_MARGIN = 36;
 const ROW_ALT_BG = rgb(0.878, 0.949, 0.996); // #e0f2fe, identique à l'appli
 const ALERT_COLOR = rgb(0.725, 0.11, 0.11); // #b91c1c, identique à l'appli
 
-type PdfCursor = { doc: any; page: any; font: any; boldFont: any; y: number };
+type PdfCursor = { doc: any; page: any; font: any; boldFont: any; y: number; scale: number };
 
-function newPdfCursor(doc: any, font: any, boldFont: any): PdfCursor {
-  return { doc, page: doc.addPage([A4_WIDTH, A4_HEIGHT]), font, boldFont, y: A4_HEIGHT - PAGE_MARGIN };
+// `scale` (>=1, jamais > MAX_STRETCH) : étire l'ESPACEMENT vertical
+// (hauteur des lignes, marges entre sections) — jamais la taille des
+// polices ni la largeur des colonnes — pour qu'un rapport avec peu de
+// conducteurs remplisse mieux la page A4 au lieu de rester collé en haut
+// avec un grand vide en dessous (retour direct de l'exploitant). Calculé
+// une fois via measureShiftReportHeight() avant de dessiner quoi que ce
+// soit. Plafonné à 1.8 comme le fait déjà addFittedImageToPage (pages.js)
+// pour les exports PDF basés sur html2canvas — un rapport très court garde
+// donc un peu de vide, plutôt qu'un espacement excessif entre les lignes.
+const MAX_STRETCH = 1.8;
+
+function newPdfCursor(doc: any, font: any, boldFont: any, scale: number): PdfCursor {
+  return { doc, page: doc.addPage([A4_WIDTH, A4_HEIGHT]), font, boldFont, y: A4_HEIGHT - PAGE_MARGIN, scale };
+}
+
+// Doit rester EXACTEMENT synchronisé avec les incréments verticaux utilisés
+// par drawReportHeader/drawSectionTable ci-dessous (à scale=1) — sert
+// uniquement à calculer `scale` avant de dessiner quoi que ce soit.
+function measureShiftReportHeight(groups: any[], offRows: any[]) {
+  const HEADER_HEIGHT = 58; // 40 + 18, cf. drawReportHeader
+  const sectionHeight = (rowCount: number) => rowCount === 0 ? 34 : 42 + rowCount * 14;
+  let total = HEADER_HEIGHT;
+  groups.forEach((g: any) => { total += sectionHeight(g.rows.length); });
+  if (offRows.length > 0) total += sectionHeight(offRows.length);
+  return total;
 }
 
 function ensureSpace(cursor: PdfCursor, needed: number) {
@@ -1066,17 +1038,18 @@ function formatDateFrNumeric(isoDate: string) {
 }
 
 function drawReportHeader(cursor: PdfCursor, subtitle: string, generatedLabel: string, countLabel: string) {
-  ensureSpace(cursor, 60);
+  const s = cursor.scale;
+  ensureSpace(cursor, 60 * s);
   const topY = cursor.y;
-  cursor.page.drawText("TC3PC — Terminal à Conteneurs 3 du Port de Casablanca", { x: PAGE_MARGIN, y: topY - 12, size: 13, font: cursor.boldFont, color: rgb(0.04, 0.08, 0.15) });
-  cursor.page.drawText(subtitle, { x: PAGE_MARGIN, y: topY - 27, size: 9, font: cursor.font, color: rgb(0.35, 0.38, 0.45) });
+  cursor.page.drawText("TC3PC — Terminal à Conteneurs 3 du Port de Casablanca", { x: PAGE_MARGIN, y: topY - 12 * s, size: 13, font: cursor.boldFont, color: rgb(0.04, 0.08, 0.15) });
+  cursor.page.drawText(subtitle, { x: PAGE_MARGIN, y: topY - 27 * s, size: 9, font: cursor.font, color: rgb(0.35, 0.38, 0.45) });
   const genW = cursor.font.widthOfTextAtSize(generatedLabel, 8);
-  cursor.page.drawText(generatedLabel, { x: A4_WIDTH - PAGE_MARGIN - genW, y: topY - 10, size: 8, font: cursor.font, color: rgb(0.4, 0.4, 0.45) });
+  cursor.page.drawText(generatedLabel, { x: A4_WIDTH - PAGE_MARGIN - genW, y: topY - 10 * s, size: 8, font: cursor.font, color: rgb(0.4, 0.4, 0.45) });
   const countW = cursor.font.widthOfTextAtSize(countLabel, 8);
-  cursor.page.drawText(countLabel, { x: A4_WIDTH - PAGE_MARGIN - countW, y: topY - 23, size: 8, font: cursor.font, color: rgb(0.4, 0.4, 0.45) });
-  cursor.y = topY - 40;
+  cursor.page.drawText(countLabel, { x: A4_WIDTH - PAGE_MARGIN - countW, y: topY - 23 * s, size: 8, font: cursor.font, color: rgb(0.4, 0.4, 0.45) });
+  cursor.y = topY - 40 * s;
   cursor.page.drawLine({ start: { x: PAGE_MARGIN, y: cursor.y }, end: { x: A4_WIDTH - PAGE_MARGIN, y: cursor.y }, thickness: 1.5, color: rgb(0.1, 0.12, 0.18) });
-  cursor.y -= 18;
+  cursor.y -= 18 * s;
 }
 
 const PDF_COLUMNS = [
@@ -1088,31 +1061,33 @@ const PDF_COLUMNS = [
 ];
 
 function drawSectionTable(cursor: PdfCursor, sectionTitle: string, rows: { cells: string[]; alert: boolean }[]) {
-  ensureSpace(cursor, 34);
+  const s = cursor.scale;
+  ensureSpace(cursor, 34 * s);
   cursor.page.drawText(sectionTitle.toUpperCase(), { x: PAGE_MARGIN, y: cursor.y, size: 10, font: cursor.boldFont, color: rgb(0.04, 0.08, 0.15) });
-  cursor.y -= 16;
-  const totalWidth = PDF_COLUMNS.reduce((s, c) => s + c.width, 0);
+  cursor.y -= 16 * s;
+  const totalWidth = PDF_COLUMNS.reduce((sum, c) => sum + c.width, 0);
 
   if (rows.length === 0) {
     cursor.page.drawText("Aucun conducteur affecté.", { x: PAGE_MARGIN, y: cursor.y, size: 8, font: cursor.font, color: rgb(0.5, 0.5, 0.5) });
-    cursor.y -= 18;
+    cursor.y -= 18 * s;
     return;
   }
 
-  ensureSpace(cursor, 22);
+  ensureSpace(cursor, 22 * s);
   let x = PAGE_MARGIN;
   PDF_COLUMNS.forEach(col => {
     cursor.page.drawText(col.label, { x, y: cursor.y, size: 9, font: cursor.boldFont, color: rgb(0, 0, 0) });
     x += col.width;
   });
-  cursor.y -= 6;
+  cursor.y -= 6 * s;
   cursor.page.drawLine({ start: { x: PAGE_MARGIN, y: cursor.y }, end: { x: PAGE_MARGIN + totalWidth, y: cursor.y }, thickness: 1.2, color: rgb(0.6, 0.6, 0.65) });
-  cursor.y -= 12;
+  cursor.y -= 12 * s;
 
+  const rowStep = 14 * s;
   rows.forEach((row, idx) => {
-    ensureSpace(cursor, 16);
+    ensureSpace(cursor, rowStep + 2);
     if (idx % 2 === 1) {
-      cursor.page.drawRectangle({ x: PAGE_MARGIN - 2, y: cursor.y - 3, width: totalWidth + 4, height: 14, color: ROW_ALT_BG });
+      cursor.page.drawRectangle({ x: PAGE_MARGIN - 2, y: cursor.y - 3, width: totalWidth + 4, height: rowStep, color: ROW_ALT_BG });
     }
     let cx = PAGE_MARGIN;
     row.cells.forEach((cellText, i) => {
@@ -1127,16 +1102,22 @@ function drawSectionTable(cursor: PdfCursor, sectionTitle: string, rows: { cells
       cursor.page.drawText(cellText, { x: tx, y: cursor.y, size: 9, font, color });
       cx += col.width;
     });
-    cursor.y -= 14;
+    cursor.y -= rowStep;
   });
-  cursor.y -= 8;
+  cursor.y -= 8 * s;
 }
 
 async function buildShiftReportPdf(dateIso: string, shiftDef: any, teamNom: string, groups: any[], offRows: any[]) {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
-  const cursor = newPdfCursor(doc, font, boldFont);
+
+  // Étire l'espacement vertical pour qu'un rapport avec peu de conducteurs
+  // remplisse mieux la page A4 (voir commentaire de MAX_STRETCH).
+  const usableHeight = A4_HEIGHT - 2 * PAGE_MARGIN;
+  const baseHeight = measureShiftReportHeight(groups, offRows);
+  const scale = baseHeight > 0 ? Math.min(MAX_STRETCH, Math.max(1, usableHeight / baseHeight)) : 1;
+  const cursor = newPdfCursor(doc, font, boldFont, scale);
 
   const totalCount = groups.reduce((n, g) => n + g.rows.length, 0) + offRows.length;
   // "->" plutôt que "→" : la police standard PDF (encodage WinAnsi) ne sait
@@ -1295,8 +1276,7 @@ Deno.serve(async _req => {
         skippedDetails.push({ username: p.username, nom: p.nom, role: p.role, reason: "aucun conducteur dans le périmètre (équipe introuvable ?)" });
         continue;
       }
-      const scopeLabel = isShiftScoped ? "Équipe : " + ((teamById[p.team_id] || {}).nom || p.team_id) : "Toutes les équipes";
-      const html = renderAffectationHtml(todayIso, scoped, scopeLabel);
+      const html = renderShortEmailHtml(todayIso, isShiftScoped, isShiftScoped ? ((teamById[p.team_id] || {}).nom || p.team_id) : null);
       // PDF joint(s) : le shift de sa propre équipe pour un Responsable de
       // Shift, les 3 shifts du jour pour un Responsable/Admin.
       const pdfAttachments: PdfAttachment[] = isShiftScoped
