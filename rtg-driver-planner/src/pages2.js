@@ -1037,6 +1037,11 @@ function RapportRHPage() {
   const [year, setYear] = useState(now.getUTCFullYear());
   const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
   const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
+  // Filtre "Jour" — uniquement pertinent pour l'onglet Mouvements RTG (les
+  // autres rapports sont des cumuls mensuels par nature) : "all" garde tout
+  // le mois, sinon restreint à une seule journée.
+  const [day, setDay] = useState("all");
+  const dayIso = day === "all" ? null : RTGDate.toISO(RTGDate.makeDate(year, month, Number(day)));
 
   const report = useMemo(() => buildRapportRH(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
   const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
@@ -1060,9 +1065,12 @@ function RapportRHPage() {
       .finally(() => setMvtLoading(false));
   }, [tab, month, year]);
 
+  useEffect(() => { setDay("all"); }, [month, year]);
+
   const mvtReport = useMemo(() => {
     const map = {};
     mvtRows.forEach(r => {
+      if (dayIso && r.dateTravail !== dayIso) return;
       const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
       if (effectiveTeamId !== "all" && (!d || d.teamId !== effectiveTeamId)) return;
       const key = r.driverId || ("_" + r.loginTos);
@@ -1078,7 +1086,7 @@ function RapportRHPage() {
       return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
     });
     return { rows, total: rows.reduce((s, r) => s + r.totalMvmt, 0) };
-  }, [mvtRows, state.drivers, effectiveTeamId]);
+  }, [mvtRows, state.drivers, effectiveTeamId, dayIso]);
 
   const th = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
   const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
@@ -1094,7 +1102,7 @@ function RapportRHPage() {
           .concat(MOUVEMENTS_TOS_COLUMNS.map(c => g[c.key]))
           .concat([g.totalMvmt]);
       });
-      downloadCSV(`mouvements-rtg-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
+      downloadCSV(`mouvements-rtg-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.csv`, headers, rows);
       return;
     }
     if (tab === "feries") {
@@ -1125,7 +1133,7 @@ function RapportRHPage() {
       const filename = tab === "feries"
         ? `jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`
         : tab === "mouvements"
-        ? `mouvements-rtg-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`
+        ? `mouvements-rtg-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.pdf`
         : `rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`;
       await exportNodeAsPdf(printRef.current, filename);
     } catch (e) {
@@ -1165,6 +1173,17 @@ function RapportRHPage() {
           <label className={LABEL_CLS}>Année</label>
           <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
         </div>
+        {tab === "mouvements" && (
+        <div>
+          <label className={LABEL_CLS}>Jour</label>
+          <select value={day} onChange={e => setDay(e.target.value)} className={FIELD_CLS}>
+            <option value="all">Tout le mois</option>
+            {Array.from({ length: RTGDate.daysInMonth(month, year) }, (_, i) => i + 1).map(d => (
+              <option key={d} value={d}>{String(d).padStart(2, "0")}</option>
+            ))}
+          </select>
+        </div>
+        )}
         {!shiftRestricted && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
@@ -1320,7 +1339,7 @@ function RapportRHPage() {
             <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
-              <div className="text-xs sm:text-sm text-slate-600">Mouvements RTG (import TOS) — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+              <div className="text-xs sm:text-sm text-slate-600">Mouvements RTG (import TOS) — {dayIso ? RTGDate.formatFr(RTGDate.parseISO(dayIso)) : RAPPORT_MOIS_LABELS[month - 1] + " " + year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
