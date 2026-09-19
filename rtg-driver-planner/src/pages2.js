@@ -2410,8 +2410,14 @@ function MesMouvementsPage() {
 // avec le détail par jour/shift/engin. RLS restreint déjà ce qui revient pour
 // un RESPONSABLE_SHIFT (sa propre équipe uniquement) — pas de filtre
 // supplémentaire nécessaire côté client.
+function emptyMouvementManuelForm(teamId) {
+  return { driverId: "", dateTravail: RTGDate.toISO(new Date()), shift: "", nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, commentaire: "" };
+}
+
 function MouvementsRtgPage() {
   const state = useRtgState();
+  const currentUser = useCurrentUser();
+  const shiftRestricted = isShiftRestricted(currentUser);
   const now = new Date();
   const [tab, setTab] = useState("detail");
 
@@ -2421,18 +2427,56 @@ function MouvementsRtgPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (tab !== "detail") return;
+  const refreshDetailRows = () => {
     setLoading(true);
     setError("");
     const dim = RTGDate.daysInMonth(month, year);
     const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
     const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
-    RTGStore.fetchMouvementsTos({ dateFrom, dateTo })
+    return RTGStore.fetchMouvementsTos({ dateFrom, dateTo })
       .then(setRows)
       .catch(e => setError(e && e.message ? e.message : "Chargement impossible."))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (tab !== "detail") return;
+    refreshDetailRows();
   }, [tab, month, year]);
+
+  // ---- Saisie manuelle : certains mouvements réalisés par les conducteurs
+  // ne remontent pas dans le rapport TOS — un responsable peut les ajouter
+  // à la main, par conducteur et par jour. Fusionnés automatiquement avec
+  // les mouvements importés dans tous les rapports (RTGStore.fetchMouvementsTos). ----
+  const [showManuelForm, setShowManuelForm] = useState(false);
+  const [manuelForm, setManuelForm] = useState(() => emptyMouvementManuelForm());
+  const [manuelError, setManuelError] = useState("");
+  const [manuelSaving, setManuelSaving] = useState(false);
+
+  const submitManuel = async () => {
+    if (!manuelForm.driverId) { setManuelError("Sélectionnez un conducteur."); return; }
+    setManuelSaving(true);
+    setManuelError("");
+    try {
+      await RTGStore.addMouvementManuel(manuelForm);
+      setManuelForm(emptyMouvementManuelForm());
+      setShowManuelForm(false);
+      if (tab === "detail") await refreshDetailRows();
+    } catch (e) {
+      setManuelError("Erreur d'enregistrement : " + (e && e.message ? e.message : "réessayez."));
+    } finally {
+      setManuelSaving(false);
+    }
+  };
+
+  const deleteManuel = async id => {
+    try {
+      await RTGStore.deleteMouvementManuel(id);
+      if (tab === "detail") await refreshDetailRows();
+    } catch (e) {
+      alert("Erreur : " + (e && e.message ? e.message : "réessayez."));
+    }
+  };
 
   // ---- Onglet "Total par conducteur" : période libre (date à date), une
   // ligne par conducteur avec le total de chaque type de mouvement — sur le
@@ -2518,10 +2562,48 @@ function MouvementsRtgPage() {
 
   return (
     <div className="space-y-4 fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Mouvements RTG</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS</p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Mouvements RTG</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS</p>
+        </div>
+        <button onClick={() => setShowManuelForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+          <i className="fas fa-plus mr-1.5"></i>Ajouter des mouvements manuels
+        </button>
       </div>
+
+      {showManuelForm && (
+        <Panel title="Nouvel enregistrement — mouvements manuels" icon="fa-truck-ramp-box">
+          <div className="space-y-3">
+            <p className="text-[11px] text-slate-500">Pour les mouvements réalisés par un conducteur mais non tracés par le TOS. Renseignez uniquement les types concernés — le total se calcule automatiquement.</p>
+            {manuelError && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{manuelError}</div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={manuelForm.driverId} onChange={v => setManuelForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
+              <div><label className={LABEL_CLS}>Date</label><input type="date" className={FIELD_CLS} value={manuelForm.dateTravail} onChange={e => setManuelForm(f => Object.assign({}, f, { dateTravail: e.target.value }))} /></div>
+              <div>
+                <label className={LABEL_CLS}>Shift (optionnel)</label>
+                <select className={FIELD_CLS} value={manuelForm.shift} onChange={e => setManuelForm(f => Object.assign({}, f, { shift: e.target.value }))}>
+                  <option value="">—</option>
+                  {state.config.shifts.map(s => <option key={s.id} value={s.id}>{s.id}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+              {MOUVEMENTS_TOS_COLUMNS.map(c => (
+                <div key={c.key}>
+                  <label className={LABEL_CLS}>{c.label}</label>
+                  <input type="number" min="0" step="1" className={FIELD_CLS} value={manuelForm[c.key]} onChange={e => setManuelForm(f => Object.assign({}, f, { [c.key]: e.target.value }))} />
+                </div>
+              ))}
+            </div>
+            <div><label className={LABEL_CLS}>Commentaire</label><input className={FIELD_CLS} value={manuelForm.commentaire} onChange={e => setManuelForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
+            <div className="flex gap-2">
+              <button onClick={submitManuel} disabled={manuelSaving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{manuelSaving ? "Enregistrement..." : "Enregistrer"}</button>
+              <button onClick={() => setShowManuelForm(false)} disabled={manuelSaving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        </Panel>
+      )}
 
       <div className="flex gap-2">
         <button onClick={() => setTab("detail")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "detail" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Détail par jour/shift</button>
@@ -2578,6 +2660,7 @@ function MouvementsRtgPage() {
                       <th className="px-4 py-1">Conducteur</th><th className="px-3 py-1">Équipe</th><th className="px-3 py-1">Engin</th>
                       {MOUVEMENTS_TOS_COLUMNS.map(c => <th key={c.key} className="px-3 py-1 text-center">{c.label}</th>)}
                       <th className="px-3 py-1 text-center font-bold">Total</th>
+                      <th className="px-3 py-1"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2588,9 +2671,10 @@ function MouvementsRtgPage() {
                         <tr key={r.id} className="border-t border-border/60 hover:bg-marine-600/10">
                           <td className="px-4 py-1.5 text-white">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
                           <td className="px-3 py-1.5 text-slate-300">{team ? team.nom : "—"}</td>
-                          <td className="px-3 py-1.5 text-slate-300">{r.engin}</td>
+                          <td className="px-3 py-1.5 text-slate-300">{r.source === "MANUEL" ? <span className="text-sky-400">{r.engin}</span> : r.engin}</td>
                           {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-300">{r[c.key]}</td>)}
                           <td className="px-3 py-1.5 text-center text-white font-bold">{r.totalMvmt}</td>
+                          <td className="px-3 py-1.5">{r.source === "MANUEL" && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteManuel(r.id)} className="text-red-400 hover:text-red-300 text-[11px]" />}</td>
                         </tr>
                       );
                     })}

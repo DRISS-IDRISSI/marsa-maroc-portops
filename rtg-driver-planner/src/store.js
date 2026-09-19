@@ -108,7 +108,17 @@ const RTGStore = (function () {
       engin: r.engin, facility: r.facility,
       nombreIn: r.nombre_in, nombreOut: r.nombre_out, nombreMove: r.nombre_move, nombreShifting: r.nombre_shifting,
       nombreDisch: r.nombre_disch, nombreLoad: r.nombre_load, nombreAutre: r.nombre_autre, totalMvmt: r.total_mvmt,
-      matchNote: r.match_note, createdAt: r.created_at
+      matchNote: r.match_note, createdAt: r.created_at, source: "TOS"
+    };
+  }
+  function mapMouvementManuelRow(r) {
+    const total = (r.nombre_in || 0) + (r.nombre_out || 0) + (r.nombre_move || 0) + (r.nombre_shifting || 0) + (r.nombre_disch || 0) + (r.nombre_load || 0) + (r.nombre_autre || 0);
+    return {
+      id: r.id, driverId: r.driver_id, loginTos: null, dateTravail: r.date_travail, shift: r.shift || "",
+      engin: "Saisie manuelle", facility: null,
+      nombreIn: r.nombre_in, nombreOut: r.nombre_out, nombreMove: r.nombre_move, nombreShifting: r.nombre_shifting,
+      nombreDisch: r.nombre_disch, nombreLoad: r.nombre_load, nombreAutre: r.nombre_autre, totalMvmt: total,
+      matchNote: null, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at, source: "MANUEL"
     };
   }
 
@@ -590,9 +600,36 @@ const RTGStore = (function () {
     if (driverId) query = query.eq("driver_id", driverId);
     if (dateFrom) query = query.gte("date_travail", dateFrom);
     if (dateTo) query = query.lte("date_travail", dateTo);
-    const { data, error } = await query;
+    let manuelQuery = sb.from("mouvements_manuels").select("*").order("date_travail", { ascending: false });
+    if (driverId) manuelQuery = manuelQuery.eq("driver_id", driverId);
+    if (dateFrom) manuelQuery = manuelQuery.gte("date_travail", dateFrom);
+    if (dateTo) manuelQuery = manuelQuery.lte("date_travail", dateTo);
+    const [tosRes, manuelRes] = await Promise.all([query, manuelQuery]);
+    if (tosRes.error) { console.error(tosRes.error); throw tosRes.error; }
+    if (manuelRes.error) { console.error(manuelRes.error); throw manuelRes.error; }
+    return (tosRes.data || []).map(mapMouvementTosRow).concat((manuelRes.data || []).map(mapMouvementManuelRow));
+  }
+
+  async function addMouvementManuel(input) {
+    const row = {
+      driver_id: input.driverId, date_travail: input.dateTravail, shift: input.shift || null,
+      nombre_in: Number(input.nombreIn) || 0, nombre_out: Number(input.nombreOut) || 0, nombre_move: Number(input.nombreMove) || 0,
+      nombre_shifting: Number(input.nombreShifting) || 0, nombre_disch: Number(input.nombreDisch) || 0,
+      nombre_load: Number(input.nombreLoad) || 0, nombre_autre: Number(input.nombreAutre) || 0,
+      commentaire: input.commentaire || "", utilisateur: currentUserLabel()
+    };
+    const { data, error } = await sb.from("mouvements_manuels").insert(row).select().single();
     if (error) { console.error(error); throw error; }
-    return (data || []).map(mapMouvementTosRow);
+    const record = mapMouvementManuelRow(data);
+    const d = state.drivers.find(dr => dr.id === input.driverId);
+    addAuditEntry({ driverId: input.driverId, matricule: d ? d.matricule : "", action: "Ajout mouvements manuels", details: input.dateTravail + " — " + record.totalMvmt + " mouvement(s)" });
+    return record;
+  }
+
+  async function deleteMouvementManuel(id) {
+    const { error } = await sb.from("mouvements_manuels").delete().eq("id", id);
+    if (error) { console.error(error); throw error; }
+    addAuditEntry({ action: "Suppression mouvements manuels", details: id });
   }
 
   // ---------- Utilisateurs / authentification (§30) ----------
@@ -712,6 +749,6 @@ const RTGStore = (function () {
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
     updateTeam,
     getFerieMouvements, setFerieMouvements,
-    fetchMouvementsTos
+    fetchMouvementsTos, addMouvementManuel, deleteMouvementManuel
   };
 })();
