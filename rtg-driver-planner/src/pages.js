@@ -1128,7 +1128,7 @@ function Cell({ assignment, detailLevel, onEdit, weekStart }) {
   const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
   return (
     <td
-      className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${isManual ? "ring-1 ring-inset ring-sky-400" : ""} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
+      className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
       title={title}
       onClick={onEdit}
     >
