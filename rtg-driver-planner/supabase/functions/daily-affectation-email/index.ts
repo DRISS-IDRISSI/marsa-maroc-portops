@@ -8,8 +8,8 @@
 // respectif) et l'envoie par email :
 //   - à chaque RESPONSABLE_SHIFT actif (avec un email renseigné,
 //     profiles.email) : UNIQUEMENT les conducteurs de SA propre équipe ;
-//   - à chaque RESPONSABLE actif (avec un email renseigné) : TOUTES les
-//     équipes.
+//   - à chaque RESPONSABLE et ADMIN actif (avec un email renseigné) :
+//     TOUTES les équipes.
 //
 // Format : un tableau HTML simple (pas une reproduction pixel du rapport
 // PDF de l'appli — celui-ci est capturé via html2canvas depuis un vrai
@@ -1041,8 +1041,8 @@ Deno.serve(async _req => {
     state.teams.forEach((t: any) => { teamById[t.id] = t; });
 
     const { data: profiles, error: profilesError } = await admin
-      .from("profiles").select("id,nom,role,team_id,email,actif")
-      .in("role", ["RESPONSABLE", "RESPONSABLE_SHIFT"]).eq("actif", true);
+      .from("profiles").select("id,nom,username,role,team_id,email,actif")
+      .in("role", ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"]).eq("actif", true);
     if (profilesError) throw profilesError;
 
     const client = new SMTPClient({
@@ -1051,11 +1051,23 @@ Deno.serve(async _req => {
 
     let sent = 0, skipped = 0;
     const errors: string[] = [];
+    // Détail des comptes ignorés (email absent, ou équipe sans conducteur ce
+    // jour-là) — renvoyé dans la réponse pour pouvoir diagnostiquer sans
+    // avoir à deviner qui a été sauté et pourquoi.
+    const skippedDetails: { username: string; nom: string; role: string; reason: string }[] = [];
     for (const p of profiles || []) {
-      if (!p.email) { skipped++; continue; }
+      if (!p.email) {
+        skipped++;
+        skippedDetails.push({ username: p.username, nom: p.nom, role: p.role, reason: "aucun email renseigné sur le compte" });
+        continue;
+      }
       const isShiftScoped = p.role === "RESPONSABLE_SHIFT";
       const scoped = isShiftScoped ? assignments.filter(a => a.teamId === p.team_id) : assignments;
-      if (scoped.length === 0) { skipped++; continue; }
+      if (scoped.length === 0) {
+        skipped++;
+        skippedDetails.push({ username: p.username, nom: p.nom, role: p.role, reason: "aucun conducteur dans le périmètre (équipe introuvable ?)" });
+        continue;
+      }
       const scopeLabel = isShiftScoped ? "Équipe : " + ((teamById[p.team_id] || {}).nom || p.team_id) : "Toutes les équipes";
       const html = renderAffectationHtml(todayIso, scoped, scopeLabel);
       try {
@@ -1067,7 +1079,7 @@ Deno.serve(async _req => {
     }
     await client.close();
 
-    return new Response(JSON.stringify({ ok: true, date: todayIso, sent, skipped, errors }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, date: todayIso, sent, skipped, skippedDetails, errors }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {
     console.error(e);
     return new Response(JSON.stringify({ error: String(e && (e as Error).message ? (e as Error).message : e) }), { status: 500, headers: { "Content-Type": "application/json" } });
