@@ -64,7 +64,7 @@ const LABEL_CLS = "block text-[10px] uppercase tracking-wider text-slate-500 mb-
 // 1. Conducteurs (CRUD complet — §28)
 // ==========================================
 function emptyDriverForm(lockedTeamId) {
-  return { matricule: "", nom: "", prenom: "", email: "", teamId: lockedTeamId || "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "", soldeReport: "", soldeReportAnnee: "" };
+  return { matricule: "", nom: "", prenom: "", email: "", teamId: lockedTeamId || "A", initialZone: "A", initialVacation: "V1", dateEntree: RTGDate.toISO(new Date()), observation: "", soldeReport: "", soldeReportAnnee: "", loginTos: "" };
 }
 
 function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId }) {
@@ -144,6 +144,13 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
           </div>
         </div>
         <p className="text-[11px] text-slate-500 mt-1.5">Une fois renseigné, le solde disponible se recalcule automatiquement chaque année suivante (droit de 26j/an + report non expiré − jours de congé déjà pris dans l'appli).</p>
+      </div>
+      <div className="border-t border-border pt-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Mouvements RTG — import automatique depuis le TOS</p>
+        <div><label className={LABEL_CLS}>Login TOS (uniquement si différent de celui déduit automatiquement)</label>
+          <input placeholder="ex. melghannamtc3" className={FIELD_CLS} value={form.loginTos || ""} onChange={e => setForm(f => Object.assign({}, f, { loginTos: e.target.value }))} />
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1.5">Laissez vide : le login est déduit automatiquement (1ère lettre du prénom + nom + suffixe terminal). Ne renseignez ce champ que si l'import de mouvements RTG ne rattache pas ce conducteur (login TOS orthographié différemment de son nom officiel).</p>
       </div>
       <div className="flex gap-2">
         <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : (editingId ? "Enregistrer" : "Créer le conducteur")}</button>
@@ -251,7 +258,7 @@ function DriversPage() {
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
           <DriverForm state={state} lockedTeamId={shiftRestricted ? currentUser.teamId : null}
-            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
+            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "", loginTos: editingDriver.loginTos || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
             editingId={editingId} onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}

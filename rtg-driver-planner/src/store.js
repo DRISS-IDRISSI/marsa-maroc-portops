@@ -78,7 +78,8 @@ const RTGStore = (function () {
       statut: r.statut, dateEntree: r.date_entree, dateSortie: r.date_sortie,
       observation: r.observation || "", actif: r.actif, motifDepart: r.motif_depart,
       ordreAffichage: r.ordre_affichage,
-      soldeReport: r.conge_solde_report, soldeReportAnnee: r.conge_solde_report_annee
+      soldeReport: r.conge_solde_report, soldeReportAnnee: r.conge_solde_report_annee,
+      loginTos: r.login_tos || ""
     };
   }
   function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
@@ -283,6 +284,7 @@ const RTGStore = (function () {
     if ("ordreAffichage" in patch) dbPatch.ordre_affichage = patch.ordreAffichage;
     if ("soldeReport" in patch) dbPatch.conge_solde_report = patch.soldeReport === "" || patch.soldeReport === null ? null : Number(patch.soldeReport);
     if ("soldeReportAnnee" in patch) dbPatch.conge_solde_report_annee = patch.soldeReportAnnee === "" || patch.soldeReportAnnee === null ? null : Number(patch.soldeReportAnnee);
+    if ("loginTos" in patch) dbPatch.login_tos = patch.loginTos ? patch.loginTos.trim().toLowerCase() : null;
 
     const { data, error } = await sb.from("drivers").update(dbPatch).eq("id", driverId).select().single();
     if (error) { console.error(error); throw error; }

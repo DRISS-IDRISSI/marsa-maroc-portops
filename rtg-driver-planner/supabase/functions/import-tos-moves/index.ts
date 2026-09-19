@@ -93,7 +93,7 @@ Deno.serve(async _req => {
     });
   }
 
-  const { data: drivers, error: driversError } = await admin.from("drivers").select("id,nom,prenom,actif").eq("actif", true);
+  const { data: drivers, error: driversError } = await admin.from("drivers").select("id,nom,prenom,actif,login_tos").eq("actif", true);
   if (driversError) {
     return new Response(JSON.stringify({ ok: false, error: "Chargement conducteurs échoué : " + driversError.message }), {
       status: 500, headers: { "Content-Type": "application/json" }
@@ -101,10 +101,12 @@ Deno.serve(async _req => {
   }
 
   // login TOS attendu -> liste des driver_id qui y correspondent (normalement
-  // 1 seul ; plus d'un = ambiguïté à signaler).
+  // 1 seul ; plus d'un = ambiguïté à signaler). Un login_tos saisi à la main
+  // sur la fiche conducteur (cas d'un compte TOS orthographié différemment du
+  // nom officiel) prime sur la déduction automatique.
   const loginMap = new Map<string, string[]>();
   (drivers || []).forEach(d => {
-    const login = deriveTosLogin(d);
+    const login = (d.login_tos && d.login_tos.trim()) ? d.login_tos.trim().toLowerCase() : deriveTosLogin(d);
     if (!login) return;
     if (!loginMap.has(login)) loginMap.set(login, []);
     loginMap.get(login)!.push(d.id);
