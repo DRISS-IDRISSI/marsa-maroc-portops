@@ -24,8 +24,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: claude/new-session-0yhk5k
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload RTG Driver Planner as Pages artifact
