@@ -417,7 +417,7 @@ function CongeSoldeBadge({ driver, state }) {
 // ==========================================
 // 2/3/4. Congés / Maladies / Absences — page générique
 // ==========================================
-function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, deleteFn }) {
+function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStatusCol, addFn, deleteFn }) {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
@@ -432,6 +432,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, d
       return d && d.teamId === currentUser.teamId;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+  const todayIso = RTGDate.toISO(new Date());
 
   const submit = () => {
     if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
@@ -487,25 +488,30 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, addFn, d
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
+              {showStatusCol && <th className="px-3 py-2">Statut</th>}
               {showTypeSelect && <th className="px-3 py-2">Type</th>}
               <th className="px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
             {records.length === 0 && (
-              <tr><td colSpan={showTypeSelect ? 7 : 6} className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
+              <tr><td colSpan={(showTypeSelect ? 7 : 6) + (showStatusCol ? 1 : 0)} className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
-            {records.map(r => (
+            {records.map(r => {
+              const temporalMeta = todayIso < r.dateDebut ? CONGE_TEMPORAL_META.FUTUR : todayIso > r.dateFin ? CONGE_TEMPORAL_META.ACHEVE : CONGE_TEMPORAL_META.EN_COURS;
+              return (
               <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
                 <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
                 <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
                 <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
+                {showStatusCol && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded border ${temporalMeta.className}`}>{temporalMeta.label}</span></td>}
                 {showTypeSelect && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${r.type === "FORMATION" ? "bg-blue-600/30 text-blue-300" : "bg-red-600/30 text-red-300"}`}>{r.type === "FORMATION" ? "Formation" : "Absence"}</span></td>}
                 <td className="px-3 py-2 text-slate-400">{r.type && !showTypeSelect ? r.type : r.commentaire}</td>
                 <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
                 <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteFn(r.id)} className="text-red-400 hover:text-red-300 text-xs" /></td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -701,7 +707,7 @@ function CongesPage() {
 }
 
 function MaladiesPage() {
-  return <RecordsPage title="Maladies" icon="fa-briefcase-medical" listKey="maladies" kindLabel="maladie"
+  return <RecordsPage title="Maladies" icon="fa-briefcase-medical" listKey="maladies" kindLabel="maladie" showStatusCol
     addFn={f => RTGStore.addMaladie({ driverId: f.driverId, dateDebut: f.dateDebut, dateFin: f.dateFin, commentaire: f.commentaire })}
     deleteFn={id => RTGStore.deleteMaladie(id)} />;
 }
