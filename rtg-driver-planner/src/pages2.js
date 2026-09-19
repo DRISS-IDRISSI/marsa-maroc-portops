@@ -1042,11 +1042,61 @@ function RapportRHPage() {
   const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
   const generatedAt = new Date();
 
+  // Onglet "Mouvements RTG" : total par conducteur (import automatique TOS),
+  // sur le même mois/équipe que les autres onglets de cette page.
+  const [mvtRows, setMvtRows] = useState([]);
+  const [mvtLoading, setMvtLoading] = useState(false);
+  const [mvtError, setMvtError] = useState("");
+  useEffect(() => {
+    if (tab !== "mouvements") return;
+    setMvtLoading(true);
+    setMvtError("");
+    const dim = RTGDate.daysInMonth(month, year);
+    const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
+    const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
+    RTGStore.fetchMouvementsTos({ dateFrom, dateTo })
+      .then(setMvtRows)
+      .catch(e => setMvtError(e && e.message ? e.message : "Chargement impossible."))
+      .finally(() => setMvtLoading(false));
+  }, [tab, month, year]);
+
+  const mvtReport = useMemo(() => {
+    const map = {};
+    mvtRows.forEach(r => {
+      const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
+      if (effectiveTeamId !== "all" && (!d || d.teamId !== effectiveTeamId)) return;
+      const key = r.driverId || ("_" + r.loginTos);
+      if (!map[key]) {
+        map[key] = { driverId: r.driverId, loginTos: r.loginTos, nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, totalMvmt: 0 };
+      }
+      MOUVEMENTS_TOS_COLUMNS.forEach(c => { map[key][c.key] += r[c.key] || 0; });
+      map[key].totalMvmt += r.totalMvmt || 0;
+    });
+    const rows = Object.values(map).sort((a, b) => {
+      const da = a.driverId ? state.drivers.find(d => d.id === a.driverId) : null;
+      const db = b.driverId ? state.drivers.find(d => d.id === b.driverId) : null;
+      return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
+    });
+    return { rows, total: rows.reduce((s, r) => s + r.totalMvmt, 0) };
+  }, [mvtRows, state.drivers, effectiveTeamId]);
+
   const th = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
   const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
   const tdCenter = td + " text-center";
 
   const exportExcel = () => {
+    if (tab === "mouvements") {
+      const headers = ["Mat", "Nom", "Prénom", "Équipe"].concat(MOUVEMENTS_TOS_COLUMNS.map(c => c.label)).concat(["Total"]);
+      const rows = mvtReport.rows.map(g => {
+        const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
+        const teamNom = d ? ((state.teams.find(t => t.id === d.teamId) || {}).nom || "") : "";
+        return [d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"), teamNom]
+          .concat(MOUVEMENTS_TOS_COLUMNS.map(c => g[c.key]))
+          .concat([g.totalMvmt]);
+      });
+      downloadCSV(`mouvements-rtg-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
+      return;
+    }
     if (tab === "feries") {
       const headers = ["Date", "Mat", "Nom", "Prénom", "Équipe", "Type", "Heures", "Mouvements réalisés", "Commentaire"];
       const rows = feriesReport.rows.map(r => [
@@ -1074,6 +1124,8 @@ function RapportRHPage() {
     try {
       const filename = tab === "feries"
         ? `jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`
+        : tab === "mouvements"
+        ? `mouvements-rtg-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`
         : `rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.pdf`;
       await exportNodeAsPdf(printRef.current, filename);
     } catch (e) {
@@ -1099,6 +1151,7 @@ function RapportRHPage() {
       <div className="flex gap-2 print:hidden">
         <button onClick={() => setTab("rh")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "rh" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Rapport RH</button>
         <button onClick={() => setTab("feries")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "feries" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Jours fériés &amp; 3ème shift dimanche</button>
+        <button onClick={() => setTab("mouvements")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "mouvements" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Mouvements RTG</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4 print:hidden">
@@ -1256,6 +1309,67 @@ function RapportRHPage() {
 
         <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
           Document généré automatiquement par RTG Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
+        </div>
+      </div>
+      )}
+
+      {tab === "mouvements" && (
+      <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
+          <div className="flex items-center gap-3">
+            <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-9 w-auto shrink-0" />
+            <div>
+              <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
+              <div className="text-xs sm:text-sm text-slate-600">Mouvements RTG (import TOS) — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+            </div>
+          </div>
+          <div className="sm:text-right text-xs text-slate-500">
+            <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+            <div>{mvtReport.rows.length} conducteur{mvtReport.rows.length > 1 ? "s" : ""} · {mvtReport.total} mouvement{mvtReport.total > 1 ? "s" : ""}</div>
+          </div>
+        </div>
+
+        {mvtError && <div className="text-xs text-red-600 mb-2">{mvtError}</div>}
+        <p className="sm:hidden print:hidden text-[11px] text-slate-500 mb-1.5"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir toutes les colonnes</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr>
+                <th className={th}>Mat</th>
+                <th className={th}>Nom</th>
+                <th className={th}>Prénom</th>
+                <th className={th}>Équipe</th>
+                {MOUVEMENTS_TOS_COLUMNS.map(c => <th key={c.key} className={th}>{c.label}</th>)}
+                <th className={th}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mvtLoading && (
+                <tr><td colSpan={MOUVEMENTS_TOS_COLUMNS.length + 5} className="px-2 py-6 text-center text-slate-500 italic">Chargement...</td></tr>
+              )}
+              {!mvtLoading && mvtReport.rows.map(g => {
+                const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
+                const teamNom = d ? ((state.teams.find(t => t.id === d.teamId) || {}).nom || "") : "";
+                return (
+                  <tr key={g.driverId || g.loginTos}>
+                    <td className={td}>{d ? d.matricule : g.loginTos}</td>
+                    <td className={td + " font-medium"}>{d ? d.nom : "(non rattaché)"}</td>
+                    <td className={td}>{d ? d.prenom : ""}</td>
+                    <td className={td}>{teamNom}</td>
+                    {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className={tdCenter}>{g[c.key]}</td>)}
+                    <td className={tdCenter + " font-semibold"}>{g.totalMvmt}</td>
+                  </tr>
+                );
+              })}
+              {!mvtLoading && mvtReport.rows.length === 0 && (
+                <tr><td colSpan={MOUVEMENTS_TOS_COLUMNS.length + 5} className="px-2 py-6 text-center text-slate-500 italic">Aucun mouvement importé pour cette sélection.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+          Document généré automatiquement par RTG Driver Planner (import TOS) — à valider par le Responsable Exploitation avant transmission au Service RH.
         </div>
       </div>
       )}
