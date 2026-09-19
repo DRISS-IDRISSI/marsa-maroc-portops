@@ -622,6 +622,19 @@ const RTGStore = (function () {
       }
     }
 
+    // Rien à modifier dans `profiles` (ex. uniquement le mot de passe, déjà
+    // traité ci-dessus via sb.auth.updateUser, qui ne touche pas cette
+    // table) : ne PAS lancer un update+select vide. Cette table n'est
+    // modifiable que par un ADMIN (RLS profiles_write_admin) — un
+    // update({}) par un non-ADMIN (ex. self-service "Mon compte") est donc
+    // rejeté par RLS (0 ligne visible) et .single() échoue avec "Cannot
+    // coerce the result to a single JSON object", alors que le mot de passe,
+    // lui, a bien été changé.
+    if (Object.keys(dbPatch).length === 0) {
+      addAuditEntry({ action: "Modification utilisateur", details: userId });
+      return;
+    }
+
     const { data, error } = await sb.from("profiles").update(dbPatch).eq("id", userId).select().single();
     if (error) { console.error(error); throw error; }
     const updated = mapProfileRow(data);
