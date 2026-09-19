@@ -995,10 +995,22 @@ function renderAffectationHtml(isoDate: string, assignments: any[], scopeLabel: 
     </div>`;
 }
 
+// Un profil peut avoir plusieurs adresses dans son champ email (saisie
+// libre), séparées par une virgule ou un point-virgule — ex. "a@x.com;
+// b@y.com" — cas réel observé en usage. Le serveur SMTP rejette une seule
+// chaîne "to" contenant plusieurs adresses jointes par ";" ; on les
+// sépare donc et on les passe en tableau (accepté nativement par
+// client.send({ to: [...] })).
+function splitEmails(raw: string) {
+  return raw.split(/[;,]/).map(e => e.trim()).filter(Boolean);
+}
+
 async function sendAffectationEmail(client: SMTPClient, to: string, isoDate: string, html: string) {
+  const recipients = splitEmails(to);
+  if (recipients.length === 0) return;
   await client.send({
     from: GMAIL_USER!,
-    to,
+    to: recipients,
     subject: `Affectation du jour — ${isoDate}`,
     // content:"auto" génère automatiquement la version texte brut (fallback
     // pour les clients mail qui n'affichent pas le HTML) à partir de "html".
