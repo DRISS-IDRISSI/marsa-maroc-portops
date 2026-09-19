@@ -1254,9 +1254,22 @@ Deno.serve(async _req => {
       pdfByShift[shiftId] = { filename: `affectation-${todayIso}-${shiftId}.pdf`, bytes };
     }
 
-    const { data: profiles, error: profilesError } = await admin
-      .from("profiles").select("id,nom,username,role,team_id,email,actif")
-      .in("role", ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"]).eq("actif", true);
+    // Test ciblé : { "testEmail": "moi@exemple.com" } dans le corps de la
+    // requête envoie UNIQUEMENT à cette adresse (toutes les équipes, les 3
+    // PDF) — sans toucher aux vrais destinataires (Responsables/Admin). Utile
+    // pour tester depuis le bouton "Test" sans notifier toute l'équipe à
+    // chaque essai.
+    let testEmail: string | null = null;
+    try {
+      const body = await _req.json();
+      if (body && typeof body.testEmail === "string" && body.testEmail.trim()) testEmail = body.testEmail.trim();
+    } catch { /* corps vide ou non-JSON — comportement normal (cron) */ }
+
+    const { data: profiles, error: profilesError } = testEmail
+      ? { data: [{ id: "test", nom: "Test", username: "test", role: "RESPONSABLE", team_id: null, email: testEmail, actif: true }], error: null }
+      : await admin
+        .from("profiles").select("id,nom,username,role,team_id,email,actif")
+        .in("role", ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"]).eq("actif", true);
     if (profilesError) throw profilesError;
 
     const client = new SMTPClient({
@@ -1298,7 +1311,7 @@ Deno.serve(async _req => {
     }
     await client.close();
 
-    return new Response(JSON.stringify({ ok: true, date: todayIso, sent, skipped, skippedDetails, errors }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, date: todayIso, testEmail, sent, skipped, skippedDetails, errors }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {
     console.error(e);
     return new Response(JSON.stringify({ error: String(e && (e as Error).message ? (e as Error).message : e) }), { status: 500, headers: { "Content-Type": "application/json" } });
