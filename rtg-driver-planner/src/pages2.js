@@ -522,6 +522,24 @@ const CONGE_STATUT_META = {
   REFUSE: { label: "Refusé", className: "bg-red-500/20 text-red-300 border-red-500/30" }
 };
 
+// Distinction visuelle demandée par l'exploitant, UNIQUEMENT pour les
+// congés VALIDÉS : selon la position de la période par rapport à
+// aujourd'hui, pour repérer en un coup d'œil qui est ACTUELLEMENT en congé
+// (plutôt qu'un badge "Validé" identique pour un congé déjà terminé, en
+// cours, ou pas encore commencé). "En attente"/"Refusé" gardent leur
+// couleur habituelle (CONGE_STATUT_META), sans rapport avec la date.
+const CONGE_TEMPORAL_META = {
+  EN_COURS: { label: "En cours", className: "bg-sky-500/20 text-sky-300 border-sky-500/30" },
+  ACHEVE: { label: "Terminé", className: "bg-slate-700/40 text-slate-400 border-slate-600/40" },
+  FUTUR: { label: "À venir", className: "bg-violet-500/20 text-violet-300 border-violet-500/30" }
+};
+function congeDisplayMeta(r, todayIso) {
+  if (r.statut === "EN_ATTENTE" || r.statut === "REFUSE") return CONGE_STATUT_META[r.statut];
+  if (todayIso < r.dateDebut) return CONGE_TEMPORAL_META.FUTUR;
+  if (todayIso > r.dateFin) return CONGE_TEMPORAL_META.ACHEVE;
+  return CONGE_TEMPORAL_META.EN_COURS;
+}
+
 function CongeJustificatifLink({ path }) {
   const [busy, setBusy] = useState(false);
   if (!path) return <span className="text-slate-600">—</span>;
@@ -566,6 +584,7 @@ function CongesPage() {
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
   const pendingCount = records.filter(r => r.statut === "EN_ATTENTE").length;
+  const todayIso = RTGDate.toISO(new Date());
 
   const submit = () => {
     if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
@@ -636,7 +655,7 @@ function CongesPage() {
               <tr><td colSpan="9" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
             {records.map(r => {
-              const meta = CONGE_STATUT_META[r.statut] || CONGE_STATUT_META.VALIDE;
+              const meta = congeDisplayMeta(r, todayIso);
               const isPending = r.statut === "EN_ATTENTE";
               const rDriver = state.drivers.find(dr => dr.id === r.driverId);
               return (
@@ -1969,6 +1988,7 @@ function MesCongesPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
 
   const myRequests = driver ? state.conges.filter(c => c.driverId === driver.id).slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut)) : [];
+  const todayIsoMesConges = RTGDate.toISO(new Date());
 
   // "Dernier congé pris" (comme sur le formulaire papier, format MM/AAAA) :
   // le congé VALIDE le plus récent déjà terminé — calculé automatiquement,
@@ -2108,7 +2128,7 @@ function MesCongesPage() {
               <tr><td colSpan="5" className="px-3 py-6 text-center text-slate-500 italic">Aucune demande pour l'instant.</td></tr>
             )}
             {myRequests.map(r => {
-              const meta = CONGE_STATUT_META[r.statut] || CONGE_STATUT_META.VALIDE;
+              const meta = congeDisplayMeta(r, todayIsoMesConges);
               return (
                 <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
