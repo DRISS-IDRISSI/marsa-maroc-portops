@@ -90,13 +90,16 @@ const RestDayEngine = {
     this._pointerCache = {};
   },
 
+  // Jours de congé/maladie/absence/formation dans le mois : réduisent le quota
+  // mensuel de repos (§15, étendu au-delà du seul congé — un conducteur absent
+  // la majeure partie du mois, quel qu'en soit le motif, n'a pas à accumuler
+  // un quota théorique de repos irréaliste au vu des jours réellement candidats).
   countCongeDaysInMonth(driver, month, year, state) {
     const dim = RTGDate.daysInMonth(month, year);
-    const activeConges = AbsenceEngine.activeConges(state);
     let count = 0;
     for (let d = 1; d <= dim; d++) {
       const iso = RTGDate.toISO(RTGDate.makeDate(year, month, d));
-      if (AbsenceEngine.findRecord(activeConges, driver.id, iso)) count++;
+      if (AbsenceEngine.getFixedStatus(driver, iso, state)) count++;
     }
     return count;
   },

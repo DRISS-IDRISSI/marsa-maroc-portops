@@ -57,8 +57,8 @@ const ValidationEngine = {
       state.drivers.filter(d => d.actif !== false).forEach(d => {
         if (hasManualRepos[d.id]) return;
         const c = (reposCount[d.id] || 0) - (correctedReposCount[d.id] || 0);
-        const congeDays = RestDayEngine.countCongeDaysInMonth(d, month, year, state);
-        const reduction = Math.floor(congeDays / (state.config.reposReductionParJoursCongé || 5));
+        const absenceDays = RestDayEngine.countCongeDaysInMonth(d, month, year, state);
+        const reduction = Math.floor(absenceDays / (state.config.reposReductionParJoursCongé || 5));
         const attendu = Math.max(0, state.config.reposMensuel - reduction);
         if (c !== attendu) {
           anomalies.push({ date: "—", driverId: d.id, matricule: d.matricule, nom: d.nom, prenom: d.prenom, type: "Nombre de repos différent du quota attendu", attendu: attendu, trouve: c });
