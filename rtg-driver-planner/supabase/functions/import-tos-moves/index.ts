@@ -112,6 +112,20 @@ Deno.serve(async _req => {
     loginMap.get(login)!.push(d.id);
   });
 
+  // Auto-réparation : des lignes déjà en base non rattachées (driver_id null,
+  // ex. importées avant qu'un "Login TOS" correctif soit renseigné sur la
+  // fiche conducteur) sont retentées à chaque exécution — sans ça, une
+  // correction faite après coup ne s'appliquerait qu'aux imports futurs,
+  // jamais à l'historique déjà importé.
+  let reconciledRows = 0;
+  const { data: unmatchedRows } = await admin.from("mouvements_tos").select("id, login_tos").is("driver_id", null);
+  for (const row of unmatchedRows || []) {
+    const matches = loginMap.get(row.login_tos) || [];
+    if (matches.length !== 1) continue;
+    const { error: reconcileError } = await admin.from("mouvements_tos").update({ driver_id: matches[0], match_note: null }).eq("id", row.id);
+    if (!reconcileError) reconciledRows++;
+  }
+
   const client = new ImapFlow({
     host: "imap.gmail.com",
     port: 993,
@@ -227,6 +241,7 @@ Deno.serve(async _req => {
     processedEmails,
     skippedNoAttachment,
     importedRows,
+    reconciledRows,
     unmatchedLogins: Array.from(unmatchedLogins),
     errors
   }), { headers: { "Content-Type": "application/json" } });
