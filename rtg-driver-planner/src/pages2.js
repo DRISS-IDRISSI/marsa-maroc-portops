@@ -2579,15 +2579,28 @@ function MouvementsRtgPage() {
   const [totalLoading, setTotalLoading] = useState(false);
   const [totalError, setTotalError] = useState("");
 
-  useEffect(() => {
-    if (tab !== "total") return;
+  const refreshTotalRows = () => {
     setTotalLoading(true);
     setTotalError("");
-    RTGStore.fetchMouvementsTos({ dateFrom: dateDebut, dateTo: dateFin })
+    return RTGStore.fetchMouvementsTos({ dateFrom: dateDebut, dateTo: dateFin })
       .then(setTotalRows)
       .catch(e => setTotalError(e && e.message ? e.message : "Chargement impossible."))
       .finally(() => setTotalLoading(false));
+  };
+
+  useEffect(() => {
+    if (tab !== "total") return;
+    refreshTotalRows();
   }, [tab, dateDebut, dateFin]);
+
+  // Un login TOS non rattaché peut être un cas légitime hors périmètre (ex.
+  // conducteur tracteur ayant ponctuellement opéré un RTG), pas forcément une
+  // fiche conducteur manquante à corriger — "Ignorer" l'exclut durablement
+  // des imports futurs et supprime l'historique déjà importé pour ce login.
+  const ignoreLogin = login => {
+    if (!window.confirm(`Ignorer définitivement le login "${login}" ? Ses mouvements déjà importés seront supprimés, et il ne sera plus jamais signalé comme non rattaché.`)) return;
+    RTGStore.ignoreTosLogin(login).then(() => { refreshDetailRows(); refreshTotalRows(); });
+  };
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -2723,7 +2736,10 @@ function MouvementsRtgPage() {
       {unmatchedLogins.length > 0 && (
         <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
           <i className="fas fa-triangle-exclamation mr-1.5"></i>
-          {unmatchedLogins.length} login{unmatchedLogins.length > 1 ? "s" : ""} TOS non rattaché{unmatchedLogins.length > 1 ? "s" : ""} à un conducteur de l'application : {unmatchedLogins.join(", ")}
+          {unmatchedLogins.length} login{unmatchedLogins.length > 1 ? "s" : ""} TOS non rattaché{unmatchedLogins.length > 1 ? "s" : ""} à un conducteur de l'application :{" "}
+          {unmatchedLogins.map((l, i) => (
+            <span key={l}>{i > 0 ? ", " : ""}{l} <button onClick={() => ignoreLogin(l)} className="underline hover:text-amber-300">(ignorer)</button></span>
+          ))}
         </div>
       )}
 
@@ -2802,7 +2818,10 @@ function MouvementsRtgPage() {
       {totalUnmatchedLogins.length > 0 && (
         <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
           <i className="fas fa-triangle-exclamation mr-1.5"></i>
-          {totalUnmatchedLogins.length} login{totalUnmatchedLogins.length > 1 ? "s" : ""} TOS non rattaché{totalUnmatchedLogins.length > 1 ? "s" : ""} à un conducteur de l'application : {totalUnmatchedLogins.join(", ")}
+          {totalUnmatchedLogins.length} login{totalUnmatchedLogins.length > 1 ? "s" : ""} TOS non rattaché{totalUnmatchedLogins.length > 1 ? "s" : ""} à un conducteur de l'application :{" "}
+          {totalUnmatchedLogins.map((l, i) => (
+            <span key={l}>{i > 0 ? ", " : ""}{l} <button onClick={() => ignoreLogin(l)} className="underline hover:text-amber-300">(ignorer)</button></span>
+          ))}
         </div>
       )}
 

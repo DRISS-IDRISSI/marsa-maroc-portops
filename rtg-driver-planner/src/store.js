@@ -644,6 +644,18 @@ const RTGStore = (function () {
     return (tosRes.data || []).map(mapMouvementTosRow).concat((manuelRes.data || []).map(mapMouvementManuelRow));
   }
 
+  // Ignorer durablement un login TOS non rattaché à un conducteur (ex.
+  // conducteur tracteur ayant ponctuellement opéré un RTG) : le prochain
+  // import ne le remontera plus jamais, et supprime au passage les lignes
+  // déjà importées pour ce login (voir import-tos-moves/index.ts).
+  async function ignoreTosLogin(loginTos, note) {
+    const { error } = await sb.from("mouvements_tos_logins_ignores").insert({ login_tos: loginTos, note: note || null, created_by: state.currentUserId });
+    if (error) { console.error(error); throw error; }
+    const { error: deleteError } = await sb.from("mouvements_tos").delete().eq("login_tos", loginTos);
+    if (deleteError) console.error(deleteError);
+    addAuditEntry({ action: "Login TOS ignoré", details: loginTos + (note ? " — " + note : "") });
+  }
+
   async function addMouvementManuel(input) {
     const row = {
       driver_id: input.driverId, date_travail: input.dateTravail, shift: input.shift || null,
@@ -837,6 +849,6 @@ const RTGStore = (function () {
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,
     updateTeam,
     getFerieMouvements, setFerieMouvements,
-    fetchMouvementsTos, addMouvementManuel, deleteMouvementManuel
+    fetchMouvementsTos, addMouvementManuel, deleteMouvementManuel, ignoreTosLogin
   };
 })();

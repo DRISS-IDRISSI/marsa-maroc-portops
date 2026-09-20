@@ -117,6 +117,18 @@ Deno.serve(async _req => {
     loginMap.get(login)!.push(d.id);
   });
 
+  // Logins volontairement ignorés (ex. conducteur tracteur ayant ponctuellement
+  // opéré un RTG) — jamais insérés, et toute ligne déjà importée pour l'un
+  // d'eux est supprimée ci-dessous.
+  const { data: ignoredLoginRows } = await admin.from("mouvements_tos_logins_ignores").select("login_tos");
+  const ignoredLogins = new Set((ignoredLoginRows || []).map(r => r.login_tos));
+
+  let ignoredRowsDeleted = 0;
+  if (ignoredLogins.size > 0) {
+    const { data: deleted } = await admin.from("mouvements_tos").delete().in("login_tos", Array.from(ignoredLogins)).select("id");
+    ignoredRowsDeleted = (deleted || []).length;
+  }
+
   // Auto-réparation : des lignes déjà en base non rattachées (driver_id null,
   // ex. importées avant qu'un "Login TOS" correctif soit renseigné sur la
   // fiche conducteur) sont retentées à chaque exécution — sans ça, une
@@ -181,7 +193,7 @@ Deno.serve(async _req => {
             for (const row of rows) {
               if (String(row.TYPE_ENGIN || "").toUpperCase() !== "RTG") continue;
               const rawLogin = String(row.LOGIN || "").trim().toLowerCase();
-              if (!rawLogin) continue;
+              if (!rawLogin || ignoredLogins.has(rawLogin)) continue;
               const dateTravail = excelDateToIso(row.DATE_TRAVAIL);
               if (!dateTravail) continue;
 
@@ -251,6 +263,7 @@ Deno.serve(async _req => {
     skippedNoAttachment,
     importedRows,
     reconciledRows,
+    ignoredRowsDeleted,
     unmatchedLogins: Array.from(unmatchedLogins),
     errors
   }), { headers: { "Content-Type": "application/json" } });
