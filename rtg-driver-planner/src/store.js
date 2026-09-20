@@ -83,7 +83,7 @@ const RTGStore = (function () {
     };
   }
   function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
-  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, driverId: r.driver_id, actif: r.actif, email: r.email || "" }; }
+  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, driverId: r.driver_id, actif: r.actif, email: r.email || "", credentialsSentAt: r.credentials_sent_at || null }; }
   function mapRecordRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   // Congés uniquement (§38) : mêmes champs de base + le workflow de demande
   // en libre-service (statut / justificatif / refus / validation). Un congé
@@ -754,16 +754,28 @@ const RTGStore = (function () {
     addAuditEntry({ action: "Suppression utilisateur", details: u ? u.nom + " (" + u.username + ")" : userId });
   }
 
+  // Enregistre en base la date du dernier envoi d'identifiants — sans ça, le
+  // statut "Envoyé" affiché sur la page Utilisateurs ne survivrait pas à un
+  // changement de page ou un rafraîchissement (perdu en mémoire locale
+  // uniquement).
+  async function markCredentialsSent(userId) {
+    const { data, error } = await sb.from("profiles").update({ credentials_sent_at: new Date().toISOString() }).eq("id", userId).select().single();
+    if (error) { console.error(error); return; }
+    const updated = mapProfileRow(data);
+    set(s => Object.assign({}, s, { users: s.users.map(u => u.id === userId ? updated : u) }));
+  }
+
   // Envoi des identifiants (édge function "send-credentials-email") — appelé
   // juste après la création d'un compte CONDUCTEUR, seul moment où le mot de
   // passe en clair est encore connu. best-effort : ne bloque jamais la
   // création du compte elle-même en cas d'échec d'envoi.
-  async function sendCredentialsEmail({ to, driverName, username, password }) {
+  async function sendCredentialsEmail({ to, driverName, username, password, userId }) {
     const appUrl = window.location.origin + window.location.pathname;
     const { error } = await sb.functions.invoke("send-credentials-email", {
       body: { to, driverName, username, password, appUrl }
     });
     if (error) { console.error(error); throw error; }
+    if (userId) await markCredentialsSent(userId);
   }
 
   // Réinitialisation + renvoi des identifiants pour un compte EXISTANT
@@ -776,6 +788,7 @@ const RTGStore = (function () {
       body: { targetUserId, appUrl }
     });
     if (error) { console.error(error); throw error; }
+    await markCredentialsSent(targetUserId);
     const u = state.users.find(x => x.id === targetUserId);
     addAuditEntry({ action: "Réinitialisation + renvoi des identifiants", details: u ? u.nom + " (" + u.username + ")" : targetUserId });
   }

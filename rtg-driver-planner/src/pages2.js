@@ -1551,8 +1551,8 @@ function ConducteurAccountsPanel({ state }) {
       let ok = false;
       while (!ok) {
         try {
-          await RTGStore.addUser({ nom: d.nom + " " + d.prenom, username: username, password: password, role: "CONDUCTEUR", driverId: d.id });
-          created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password, email: d.email || "" });
+          const newUser = await RTGStore.addUser({ nom: d.nom + " " + d.prenom, username: username, password: password, role: "CONDUCTEUR", driverId: d.id });
+          created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password, email: d.email || "", userId: newUser.id });
           ok = true;
         } catch (e) {
           if (isRateLimitError(e) && attempt < 4) {
@@ -1587,7 +1587,7 @@ function ConducteurAccountsPanel({ state }) {
     if (!r.email) return;
     setEmailStatus(s => Object.assign({}, s, { [r.matricule]: "sending" }));
     try {
-      await RTGStore.sendCredentialsEmail({ to: r.email, driverName: r.nom + " " + r.prenom, username: r.username, password: r.password });
+      await RTGStore.sendCredentialsEmail({ to: r.email, driverName: r.nom + " " + r.prenom, username: r.username, password: r.password, userId: r.userId });
       setEmailStatus(s => Object.assign({}, s, { [r.matricule]: "sent" }));
     } catch (e) {
       console.error(e);
@@ -1781,10 +1781,12 @@ function UsersPage() {
                         : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setUserActive(u.id, true)} className="text-emerald-400 hover:text-emerald-300 text-xs" />}
                       {!isSelf && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteUser(u.id)} className="text-red-400 hover:text-red-300 text-xs" />}
                       {u.actif !== false && targetEmail && (
-                        resendState === "sent" ? (
-                          <span className="text-emerald-400"><i className="fas fa-circle-check mr-1"></i>Envoyé</span>
-                        ) : resendState === "sending" ? (
+                        resendState === "sending" ? (
                           <span className="text-slate-400">Envoi...</span>
+                        ) : u.credentialsSentAt && resendState !== "error" ? (
+                          <span className="text-emerald-400" title={"Identifiants envoyés le " + new Date(u.credentialsSentAt).toLocaleString("fr-FR")}>
+                            <i className="fas fa-circle-check mr-1"></i>Envoyé le {new Date(u.credentialsSentAt).toLocaleDateString("fr-FR")}
+                          </span>
                         ) : (
                           <ConfirmButton
                             label={resendState === "error" ? "Réessayer" : "Renvoyer identifiants"}
@@ -1792,6 +1794,13 @@ function UsersPage() {
                             onConfirm={() => resendCredentials(u)}
                             className="text-sky-400 hover:text-sky-300 text-xs" />
                         )
+                      )}
+                      {u.actif !== false && targetEmail && u.credentialsSentAt && resendState !== "error" && resendState !== "sending" && (
+                        <ConfirmButton
+                          label="Renvoyer"
+                          confirmLabel={"Générer un nouveau mot de passe et le renvoyer à " + targetEmail + " ?"}
+                          onConfirm={() => resendCredentials(u)}
+                          className="text-sky-400 hover:text-sky-300 text-xs" />
                       )}
                     </div>
                   </td>
