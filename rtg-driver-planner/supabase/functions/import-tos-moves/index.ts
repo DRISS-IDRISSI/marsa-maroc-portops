@@ -144,9 +144,16 @@ Deno.serve(async _req => {
   let skippedNoAttachment = 0;
   const unmatchedLogins = new Set<string>();
   const errors: string[] = [];
+  // Debug temporaire : trace ce que la recherche IMAP trouve réellement
+  // (sujet, date, pièces jointes vues), pour diagnostiquer un email qui
+  // n'apparaît pas dans les compteurs habituels.
+  const debugFound: Array<Record<string, unknown>> = [];
+  let mailboxMessages: number | null = null;
 
   try {
     await client.connect();
+    const mailboxStatus = await client.status("INBOX", { messages: true });
+    mailboxMessages = mailboxStatus.messages ?? null;
     const lock = await client.getMailboxLock("INBOX");
     try {
       // Fenêtre de recherche large (7 jours) : couvre les week-ends et les
@@ -163,6 +170,13 @@ Deno.serve(async _req => {
 
           const parsed = await simpleParser(msg.source);
           const xlsAttachment = (parsed.attachments || []).find(a => /\.xls$/i.test(a.filename || ""));
+
+          debugFound.push({
+            uid,
+            subject: msg.envelope?.subject || null,
+            date: msg.envelope?.date || null,
+            attachments: (parsed.attachments || []).map(a => a.filename || "(sans nom)")
+          });
 
           if (!xlsAttachment) {
             skippedNoAttachment++;
@@ -252,6 +266,10 @@ Deno.serve(async _req => {
     importedRows,
     reconciledRows,
     unmatchedLogins: Array.from(unmatchedLogins),
-    errors
+    errors,
+    // Champs temporaires de diagnostic — à retirer une fois le souci
+    // d'emails non trouvés résolu.
+    debugMailboxTotalMessages: mailboxMessages,
+    debugFound
   }), { headers: { "Content-Type": "application/json" } });
 });
