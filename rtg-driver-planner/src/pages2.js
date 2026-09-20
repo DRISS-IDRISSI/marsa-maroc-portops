@@ -1679,15 +1679,18 @@ function UsersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [resendStatus, setResendStatus] = useState({}); // userId -> "sending" | "sent" | "error"
+  const [resendError, setResendError] = useState({}); // userId -> message d'erreur
 
   const resendCredentials = async u => {
     setResendStatus(s => Object.assign({}, s, { [u.id]: "sending" }));
+    setResendError(s => Object.assign({}, s, { [u.id]: "" }));
     try {
       await RTGStore.resetAndSendCredentials(u.id);
       setResendStatus(s => Object.assign({}, s, { [u.id]: "sent" }));
     } catch (e) {
       console.error(e);
       setResendStatus(s => Object.assign({}, s, { [u.id]: "error" }));
+      setResendError(s => Object.assign({}, s, { [u.id]: (e && e.message) || "Erreur inconnue." }));
     }
   };
 
@@ -1803,6 +1806,9 @@ function UsersPage() {
                           className="text-sky-400 hover:text-sky-300 text-xs" />
                       )}
                     </div>
+                    {resendState === "error" && resendError[u.id] && (
+                      <div className="text-red-400 mt-1">{resendError[u.id]}</div>
+                    )}
                   </td>
                 </tr>
               );

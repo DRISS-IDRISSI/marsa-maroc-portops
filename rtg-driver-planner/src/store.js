@@ -754,6 +754,21 @@ const RTGStore = (function () {
     addAuditEntry({ action: "Suppression utilisateur", details: u ? u.nom + " (" + u.username + ")" : userId });
   }
 
+  // supabase-js renvoie sur functions.invoke() une erreur générique ("Edge
+  // Function returned a non-2xx status code") — le vrai message (ex. "Aucun
+  // email renseigné...") est dans le corps JSON de la réponse, accessible via
+  // error.context (l'objet Response brut). Sans ça, l'utilisateur ne voit
+  // jamais la cause réelle d'un échec d'envoi.
+  async function extractFunctionErrorMessage(error) {
+    try {
+      if (error && error.context && typeof error.context.json === "function") {
+        const body = await error.context.json();
+        if (body && body.error) return body.error;
+      }
+    } catch (_) { /* corps non-JSON ou déjà consommé : on retombe sur error.message */ }
+    return (error && error.message) || "Erreur inconnue.";
+  }
+
   // Enregistre en base la date du dernier envoi d'identifiants — sans ça, le
   // statut "Envoyé" affiché sur la page Utilisateurs ne survivrait pas à un
   // changement de page ou un rafraîchissement (perdu en mémoire locale
@@ -774,7 +789,7 @@ const RTGStore = (function () {
     const { error } = await sb.functions.invoke("send-credentials-email", {
       body: { to, driverName, username, password, appUrl }
     });
-    if (error) { console.error(error); throw error; }
+    if (error) { console.error(error); throw new Error(await extractFunctionErrorMessage(error)); }
     if (userId) await markCredentialsSent(userId);
   }
 
@@ -787,7 +802,7 @@ const RTGStore = (function () {
     const { error } = await sb.functions.invoke("reset-and-send-credentials", {
       body: { targetUserId, appUrl }
     });
-    if (error) { console.error(error); throw error; }
+    if (error) { console.error(error); throw new Error(await extractFunctionErrorMessage(error)); }
     await markCredentialsSent(targetUserId);
     const u = state.users.find(x => x.id === targetUserId);
     addAuditEntry({ action: "Réinitialisation + renvoi des identifiants", details: u ? u.nom + " (" + u.username + ")" : targetUserId });
