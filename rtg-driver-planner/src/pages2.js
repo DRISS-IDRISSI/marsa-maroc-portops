@@ -1530,6 +1530,8 @@ function ConducteurAccountsPanel({ state }) {
   const [progress, setProgress] = useState(null);
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
+  const [emailStatus, setEmailStatus] = useState({}); // matricule -> "sending" | "sent" | "error"
+  const [emailBusy, setEmailBusy] = useState(false);
 
   // Supabase Auth limite le nombre d'inscriptions par fenêtre de temps —
   // avec ~40 conducteurs créés d'affilée sans pause, la limite est atteinte
@@ -1550,7 +1552,7 @@ function ConducteurAccountsPanel({ state }) {
       while (!ok) {
         try {
           await RTGStore.addUser({ nom: d.nom + " " + d.prenom, username: username, password: password, role: "CONDUCTEUR", driverId: d.id });
-          created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password });
+          created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password, email: d.email || "" });
           ok = true;
         } catch (e) {
           if (isRateLimitError(e) && attempt < 4) {
@@ -1581,6 +1583,28 @@ function ConducteurAccountsPanel({ state }) {
       results.map(r => [r.matricule, r.nom, r.prenom, r.username, r.password]));
   };
 
+  const sendOne = async r => {
+    if (!r.email) return;
+    setEmailStatus(s => Object.assign({}, s, { [r.matricule]: "sending" }));
+    try {
+      await RTGStore.sendCredentialsEmail({ to: r.email, driverName: r.nom + " " + r.prenom, username: r.username, password: r.password });
+      setEmailStatus(s => Object.assign({}, s, { [r.matricule]: "sent" }));
+    } catch (e) {
+      console.error(e);
+      setEmailStatus(s => Object.assign({}, s, { [r.matricule]: "error" }));
+    }
+  };
+
+  const sendAll = async () => {
+    setEmailBusy(true);
+    for (const r of results) {
+      if (r.email && emailStatus[r.matricule] !== "sent") await sendOne(r);
+    }
+    setEmailBusy(false);
+  };
+
+  const withEmail = results.filter(r => r.email);
+
   return (
     <Panel title="Comptes conducteurs" icon="fa-id-card">
       <p className="text-xs text-slate-400 mb-3">
@@ -1598,14 +1622,24 @@ function ConducteurAccountsPanel({ state }) {
         <div>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
             <p className="text-xs text-emerald-400"><i className="fas fa-circle-check mr-1"></i>{results.length} compte(s) créé(s) — notez ces mots de passe, ils ne seront plus jamais affichés ensuite.</p>
-            <button onClick={downloadCsv} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-marine-700 text-white hover:bg-marine-600">
-              <i className="fas fa-download mr-1.5"></i>Télécharger (CSV)
-            </button>
+            <div className="flex gap-2">
+              {withEmail.length > 0 && (
+                <button onClick={sendAll} disabled={emailBusy} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
+                  <i className="fas fa-paper-plane mr-1.5"></i>{emailBusy ? "Envoi en cours..." : `Envoyer les identifiants par email (${withEmail.length})`}
+                </button>
+              )}
+              <button onClick={downloadCsv} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-marine-700 text-white hover:bg-marine-600">
+                <i className="fas fa-download mr-1.5"></i>Télécharger (CSV)
+              </button>
+            </div>
           </div>
+          {results.some(r => !r.email) && (
+            <p className="text-xs text-amber-400 mb-2"><i className="fas fa-triangle-exclamation mr-1"></i>{results.filter(r => !r.email).length} conducteur(s) sans email personnel renseigné — identifiants à leur communiquer autrement.</p>
+          )}
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-xs">
               <thead className="bg-surface text-slate-400">
-                <tr className="text-left"><th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Identifiant</th><th className="px-3 py-2">Mot de passe</th></tr>
+                <tr className="text-left"><th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Identifiant</th><th className="px-3 py-2">Mot de passe</th><th className="px-3 py-2">Email</th><th className="px-3 py-2">Envoi</th></tr>
               </thead>
               <tbody>
                 {results.map(r => (
@@ -1614,6 +1648,20 @@ function ConducteurAccountsPanel({ state }) {
                     <td className="px-3 py-2 text-white">{r.nom} {r.prenom}</td>
                     <td className="px-3 py-2 text-slate-300">{r.username}</td>
                     <td className="px-3 py-2 text-slate-300 font-mono">{r.password}</td>
+                    <td className="px-3 py-2 text-slate-400">{r.email || "—"}</td>
+                    <td className="px-3 py-2">
+                      {!r.email ? (
+                        <span className="text-slate-600">—</span>
+                      ) : emailStatus[r.matricule] === "sent" ? (
+                        <span className="text-emerald-400"><i className="fas fa-circle-check mr-1"></i>Envoyé</span>
+                      ) : emailStatus[r.matricule] === "sending" ? (
+                        <span className="text-slate-400">Envoi...</span>
+                      ) : (
+                        <button onClick={() => sendOne(r)} className="px-2 py-1 text-[11px] font-semibold rounded-lg bg-marine-700 text-white hover:bg-marine-600">
+                          {emailStatus[r.matricule] === "error" ? "Réessayer" : "Envoyer"}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

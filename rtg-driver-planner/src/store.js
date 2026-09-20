@@ -754,6 +754,18 @@ const RTGStore = (function () {
     addAuditEntry({ action: "Suppression utilisateur", details: u ? u.nom + " (" + u.username + ")" : userId });
   }
 
+  // Envoi des identifiants (édge function "send-credentials-email") — appelé
+  // juste après la création d'un compte CONDUCTEUR, seul moment où le mot de
+  // passe en clair est encore connu. best-effort : ne bloque jamais la
+  // création du compte elle-même en cas d'échec d'envoi.
+  async function sendCredentialsEmail({ to, driverName, username, password }) {
+    const appUrl = window.location.origin + window.location.pathname;
+    const { error } = await sb.functions.invoke("send-credentials-email", {
+      body: { to, driverName, username, password, appUrl }
+    });
+    if (error) { console.error(error); throw error; }
+  }
+
   // ---------- Équipes : renommer le shift/l'équipe (§30) ----------
 
   async function updateTeam(teamId, patch) {
@@ -780,7 +792,7 @@ const RTGStore = (function () {
     addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
     setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank, bulkClearStaleVacationOverrides,
     getCurrentUser, login, logout,
-    isUsernameTaken, addUser, updateUser, setUserActive, deleteUser,
+    isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail,
     updateTeam,
     getFerieMouvements, setFerieMouvements,
     fetchMouvementsTos, addMouvementManuel, deleteMouvementManuel
