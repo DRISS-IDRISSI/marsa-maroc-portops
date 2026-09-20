@@ -766,6 +766,20 @@ const RTGStore = (function () {
     if (error) { console.error(error); throw error; }
   }
 
+  // Réinitialisation + renvoi des identifiants pour un compte EXISTANT
+  // (édge function "reset-and-send-credentials", réservée aux ADMIN côté
+  // fonction) — nécessaire car un mot de passe déjà défini n'est plus
+  // récupérable en clair (Supabase Auth ne le stocke jamais).
+  async function resetAndSendCredentials(targetUserId) {
+    const appUrl = window.location.origin + window.location.pathname;
+    const { error } = await sb.functions.invoke("reset-and-send-credentials", {
+      body: { targetUserId, appUrl }
+    });
+    if (error) { console.error(error); throw error; }
+    const u = state.users.find(x => x.id === targetUserId);
+    addAuditEntry({ action: "Réinitialisation + renvoi des identifiants", details: u ? u.nom + " (" + u.username + ")" : targetUserId });
+  }
+
   // ---------- Équipes : renommer le shift/l'équipe (§30) ----------
 
   async function updateTeam(teamId, patch) {
@@ -792,7 +806,7 @@ const RTGStore = (function () {
     addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
     setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank, bulkClearStaleVacationOverrides,
     getCurrentUser, login, logout,
-    isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail,
+    isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,
     updateTeam,
     getFerieMouvements, setFerieMouvements,
     fetchMouvementsTos, addMouvementManuel, deleteMouvementManuel

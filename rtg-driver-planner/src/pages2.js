@@ -1678,6 +1678,18 @@ function UsersPage() {
   const currentUser = useCurrentUser();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [resendStatus, setResendStatus] = useState({}); // userId -> "sending" | "sent" | "error"
+
+  const resendCredentials = async u => {
+    setResendStatus(s => Object.assign({}, s, { [u.id]: "sending" }));
+    try {
+      await RTGStore.resetAndSendCredentials(u.id);
+      setResendStatus(s => Object.assign({}, s, { [u.id]: "sent" }));
+    } catch (e) {
+      console.error(e);
+      setResendStatus(s => Object.assign({}, s, { [u.id]: "error" }));
+    }
+  };
 
   if (!currentUser || currentUser.role !== "ADMIN") {
     return (
@@ -1748,6 +1760,8 @@ function UsersPage() {
               const team = u.teamId ? state.teams.find(t => t.id === u.teamId) : null;
               const driver = u.driverId ? state.drivers.find(d => d.id === u.driverId) : null;
               const isSelf = currentUser.id === u.id;
+              const targetEmail = driver ? driver.email : u.email;
+              const resendState = resendStatus[u.id];
               return (
                 <tr key={u.id} className="border-t border-border hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-white font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
@@ -1766,6 +1780,19 @@ function UsersPage() {
                         ? <ConfirmButton label="Désactiver" confirmLabel={isSelf ? "Vous déconnecter ?" : "Désactiver ?"} onConfirm={() => RTGStore.setUserActive(u.id, false)} className="text-red-400 hover:text-red-300 text-xs" />
                         : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setUserActive(u.id, true)} className="text-emerald-400 hover:text-emerald-300 text-xs" />}
                       {!isSelf && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteUser(u.id)} className="text-red-400 hover:text-red-300 text-xs" />}
+                      {u.actif !== false && targetEmail && (
+                        resendState === "sent" ? (
+                          <span className="text-emerald-400"><i className="fas fa-circle-check mr-1"></i>Envoyé</span>
+                        ) : resendState === "sending" ? (
+                          <span className="text-slate-400">Envoi...</span>
+                        ) : (
+                          <ConfirmButton
+                            label={resendState === "error" ? "Réessayer" : "Renvoyer identifiants"}
+                            confirmLabel={"Générer un nouveau mot de passe et l'envoyer à " + targetEmail + " ?"}
+                            onConfirm={() => resendCredentials(u)}
+                            className="text-sky-400 hover:text-sky-300 text-xs" />
+                        )
+                      )}
                     </div>
                   </td>
                 </tr>
