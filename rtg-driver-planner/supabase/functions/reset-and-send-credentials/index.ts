@@ -49,11 +49,44 @@ function escapeHtml(s: string) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function buildHtml({ driverName, username, password, appUrl }: { driverName: string; username: string; password: string; appUrl: string }) {
+// Le mode d'emploi doit correspondre à ce que le rôle du compte peut
+// réellement faire — un Responsable/Admin n'a pas les mêmes usages qu'un
+// conducteur (ex. il valide des congés, il ne "dépose" pas de demande).
+function featureListHtml(role: string) {
+  if (role === "CONDUCTEUR") {
+    return `
+      <li><strong>Mon planning</strong> : consulter votre planning mensuel et vos vacations.</li>
+      <li><strong>Mes mouvements</strong> : voir le détail de vos mouvements RTG importés depuis le TOS.</li>
+      <li><strong>Congés / Maladies / Absences</strong> : déposer une demande de congé, voir son statut, et le solde restant.</li>
+      <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
+  }
+  if (role === "RESPONSABLE_SHIFT") {
+    return `
+      <li><strong>Affectation du jour</strong> : consulter et ajuster l'affectation de votre équipe.</li>
+      <li><strong>Planning mensuel</strong> : planning de votre équipe.</li>
+      <li><strong>Congés / Maladies / Absences</strong> : valider ou refuser les demandes de votre équipe.</li>
+      <li><strong>Mouvements RTG</strong> : mouvements de votre équipe.</li>
+      <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
+  }
+  // RESPONSABLE ou ADMIN : accès à toutes les équipes.
+  return `
+      <li><strong>Planning mensuel / Affectation du jour</strong> : toutes les équipes.</li>
+      <li><strong>Conducteurs</strong> : gestion des fiches conducteurs.</li>
+      <li><strong>Congés / Maladies / Absences</strong> : validation, toutes équipes.</li>
+      <li><strong>Mouvements RTG</strong> : suivi des imports TOS, toutes équipes.</li>
+      <li><strong>Rapports</strong> : exports et rapports RH.</li>${role === "ADMIN" ? `
+      <li><strong>Utilisateurs</strong> : gestion des comptes et rôles.</li>` : ""}
+      <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
+}
+
+function buildHtml({ driverName, username, password, appUrl, role }: { driverName: string; username: string; password: string; appUrl: string; role: string }) {
   const safeName = escapeHtml(driverName);
   const safeUsername = escapeHtml(username);
   const safePassword = escapeHtml(password);
   const safeUrl = escapeHtml(appUrl);
+  const contactLine = role === "CONDUCTEUR"
+    ? "En cas de problème de connexion, contactez votre Responsable de Shift."
+    : "En cas de problème de connexion, contactez un administrateur de l'application.";
   return `
   <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
     <h2 style="color: #0f172a;">Vos identifiants — RTG Driver Planner</h2>
@@ -85,14 +118,10 @@ function buildHtml({ driverName, username, password, appUrl }: { driverName: str
     </ol>
 
     <h3 style="color: #0f172a; margin-top: 24px;">Ce que vous pouvez faire dans l'application</h3>
-    <ul style="font-size: 14px;">
-      <li><strong>Mon planning</strong> : consulter votre planning mensuel et vos vacations.</li>
-      <li><strong>Mes mouvements</strong> : voir le détail de vos mouvements RTG importés depuis le TOS.</li>
-      <li><strong>Congés / Maladies / Absences</strong> : déposer une demande de congé, voir son statut, et le solde restant.</li>
-      <li><strong>Mon compte</strong> : changer votre mot de passe.</li>
+    <ul style="font-size: 14px;">${featureListHtml(role)}
     </ul>
 
-    <p style="margin-top: 24px; font-size: 12px; color: #64748b;">Ceci est un message automatique — merci de ne pas y répondre. En cas de problème de connexion, contactez votre Responsable de Shift.</p>
+    <p style="margin-top: 24px; font-size: 12px; color: #64748b;">Ceci est un message automatique — merci de ne pas y répondre. ${contactLine}</p>
     <p style="font-size: 12px; color: #64748b;">RTG Driver Planner — Marsa Maroc TC3PC</p>
   </div>`;
 }
@@ -149,7 +178,7 @@ Deno.serve(async req => {
     const { error: updateError } = await admin.auth.admin.updateUserById(target.id, { password: tempPassword });
     if (updateError) { console.error(updateError); throw updateError; }
 
-    const html = buildHtml({ driverName, username: target.username, password: tempPassword, appUrl });
+    const html = buildHtml({ driverName, username: target.username, password: tempPassword, appUrl, role: target.role });
     const client = new SMTPClient({
       connection: { hostname: "smtp.gmail.com", port: 465, tls: true, auth: { username: GMAIL_USER, password: GMAIL_APP_PASSWORD } }
     });
