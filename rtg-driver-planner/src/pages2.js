@@ -467,6 +467,26 @@ function driverLabel(state, driverId) {
   return d ? d.matricule + " — " + d.nom + " " + d.prenom : "(conducteur supprimé)";
 }
 
+// Barre "Filtrer par conducteur" réutilisée sur les pages de liste
+// (Congés, Maladies, Absences, Over Time, Mouvements RTG) — recherche
+// matricule/nom/prénom, avec un lien pour réinitialiser une fois un
+// conducteur sélectionné.
+function DriverFilterBar({ state, value, onChange, teamId }) {
+  return (
+    <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="w-full sm:w-72">
+        <label className={LABEL_CLS}>Filtrer par conducteur</label>
+        <DriverSelect state={state} value={value} onChange={onChange} teamId={teamId} />
+      </div>
+      {value && (
+        <button onClick={() => onChange("")} className="text-xs text-slate-400 hover:text-white underline">
+          Réinitialiser le filtre
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Badge "solde de congé" (§40) réutilisé sur la fiche Conducteur, la page
 // Congés (responsable) et Mes Congés (conducteur) — voir CongeBalanceEngine.
 function CongeSoldeBadge({ driver, state }) {
@@ -492,6 +512,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ driverId: "", dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), type: showTypeSelect ? "ABSENCE" : "", commentaire: "" });
   const [error, setError] = useState("");
+  const [filterDriverId, setFilterDriverId] = useState("");
 
   // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
   // propre équipe quelle que soit la flotte affichée par ailleurs.
@@ -504,6 +525,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
 
   const records = state[listKey]
     .filter(r => {
+      if (filterDriverId && r.driverId !== filterDriverId) return false;
       const d = state.drivers.find(dr => dr.id === r.driverId);
       if (!d) return false;
       if (!shiftRestricted) return true;
@@ -559,6 +581,8 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
           </div>
         </Panel>
       )}
+
+      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-border">
@@ -659,6 +683,7 @@ function CongesPage() {
   const [busyId, setBusyId] = useState(null);
   const [refusingId, setRefusingId] = useState(null);
   const [refusMotif, setRefusMotif] = useState("");
+  const [filterDriverId, setFilterDriverId] = useState("");
 
   // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
   // propre équipe quelle que soit la flotte affichée par ailleurs.
@@ -671,6 +696,7 @@ function CongesPage() {
 
   const records = state.conges
     .filter(r => {
+      if (filterDriverId && r.driverId !== filterDriverId) return false;
       const d = state.drivers.find(dr => dr.id === r.driverId);
       if (!d) return false;
       if (!shiftRestricted) return true;
@@ -733,6 +759,8 @@ function CongesPage() {
           </div>
         </Panel>
       )}
+
+      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-border">
@@ -2753,6 +2781,7 @@ function MouvementsRtgPage() {
   }), [rawState, fTeams]);
   const now = new Date();
   const [tab, setTab] = useState("detail");
+  const [filterDriverId, setFilterDriverId] = useState("");
 
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -2849,10 +2878,14 @@ function MouvementsRtgPage() {
 
   // Ne garder que les lignes de la flotte actuellement affichée : soit non
   // rattachées à un conducteur (à examiner quelle que soit la flotte), soit
-  // rattachées à un conducteur de la flotte en cours.
-  const fleetFilterRow = r => !r.driverId || fTeamIds.has((rawState.drivers.find(d => d.id === r.driverId) || {}).teamId);
-  const visibleRows = useMemo(() => rows.filter(fleetFilterRow), [rows, fTeamIds, rawState.drivers]);
-  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow), [totalRows, fTeamIds, rawState.drivers]);
+  // rattachées à un conducteur de la flotte en cours — puis, si un
+  // conducteur précis est sélectionné, uniquement ses lignes.
+  const fleetFilterRow = r => {
+    if (filterDriverId) return r.driverId === filterDriverId;
+    return !r.driverId || fTeamIds.has((rawState.drivers.find(d => d.id === r.driverId) || {}).teamId);
+  };
+  const visibleRows = useMemo(() => rows.filter(fleetFilterRow), [rows, fTeamIds, rawState.drivers, filterDriverId]);
+  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow), [totalRows, fTeamIds, rawState.drivers, filterDriverId]);
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -2964,6 +2997,8 @@ function MouvementsRtgPage() {
         <button onClick={() => setTab("detail")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "detail" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Détail par jour/shift</button>
         <button onClick={() => setTab("total")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "total" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Total par conducteur (période)</button>
       </div>
+
+      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
 
       {tab === "detail" && (
       <>
