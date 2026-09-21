@@ -745,9 +745,11 @@ function HeuresExceptionnellesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyHeureExceptionnelleForm());
   const [error, setError] = useState("");
+  const [filterDriverId, setFilterDriverId] = useState("");
 
   const records = state.heuresExceptionnelles
     .filter(r => {
+      if (filterDriverId && r.driverId !== filterDriverId) return false;
       if (!shiftRestricted) return true;
       const d = state.drivers.find(dr => dr.id === r.driverId);
       return d && d.teamId === currentUser.teamId;
@@ -805,6 +807,18 @@ function HeuresExceptionnellesPage() {
           </div>
         </Panel>
       )}
+
+      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+        <div className="w-full sm:w-72">
+          <label className={LABEL_CLS}>Filtrer par conducteur</label>
+          <DriverSelect state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
+        </div>
+        {filterDriverId && (
+          <button onClick={() => setFilterDriverId("")} className="text-xs text-slate-400 hover:text-white underline">
+            Réinitialiser le filtre
+          </button>
+        )}
+      </div>
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-border">
