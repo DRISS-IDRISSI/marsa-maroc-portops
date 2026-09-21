@@ -1,18 +1,20 @@
 // ==========================================
 // RTG DRIVER PLANNER — Répartition équitable des zones par créneau (§7-8 + charge)
-// La zone A n'est pas prioritaire :
-//   - Si moins de 8 conducteurs sont présents sur un créneau (shift + vacation) un
-//     jour donné, la zone A reste VIDE et les présents sont répartis équitablement
-//     (un seul par zone, sans doublon) sur les 7 autres zones (B-H).
-//   - Si 8 conducteurs présents ou plus, les 8 zones (A comprise) sont toutes
-//     occupées : chacune reçoit d'abord floor(n/8) conducteurs, puis le reste
-//     (toujours < 8, donc absorbé par les 7 zones B-H) est distribué en +1, une
-//     zone à la fois, dans l'ordre C, D, B, E, F, G, H (décision explicite de
-//     l'exploitant — DOUBLING_ORDER ci-dessous) ; la zone A ne reçoit jamais
-//     cette part supplémentaire avant les autres.
+// Générique par rapport au nombre de zones (N = zoneList.length, ex. N=8 pour
+// les RTG A-H, N=6 pour les postes cavalier — § module Chariots Cavalier) :
+// la 1ère zone de la liste n'est pas prioritaire :
+//   - Si moins de N conducteurs sont présents sur un créneau (shift + vacation)
+//     un jour donné, la 1ère zone reste VIDE et les présents sont répartis
+//     équitablement (un seul par zone, sans doublon) sur les N-1 autres zones.
+//   - Si N conducteurs présents ou plus, les N zones (1ère comprise) sont toutes
+//     occupées : chacune reçoit d'abord floor(n/N) conducteurs, puis le reste
+//     (toujours < N, donc absorbé par les N-1 autres zones) est distribué en +1,
+//     une zone à la fois, dans l'ordre DOUBLING_ORDER ci-dessous (décision
+//     explicite de l'exploitant pour les RTG — C, D, B, E, F, G, H) ; la 1ère
+//     zone ne reçoit jamais cette part supplémentaire avant les autres.
 //
 // S'applique systématiquement à chaque créneau (pas seulement en cas de
-// dépassement), en remplacement de la simple rotation individuelle A→H pour la
+// dépassement), en remplacement de la simple rotation individuelle pour la
 // zone FINALEMENT affichée. La rotation individuelle (ZoneRotationEngine, basée
 // sur les jours effectivement travaillés par chaque conducteur) sert uniquement de
 // clé de tri pour décider qui, dans le groupe, reçoit quelle zone — afin de garder
@@ -20,10 +22,11 @@
 // ==========================================
 
 // Ordre dans lequel les zones B-H reçoivent un doublon au-delà de 8 présents
-// sur un créneau (le 9ᵉ présent double la 1ʳᵉ de cette liste, le 10ᵉ la 2ᵉ,
+// sur un créneau RTG (le 9ᵉ présent double la 1ʳᵉ de cette liste, le 10ᵉ la 2ᵉ,
 // etc.) — décision explicite de l'exploitant, pas un simple ordre alphabétique.
-// Une zone du créneau absente de cette liste (config.zones personnalisée) est
-// ajoutée à la suite, dans son ordre d'origine, pour rester robuste.
+// Une zone du créneau absente de cette liste (ex. postes cavalier CC) est
+// ajoutée à la suite, dans son ordre d'origine (voir assignZonesForSlot), pour
+// rester robuste sur une liste de zones différente.
 const DOUBLING_ORDER = ["C", "D", "B", "E", "F", "G", "H"];
 
 const ZoneBalancingEngine = {
@@ -47,14 +50,14 @@ const ZoneBalancingEngine = {
       return String(a.driverId).localeCompare(String(b.driverId));
     });
 
-    if (n < 8) {
+    if (n < zoneList.length) {
       if (others.length === 0) return;
       ordered.forEach((e, i) => { e.zone = others[i % others.length]; });
-      return; // toujours 1 conducteur par zone ici (n <= 7 pour 7 zones B-H) : jamais de doublon à numéroter.
+      return; // toujours 1 conducteur par zone ici (n < zoneList.length) : jamais de doublon à numéroter.
     }
 
     const base = Math.floor(n / zoneList.length);
-    const remainder = n % zoneList.length; // toujours < 8, donc < others.length+1
+    const remainder = n % zoneList.length; // toujours < zoneList.length, donc < others.length+1
     const doublingOrder = DOUBLING_ORDER.filter(z => others.indexOf(z) !== -1)
       .concat(others.filter(z => DOUBLING_ORDER.indexOf(z) === -1));
 

@@ -21,16 +21,16 @@ const RTG_CONFIG = {
     S3: [{ id: "V1", start: "23:00", end: "03:00" }, { id: "V2", start: "03:00", end: "07:00" }]
   },
   zones: ["A", "B", "C", "D", "E", "F", "G", "H"],
-  // Zones par flotte (§ module Chariots Cavalier — CC) : toutes les règles
-  // d'affectation (rotation, répartition équitable, repos, shifts,
-  // vacations...) sont IDENTIQUES entre RTG et CC, seule la liste des zones
-  // change. "RTG" reprend la liste ci-dessus ; "CC" est un PLACEHOLDER en
-  // attendant la liste réelle des zones cavalier — à remplacer ici dès
-  // qu'elle sera confirmée (voir zonesForFleet ci-dessous, utilisé partout
-  // où une zone est affectée/affichée).
+  // Zones ("postes de travail") par flotte (§ module Chariots Cavalier — CC) :
+  // toutes les règles d'affectation (rotation, répartition équitable, repos,
+  // shifts, vacations...) sont IDENTIQUES entre RTG et CC, seule la liste des
+  // zones change. "RTG" reprend la liste ci-dessus (zones A-H) ; "CC" est la
+  // liste réelle des postes de travail cavalier confirmée par l'exploitant
+  // (voir zonesForFleet ci-dessous, utilisé partout où une zone est
+  // affectée/affichée).
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["Z1", "Z2", "Z3", "Z4"]
+    CC: ["P71", "P72", "P83", "P80", "P82", "PARC"]
   },
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
