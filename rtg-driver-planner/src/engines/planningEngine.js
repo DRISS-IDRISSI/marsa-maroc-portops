@@ -83,13 +83,19 @@ const PlanningEngine = {
     // zone A non prioritaire (vide si <8 présents, jamais doublée avant les autres
     // si 8 ou plus).
     const groups = {};
+    // Groupé aussi par flotte (RTG/CC — § module Chariots Cavalier) : deux
+    // équipes de flottes différentes peuvent partager le même shift/vacation
+    // (labels globaux), mais leurs conducteurs ne doivent jamais être
+    // mélangés dans la même répartition de zones (listes de zones distinctes).
     base.forEach(b => {
       if (b.status !== "PRESENT" || !b.shift || !b.vacation) return;
-      const key = b.shift + "_" + b.vacation;
+      const fleet = (b.team && b.team.typeEngin) || "RTG";
+      const key = fleet + "_" + b.shift + "_" + b.vacation;
       (groups[key] = groups[key] || []).push(b);
     });
     Object.keys(groups).forEach(key => {
-      ZoneBalancingEngine.assignZonesForSlot(groups[key], state.config.zones);
+      const fleet = key.split("_")[0];
+      ZoneBalancingEngine.assignZonesForSlot(groups[key], zonesForFleet(state.config, fleet));
     });
 
     // Passe 3 : applique les affectations manuelles par-dessus le résultat auto —

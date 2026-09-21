@@ -501,7 +501,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           slotZoneCounts[slotKey] = counts;
         }
         const counts = slotZoneCounts[slotKey];
-        const zoneList = state.config.zones || [];
+        const zoneList = zonesForFleet(state.config, (team && team.typeEngin) || "RTG") || [];
         const others = zoneList.slice(1); // B..H — la zone A n'est jamais prioritaire.
         // Même ordre de doublement que ZoneBalancingEngine (DOUBLING_ORDER) :
         // d'abord toute zone B-H encore totalement libre, puis — au-delà de
@@ -1210,16 +1210,17 @@ function buildManualZoneOptions(zones) {
 }
 
 function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }) {
+  const team = teams.find(t => t.id === driver.teamId);
+  const fleetZones = zonesForFleet(config, (team && team.typeEngin) || "RTG");
   const [status, setStatus] = useState(assignment.status);
   const [vacation, setVacation] = useState(assignment.vacation || "V1");
-  const [zone, setZone] = useState(assignment.zone || config.zones[0]);
+  const [zone, setZone] = useState(assignment.zone || fleetZones[0]);
   const [saving, setSaving] = useState(false);
   const isManual = assignment.source === "MANUAL";
 
-  const team = teams.find(t => t.id === driver.teamId);
   const shift = assignment.shift || (team ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(iso), config) : null);
   const vacDefs = shift ? (config.vacations[shift] || []) : [];
-  const zoneOptions = buildManualZoneOptions(config.zones);
+  const zoneOptions = buildManualZoneOptions(fleetZones);
 
   const save = async () => {
     setSaving(true);

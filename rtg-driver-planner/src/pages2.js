@@ -117,7 +117,7 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
         <div>
           <label className={LABEL_CLS}>Zone initiale</label>
           <select className={FIELD_CLS} value={form.initialZone} onChange={e => setForm(f => Object.assign({}, f, { initialZone: e.target.value }))}>
-            {state.config.zones.map(z => <option key={z} value={z}>{z}</option>)}
+            {zonesForFleet(state.config, ((state.teams.find(t => t.id === (lockedTeamId || form.teamId)) || {}).typeEngin) || "RTG").map(z => <option key={z} value={z}>{z}</option>)}
           </select>
         </div>
         <div>

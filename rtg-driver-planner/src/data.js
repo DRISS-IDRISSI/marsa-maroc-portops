@@ -21,6 +21,17 @@ const RTG_CONFIG = {
     S3: [{ id: "V1", start: "23:00", end: "03:00" }, { id: "V2", start: "03:00", end: "07:00" }]
   },
   zones: ["A", "B", "C", "D", "E", "F", "G", "H"],
+  // Zones par flotte (§ module Chariots Cavalier — CC) : toutes les règles
+  // d'affectation (rotation, répartition équitable, repos, shifts,
+  // vacations...) sont IDENTIQUES entre RTG et CC, seule la liste des zones
+  // change. "RTG" reprend la liste ci-dessus ; "CC" est un PLACEHOLDER en
+  // attendant la liste réelle des zones cavalier — à remplacer ici dès
+  // qu'elle sera confirmée (voir zonesForFleet ci-dessous, utilisé partout
+  // où une zone est affectée/affichée).
+  zonesByFleet: {
+    RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
+    CC: ["Z1", "Z2", "Z3", "Z4"]
+  },
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
   // Pour chaque tranche de 5 jours de CONGÉ dans le mois, le quota de repos du
@@ -135,4 +146,12 @@ const RTG_CONFIG = {
     { date: "2026-11-18", label: "Fête de l'Indépendance" }
   ]
 };
+
+// Liste des zones applicable à une flotte donnée ("RTG" ou "CC") — utilisé
+// partout où une zone est affectée/affichée (moteurs de rotation/répartition,
+// formulaires), pour que la seule vraie différence entre les deux modules
+// (§ demande explicite) reste bien la liste des zones elle-même.
+function zonesForFleet(config, fleet) {
+  return (config.zonesByFleet && config.zonesByFleet[fleet]) || config.zones;
+}
 
