@@ -30,7 +30,7 @@ const RTG_CONFIG = {
   // affectée/affichée).
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["P71", "P72", "P83", "P80", "P82", "PARC"]
+    CC: ["P71", "P72", "P74", "P80", "P82", "PARC"]
   },
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
