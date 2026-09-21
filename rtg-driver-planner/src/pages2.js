@@ -735,7 +735,7 @@ const HEURE_EXCEPTIONNELLE_TYPES = {
 };
 
 function emptyHeureExceptionnelleForm() {
-  return { driverId: "", date: RTGDate.toISO(new Date()), type: "DOUBLAGE", heures: 8, commentaire: "" };
+  return { driverId: "", date: RTGDate.toISO(new Date()), type: "DOUBLAGE", heures: 4, commentaire: "" };
 }
 
 function HeuresExceptionnellesPage() {
