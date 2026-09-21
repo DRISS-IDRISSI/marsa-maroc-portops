@@ -670,7 +670,11 @@ const RTGStore = (function () {
   // import ne le remontera plus jamais, et supprime au passage les lignes
   // déjà importées pour ce login (voir import-tos-moves/index.ts).
   async function ignoreTosLogin(loginTos, note) {
-    const { error } = await sb.from("mouvements_tos_logins_ignores").insert({ login_tos: loginTos, note: note || null, created_by: state.currentUserId });
+    // upsert (pas insert) : redemander à ignorer un login déjà ignoré (ex.
+    // ré-affiché suite à un import non à jour côté Edge Function) ne doit
+    // jamais échouer sur une violation de clé déjà existante — la ligne
+    // mouvements_tos doit être re-supprimée dans tous les cas ci-dessous.
+    const { error } = await sb.from("mouvements_tos_logins_ignores").upsert({ login_tos: loginTos, note: note || null, created_by: state.currentUserId }, { onConflict: "login_tos" });
     if (error) { console.error(error); throw error; }
     const { error: deleteError } = await sb.from("mouvements_tos").delete().eq("login_tos", loginTos);
     if (deleteError) console.error(deleteError);

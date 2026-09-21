@@ -2842,7 +2842,9 @@ function MouvementsRtgPage() {
   // des imports futurs et supprime l'historique déjà importé pour ce login.
   const ignoreLogin = login => {
     if (!window.confirm(`Ignorer définitivement le login "${login}" ? Ses mouvements déjà importés seront supprimés, et il ne sera plus jamais signalé comme non rattaché.`)) return;
-    RTGStore.ignoreTosLogin(login).then(() => { refreshDetailRows(); refreshTotalRows(); });
+    RTGStore.ignoreTosLogin(login)
+      .then(() => { refreshDetailRows(); refreshTotalRows(); })
+      .catch(e => alert("Erreur : " + (e && e.message ? e.message : "réessayez.") + "\n\nSi le login réapparaît malgré un \"ignorer\" réussi, la fonction d'import TOS déployée sur Supabase n'est peut-être pas à jour — voir avec l'administrateur pour la redéployer."));
   };
 
   // Ne garder que les lignes de la flotte actuellement affichée : soit non
