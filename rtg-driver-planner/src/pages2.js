@@ -1383,7 +1383,7 @@ function RapportRHPage() {
         </div>
 
         <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
-          Document généré automatiquement par RTG Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
+          Document généré automatiquement par CES Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
         </div>
       </div>
       )}
@@ -1450,7 +1450,7 @@ function RapportRHPage() {
         </div>
 
         <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
-          Document généré automatiquement par RTG Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
+          Document généré automatiquement par CES Driver Planner — à valider par le Responsable Exploitation avant transmission au Service RH.
         </div>
       </div>
       )}
@@ -1511,7 +1511,7 @@ function RapportRHPage() {
         </div>
 
         <div className="mt-6 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
-          Document généré automatiquement par RTG Driver Planner (import TOS) — à valider par le Responsable Exploitation avant transmission au Service RH.
+          Document généré automatiquement par CES Driver Planner (import TOS) — à valider par le Responsable Exploitation avant transmission au Service RH.
         </div>
       </div>
       )}

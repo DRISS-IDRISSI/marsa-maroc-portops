@@ -87,7 +87,7 @@ function LoginPage() {
           <div className="w-20 h-20 mx-auto rounded-lg bg-white flex items-center justify-center p-2 mb-3">
             <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="max-w-full max-h-full object-contain" />
           </div>
-          <h1 className="text-lg font-bold text-white">RTG Driver Planner</h1>
+          <h1 className="text-lg font-bold text-white">CES Driver Planner</h1>
           <p className="text-xs text-slate-500 mt-1">Marsa Maroc — Terminal à conteneurs</p>
         </div>
         {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
@@ -216,7 +216,7 @@ function Sidebar() {
         <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center p-1 shrink-0">
           <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="max-w-full max-h-full object-contain" />
         </div>
-        {!collapsed && <div><div className="font-bold text-white text-sm leading-tight">RTG Driver Planner</div><div className="text-[10px] text-slate-500 uppercase tracking-wider">Marsa Maroc — Terminal Conteneurs</div></div>}
+        {!collapsed && <div><div className="font-bold text-white text-sm leading-tight">CES Driver Planner</div><div className="text-[10px] text-slate-500 uppercase tracking-wider">Marsa Maroc — Terminal Conteneurs</div></div>}
       </div>
 
       {showFleetSwitch && !collapsed && (
@@ -429,7 +429,7 @@ function Layout({ children }) {
           </div>
         </main>
         <footer className="print:hidden bg-card border-t border-border px-6 py-3 text-center text-xs text-slate-600">
-          © 2026 Marsa Maroc — RTG Driver Planner — Terminal à conteneurs
+          © 2026 Marsa Maroc — CES Driver Planner — Terminal à conteneurs
         </footer>
       </div>
     </div>

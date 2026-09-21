@@ -1569,7 +1569,7 @@ function Home() {
   return (
     <div className="space-y-6 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">RTG Driver Planner{!shiftRestricted ? " — " + rawState.currentFleet : ""}</h1>
+        <h1 className="text-2xl font-bold text-white">CES Driver Planner{!shiftRestricted ? " — " + rawState.currentFleet : ""}</h1>
         <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs RTG — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
       </div>
 
@@ -2357,7 +2357,7 @@ function AffectationDuJour() {
             <ReposCongesPrintable rows={assignments.filter(a => a.status === "REPOS" || a.status === "CONGE")} />
           </div>
           <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
-            Document généré automatiquement par RTG Driver Planner.
+            Document généré automatiquement par CES Driver Planner.
           </div>
         </div>
       ) : (
@@ -2378,7 +2378,7 @@ function AffectationDuJour() {
                 {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
               </div>
               <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
-                Document généré automatiquement par RTG Driver Planner.
+                Document généré automatiquement par CES Driver Planner.
               </div>
             </div>
           );
