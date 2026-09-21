@@ -26,6 +26,18 @@ const RTG_IMPORT_OVERRIDE_MOTIF = "Import planning réel (Excel)";
 const RTG_IMPORT_CONGE_COMMENT = "Import Excel — planning réel";
 const RTG_IMPORT_MALADIE_COMMENT = "Import Excel — planning réel";
 
+// Flotte actuellement affichée (RTG ou CC — chariots cavalier), un module
+// distinct dans la même appli : mêmes tables/pages, seules les règles et
+// zones d'affectation diffèrent. Préférence purement locale à l'appareil
+// (pas de colonne Supabase), donc gardée en localStorage.
+const RTG_FLEET_STORAGE_KEY = "rtg_current_fleet";
+function readStoredFleet() {
+  try {
+    const v = window.localStorage.getItem(RTG_FLEET_STORAGE_KEY);
+    return v === "CC" ? "CC" : "RTG";
+  } catch (e) { return "RTG"; }
+}
+
 function rtgEmptyState() {
   return {
     dataVersion: 11,
@@ -34,6 +46,7 @@ function rtgEmptyState() {
     heuresExceptionnelles: [], feriesMouvements: [],
     users: [], currentUserId: null,
     manualOverrides: {}, auditLog: [],
+    currentFleet: readStoredFleet(),
     // `loading` : chargement des données en cours (au démarrage ou après
     // connexion) ; `authChecked` : la vérification de session initiale est
     // terminée (permet à AuthGate de ne pas afficher l'écran de connexion
@@ -64,6 +77,12 @@ const RTGStore = (function () {
     return state.users.find(u => u.id === state.currentUserId) || null;
   }
 
+  function setCurrentFleet(fleet) {
+    const value = fleet === "CC" ? "CC" : "RTG";
+    try { window.localStorage.setItem(RTG_FLEET_STORAGE_KEY, value); } catch (e) {}
+    set(s => Object.assign({}, s, { currentFleet: value }));
+  }
+
   function currentUserLabel() {
     const u = getCurrentUser();
     return u ? u.nom : "Système";
@@ -82,7 +101,7 @@ const RTGStore = (function () {
       loginTos: r.login_tos || ""
     };
   }
-  function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle }; }
+  function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle, typeEngin: r.type_engin || "RTG" }; }
   function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, driverId: r.driver_id, actif: r.actif, email: r.email || "", credentialsSentAt: r.credentials_sent_at || null }; }
   function mapRecordRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   // Congés uniquement (§38) : mêmes champs de base + le workflow de demande
@@ -822,13 +841,24 @@ const RTGStore = (function () {
     addAuditEntry({ action: "Réinitialisation + renvoi des identifiants", details: u ? u.nom + " (" + u.username + ")" : targetUserId });
   }
 
-  // ---------- Équipes : renommer le shift/l'équipe (§30) ----------
+  // ---------- Équipes : créer / renommer le shift-équipe (§30) ----------
+
+  async function addTeam({ id, nom, shiftCycle, typeEngin }) {
+    const row = { id, nom, shift_cycle: shiftCycle, type_engin: typeEngin || "RTG" };
+    const { data, error } = await sb.from("teams").insert(row).select().single();
+    if (error) { console.error(error); throw error; }
+    const created = mapTeamRow(data);
+    set(s => Object.assign({}, s, { teams: s.teams.concat([created]) }));
+    addAuditEntry({ action: "Création équipe", details: created.nom + " (" + created.typeEngin + ")" });
+    return created;
+  }
 
   async function updateTeam(teamId, patch) {
     const before = state.teams.find(t => t.id === teamId);
     const dbPatch = {};
     if ("nom" in patch) dbPatch.nom = patch.nom;
     if ("shiftCycle" in patch) dbPatch.shift_cycle = patch.shiftCycle;
+    if ("typeEngin" in patch) dbPatch.type_engin = patch.typeEngin;
     const { data, error } = await sb.from("teams").update(dbPatch).eq("id", teamId).select().single();
     if (error) { console.error(error); throw error; }
     const updated = mapTeamRow(data);
@@ -849,7 +879,7 @@ const RTGStore = (function () {
     setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank, bulkClearStaleVacationOverrides,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,
-    updateTeam,
+    addTeam, updateTeam, setCurrentFleet,
     getFerieMouvements, setFerieMouvements,
     fetchMouvementsTos, addMouvementManuel, deleteMouvementManuel, ignoreTosLogin
   };

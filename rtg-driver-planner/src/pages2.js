@@ -189,6 +189,43 @@ function TeamNameEditor({ team, editable }) {
   );
 }
 
+// Création d'une équipe (§ module Chariots Cavalier) — jusqu'ici l'appli ne
+// permettait que de renommer une équipe existante (TeamNameEditor) : il n'y
+// avait jamais eu besoin d'en créer une nouvelle avant l'arrivée du module CC.
+function TeamForm({ typeEngin, onCancel, onSaved }) {
+  const [nom, setNom] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!nom.trim()) { setError("Le nom de l'équipe est obligatoire."); return; }
+    const id = typeEngin + "_" + nom.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!id || id === typeEngin + "_") { setError("Nom invalide."); return; }
+    setSaving(true);
+    try {
+      await RTGStore.addTeam({ id, nom: nom.trim(), shiftCycle: ["S1", "S2", "S3"], typeEngin });
+      onSaved();
+    } catch (err) {
+      setError("Erreur d'enregistrement : " + (err && err.message ? err.message : "réessayez."));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+      <div>
+        <label className={LABEL_CLS}>Nom de l'équipe</label>
+        <input autoFocus className={FIELD_CLS} placeholder={"ex. GR " + typeEngin + " 1"} value={nom} onChange={e => setNom(e.target.value)} />
+      </div>
+      <div className="flex gap-2">
+        <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : "Créer l'équipe"}</button>
+        <button onClick={onCancel} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+      </div>
+    </div>
+  );
+}
+
 function DriversPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
@@ -212,16 +249,24 @@ function DriversPage() {
     if (d) setHistoryFor(d.id);
   }, [openMatricule, state.drivers]);
 
-  const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams;
+  // Un Responsable de Shift/Conducteur reste toujours sur sa propre équipe ;
+  // pour ADMIN/RESPONSABLE, la bascule RTG/CC (barre latérale) détermine
+  // quelle flotte est affichée ici (§ module Chariots Cavalier).
+  const fleetTeamIds = useMemo(() => new Set(
+    state.teams.filter(t => (t.typeEngin || "RTG") === state.currentFleet).map(t => t.id)
+  ), [state.teams, state.currentFleet]);
+  const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams.filter(t => fleetTeamIds.has(t.id));
+  const [showTeamForm, setShowTeamForm] = useState(false);
 
   const drivers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return state.drivers.filter(d =>
-      (shiftRestricted ? d.teamId === currentUser.teamId : (teamFilter === "all" || d.teamId === teamFilter)) &&
+      (shiftRestricted ? d.teamId === currentUser.teamId : fleetTeamIds.has(d.teamId)) &&
+      (shiftRestricted || teamFilter === "all" || d.teamId === teamFilter) &&
       (statusFilter === "tous" || (statusFilter === "actifs" ? d.actif !== false : d.actif === false)) &&
       (!q || d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q))
     );
-  }, [state.drivers, teamFilter, statusFilter, searchQuery, shiftRestricted, currentUser]);
+  }, [state.drivers, teamFilter, statusFilter, searchQuery, shiftRestricted, currentUser, fleetTeamIds]);
 
   const today = RTGDate.toISO(new Date());
   const todayDate = RTGDate.parseISO(today);
@@ -232,12 +277,19 @@ function DriversPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Conducteurs</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{drivers.filter(d => d.actif !== false).length} conducteurs actifs{shiftRestricted ? " — " + visibleTeams[0].nom : " sur " + state.drivers.length}</p>
+          <h1 className="text-2xl font-bold text-white">Conducteurs{!shiftRestricted ? " — " + state.currentFleet : ""}</h1>
+          <p className="text-slate-400 text-sm mt-0.5">{drivers.filter(d => d.actif !== false).length} conducteurs actifs{shiftRestricted ? " — " + visibleTeams[0].nom : " sur " + state.drivers.filter(d => fleetTeamIds.has(d.teamId)).length}</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-          <i className="fas fa-plus mr-1.5"></i>Nouveau conducteur
-        </button>
+        <div className="flex gap-2">
+          {!shiftRestricted && (
+            <button onClick={() => { setShowTeamForm(true); setShowForm(false); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-white hover:bg-marine-700 border border-border">
+              <i className="fas fa-users-rectangle mr-1.5"></i>Nouvelle équipe
+            </button>
+          )}
+          <button onClick={() => { setShowForm(true); setShowTeamForm(false); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+            <i className="fas fa-plus mr-1.5"></i>Nouveau conducteur
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -252,13 +304,22 @@ function DriversPage() {
             </div>
           );
         })}
+        {visibleTeams.length === 0 && (
+          <p className="text-xs text-slate-500 italic sm:col-span-3">Aucune équipe {state.currentFleet} pour l'instant — créez-en une avec « Nouvelle équipe ».</p>
+        )}
       </div>
       {!shiftRestricted && <p className="text-xs text-slate-500 -mt-2">Modifiez l'équipe d'un conducteur (bouton « Modifier ») pour rééquilibrer les effectifs entre shifts.</p>}
 
+      {showTeamForm && (
+        <Panel title={"Nouvelle équipe " + state.currentFleet} icon="fa-users-rectangle">
+          <TeamForm typeEngin={state.currentFleet} onCancel={() => setShowTeamForm(false)} onSaved={() => setShowTeamForm(false)} />
+        </Panel>
+      )}
+
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
-          <DriverForm state={state} lockedTeamId={shiftRestricted ? currentUser.teamId : null}
-            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "", loginTos: editingDriver.loginTos || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : null)}
+          <DriverForm state={Object.assign({}, state, { teams: visibleTeams })} lockedTeamId={shiftRestricted ? currentUser.teamId : null}
+            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "", loginTos: editingDriver.loginTos || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : (visibleTeams[0] ? visibleTeams[0].id : ""))}
             editingId={editingId} onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -273,7 +334,7 @@ function DriversPage() {
           <label className={LABEL_CLS}>Équipe</label>
           <select className={FIELD_CLS} value={teamFilter} onChange={e => setTeamFilter(e.target.value)}>
             <option value="all">Toutes</option>
-            {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+            {visibleTeams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
           </select>
         </div>
         )}

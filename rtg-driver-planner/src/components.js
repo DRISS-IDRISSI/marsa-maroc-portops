@@ -203,6 +203,13 @@ function Sidebar() {
 
   const isActive = (p) => loc.pathname === p;
 
+  // Bascule RTG / CC (chariots cavalier) — deux modules dans la même appli,
+  // même page/menu, mais on ne montre que les équipes/conducteurs de la
+  // flotte choisie. Réservé à ADMIN/RESPONSABLE (vue globale) : un
+  // Responsable de Shift ou un Conducteur reste toujours cantonné à sa
+  // propre équipe, quelle que soit cette bascule.
+  const showFleetSwitch = currentUser && (currentUser.role === "ADMIN" || currentUser.role === "RESPONSABLE");
+
   const sidebarContent = (
     <>
       <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
@@ -211,6 +218,19 @@ function Sidebar() {
         </div>
         {!collapsed && <div><div className="font-bold text-white text-sm leading-tight">RTG Driver Planner</div><div className="text-[10px] text-slate-500 uppercase tracking-wider">Marsa Maroc — Terminal Conteneurs</div></div>}
       </div>
+
+      {showFleetSwitch && !collapsed && (
+        <div className="px-3 pt-3">
+          <div className="flex rounded-lg border border-border overflow-hidden text-xs font-semibold">
+            {["RTG", "CC"].map(f => (
+              <button key={f} onClick={() => RTGStore.setCurrentFleet(f)}
+                className={`flex-1 px-3 py-1.5 transition-colors ${state.currentFleet === f ? "bg-orange-500 text-white" : "bg-surface text-slate-400 hover:text-white"}`}>
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="p-3 space-y-1">
         <div className={`text-[10px] uppercase tracking-wider text-slate-600 mb-2 px-3 ${collapsed ? 'hidden' : ''}`}>Menu</div>
