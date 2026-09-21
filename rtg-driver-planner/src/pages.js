@@ -1566,6 +1566,17 @@ function Home() {
       })()
     : planning.validation;
 
+  // Alerte "demandes de congé en attente" (§38, libre-service conducteur) —
+  // portée à l'Accueil pour qu'un Responsable/Admin la remarque sans avoir à
+  // ouvrir la page Congés ; un Responsable de Shift ne voit que sa propre
+  // équipe, comme partout ailleurs sur cette page.
+  const pendingConges = useMemo(() => rawState.conges.filter(c => {
+    if (c.statut !== "EN_ATTENTE") return false;
+    const d = state.drivers.find(dr => dr.id === c.driverId);
+    if (!d) return false;
+    return !shiftRestricted || d.teamId === currentUser.teamId;
+  }), [rawState.conges, state.drivers, shiftRestricted, currentUser]);
+
   return (
     <div className="space-y-6 fade-in">
       <div>
@@ -1574,6 +1585,19 @@ function Home() {
       </div>
 
       <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />
+
+      {pendingConges.length > 0 && (
+        <button onClick={() => nav("/conges")} className="w-full text-left flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl px-4 py-3 text-sm hover:bg-amber-500/15 transition-all">
+          <i className="fas fa-bell text-amber-400"></i>
+          <span className="font-medium">
+            {pendingConges.length} demande{pendingConges.length > 1 ? "s" : ""} de congé en attente de validation
+          </span>
+          <span className="text-amber-400/80 truncate">
+            — {pendingConges.slice(0, 3).map(c => driverLabel(state, c.driverId).split(" — ")[1] || driverLabel(state, c.driverId)).join(", ")}{pendingConges.length > 3 ? "…" : ""}
+          </span>
+          <i className="fas fa-arrow-right ml-auto shrink-0"></i>
+        </button>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <KPICard icon="fa-user-check" label="Présents" value={counts.PRESENT} color="green" />
