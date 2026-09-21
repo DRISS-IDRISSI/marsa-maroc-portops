@@ -20,6 +20,7 @@ function App() {
             <Route path="/mon-planning" element={<MonPlanningPage />} />
             <Route path="/mes-conges" element={<MesCongesPage />} />
             <Route path="/mes-mouvements" element={<MesMouvementsPage />} />
+            <Route path="/mes-overtime" element={<MesOverTimePage />} />
             <Route path="/mouvements-rtg" element={<MouvementsRtgPage />} />
             <Route path="/utilisateurs" element={<UsersPage />} />
             <Route path="/mon-compte" element={<ChangePasswordPage />} />

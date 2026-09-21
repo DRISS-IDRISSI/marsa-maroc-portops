@@ -2496,6 +2496,92 @@ function MesMouvementsPage() {
   );
 }
 
+// Consultation seule pour le conducteur — heures_exceptionnelles est déjà
+// chargée dans state au démarrage (RLS restreint déjà à ses propres lignes),
+// pas besoin d'un fetch dédié comme pour les mouvements TOS.
+function MesOverTimePage() {
+  const currentUser = useCurrentUser();
+  const state = useRtgState();
+  const driver = currentUser && currentUser.driverId ? state.drivers.find(d => d.id === currentUser.driverId) : null;
+  const now = new Date();
+  const [month, setMonth] = useState(now.getUTCMonth() + 1);
+  const [year, setYear] = useState(now.getUTCFullYear());
+
+  if (!driver) {
+    return (
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+        <i className="fas fa-triangle-exclamation"></i> Votre compte n'est rattaché à aucune fiche conducteur. Contactez un administrateur.
+      </div>
+    );
+  }
+
+  const dim = RTGDate.daysInMonth(month, year);
+  const firstIso = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
+  const lastIso = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
+  const rows = state.heuresExceptionnelles
+    .filter(r => r.driverId === driver.id && r.dateDebut >= firstIso && r.dateDebut <= lastIso)
+    .sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+  const totalHeures = rows.reduce((s, r) => s + (Number(r.heures) || 0), 0);
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Mes Over Time</h1>
+        <p className="text-slate-400 text-sm mt-0.5">Doublage, jour férié travaillé, 3ème shift dimanche — {driver.matricule} — {driver.nom} {driver.prenom}</p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+        <div>
+          <label className={LABEL_CLS}>Mois</label>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
+            {RAPPORT_MOIS_LABELS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Année</label>
+          <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-surface text-slate-400">
+            <tr className="text-left">
+              <th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th>
+              <th className="px-3 py-2 text-center">Heures</th><th className="px-3 py-2">Commentaire</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-500 italic">Aucun Over Time enregistré pour cette période.</td></tr>
+            )}
+            {rows.map(r => {
+              const t = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-300" };
+              return (
+                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-white">{r.dateDebut}{r.dateFin && r.dateFin !== r.dateDebut ? " → " + r.dateFin : ""}</td>
+                  <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-[11px] ${t.className}`}>{t.label}</span></td>
+                  <td className="px-3 py-2 text-center text-white font-bold">{r.heures}</td>
+                  <td className="px-3 py-2 text-slate-400">{r.commentaire || "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-border font-bold">
+                <td className="px-3 py-2 text-white" colSpan={2}>Total période</td>
+                <td className="px-3 py-2 text-center text-white">{totalHeures}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // Vue responsable/admin : mouvements agrégés par conducteur sur une période,
 // avec le détail par jour/shift/engin. RLS restreint déjà ce qui revient pour
 // un RESPONSABLE_SHIFT (sa propre équipe uniquement) — pas de filtre

@@ -134,7 +134,7 @@ function AuthGate({ children }) {
   // équipe. Toute autre URL (y compris l'accueil) redirige vers "Mon
   // planning" — les policies RLS limitent déjà les DONNÉES visibles, ce
   // garde-fou évite en plus d'exposer l'interface des autres pages.
-  const CONDUCTEUR_ALLOWED_PATHS = ["/mon-planning", "/mes-conges", "/mes-mouvements", "/planning", "/affectation", "/mon-compte"];
+  const CONDUCTEUR_ALLOWED_PATHS = ["/mon-planning", "/mes-conges", "/mes-mouvements", "/mes-overtime", "/planning", "/affectation", "/mon-compte"];
   useEffect(() => {
     if (currentUser && isDriverRestricted(currentUser) && CONDUCTEUR_ALLOWED_PATHS.indexOf(loc.pathname) === -1) {
       nav("/mon-planning", { replace: true });
@@ -180,6 +180,7 @@ function Sidebar() {
     { to: "/mon-planning", icon: "fa-calendar-check", label: "Mon planning" },
     { to: "/mes-conges", icon: "fa-umbrella-beach", label: "Mes congés" },
     { to: "/mes-mouvements", icon: "fa-truck-ramp-box", label: "Mes mouvements" },
+    { to: "/mes-overtime", icon: "fa-clock-rotate-left", label: "Mes Over Time" },
     { to: "/planning", icon: "fa-calendar-alt", label: "Planning mensuel" },
     { to: "/affectation", icon: "fa-clipboard-list", label: "Affectation du jour" }
   ] : [
