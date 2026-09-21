@@ -192,8 +192,24 @@ function TeamNameEditor({ team, editable }) {
 // Création d'une équipe (§ module Chariots Cavalier) — jusqu'ici l'appli ne
 // permettait que de renommer une équipe existante (TeamNameEditor) : il n'y
 // avait jamais eu besoin d'en créer une nouvelle avant l'arrivée du module CC.
-function TeamForm({ typeEngin, onCancel, onSaved }) {
+// Ordre fixe de rotation hebdomadaire des shifts (ShiftRotationEngine) :
+// S1 → S3 → S2 → S1 ... Construit un shiftCycle de 3 éléments tel que
+// l'équipe soit sur `currentShift` la semaine en cours (weekIndexMod3 =
+// diffWeeks % 3 par rapport à config.referenceWeekStart), en respectant
+// cet ordre pour les semaines suivantes.
+const SHIFT_ROTATION_ORDER = ["S1", "S3", "S2"];
+function buildShiftCycleForCurrentShift(currentShift, weekIndexMod3) {
+  const p = SHIFT_ROTATION_ORDER.indexOf(currentShift);
+  const cycle = [];
+  for (let i = 0; i < 3; i++) {
+    cycle[i] = SHIFT_ROTATION_ORDER[(((p - weekIndexMod3 + i) % 3) + 3) % 3];
+  }
+  return cycle;
+}
+
+function TeamForm({ state, typeEngin, onCancel, onSaved }) {
   const [nom, setNom] = useState("");
+  const [currentShift, setCurrentShift] = useState("S1");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -203,7 +219,12 @@ function TeamForm({ typeEngin, onCancel, onSaved }) {
     if (!id || id === typeEngin + "_") { setError("Nom invalide."); return; }
     setSaving(true);
     try {
-      await RTGStore.addTeam({ id, nom: nom.trim(), shiftCycle: ["S1", "S2", "S3"], typeEngin });
+      const refWeek = RTGDate.startOfWeekMonday(RTGDate.parseISO(state.config.referenceWeekStart));
+      const targetWeek = RTGDate.startOfWeekMonday(new Date());
+      const diffWeeks = Math.floor(RTGDate.diffDays(refWeek, targetWeek) / 7);
+      const weekIndexMod3 = ((diffWeeks % 3) + 3) % 3;
+      const shiftCycle = buildShiftCycleForCurrentShift(currentShift, weekIndexMod3);
+      await RTGStore.addTeam({ id, nom: nom.trim(), shiftCycle, typeEngin });
       onSaved();
     } catch (err) {
       setError("Erreur d'enregistrement : " + (err && err.message ? err.message : "réessayez."));
@@ -217,6 +238,15 @@ function TeamForm({ typeEngin, onCancel, onSaved }) {
       <div>
         <label className={LABEL_CLS}>Nom de l'équipe</label>
         <input autoFocus className={FIELD_CLS} placeholder={"ex. GR " + typeEngin + " 1"} value={nom} onChange={e => setNom(e.target.value)} />
+      </div>
+      <div>
+        <label className={LABEL_CLS}>Shift de cette équipe cette semaine</label>
+        <select className={FIELD_CLS} value={currentShift} onChange={e => setCurrentShift(e.target.value)}>
+          <option value="S1">Shift 1</option>
+          <option value="S2">Shift 2</option>
+          <option value="S3">Shift 3</option>
+        </select>
+        <p className="text-[11px] text-slate-500 mt-1">Détermine le point de départ de la rotation hebdomadaire (S1 → S3 → S2 → S1...) pour cette équipe.</p>
       </div>
       <div className="flex gap-2">
         <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : "Créer l'équipe"}</button>
@@ -312,7 +342,7 @@ function DriversPage() {
 
       {showTeamForm && (
         <Panel title={"Nouvelle équipe " + state.currentFleet} icon="fa-users-rectangle">
-          <TeamForm typeEngin={state.currentFleet} onCancel={() => setShowTeamForm(false)} onSaved={() => setShowTeamForm(false)} />
+          <TeamForm state={state} typeEngin={state.currentFleet} onCancel={() => setShowTeamForm(false)} onSaved={() => setShowTeamForm(false)} />
         </Panel>
       )}
 
