@@ -1,7 +1,7 @@
 {
   "name": "CES Driver Planner — Marsa Maroc",
-  "short_name": "RTG Planner",
-  "description": "Gestion des conducteurs RTG — Terminal à conteneurs, Marsa Maroc",
+  "short_name": "CES Planner",
+  "description": "Gestion des conducteurs — Terminal à conteneurs, Marsa Maroc",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

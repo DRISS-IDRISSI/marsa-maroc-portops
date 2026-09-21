@@ -1570,7 +1570,7 @@ function Home() {
     <div className="space-y-6 fade-in">
       <div>
         <h1 className="text-2xl font-bold text-white">CES Driver Planner{!shiftRestricted ? " — " + rawState.currentFleet : ""}</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs RTG — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
+        <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
       </div>
 
       <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />

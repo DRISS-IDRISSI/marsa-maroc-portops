@@ -296,9 +296,9 @@ function Topbar() {
   return (
     <header className="print:hidden h-14 bg-card/80 backdrop-blur border-b border-border flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30">
       <div className="flex items-center gap-4 min-w-0">
-        <h1 className="hidden sm:block text-lg font-bold text-white lg:ml-0 truncate">RTG <span className="text-orange-400">Driver Planner</span></h1>
+        <h1 className="hidden sm:block text-lg font-bold text-white lg:ml-0 truncate">CES <span className="text-orange-400">Driver Planner</span></h1>
         <span className="hidden sm:inline text-xs text-slate-600">|</span>
-        <span className="hidden lg:inline text-xs text-slate-400">Gestion des conducteurs RTG</span>
+        <span className="hidden lg:inline text-xs text-slate-400">Gestion des conducteurs</span>
       </div>
       <div className="flex items-center gap-2 sm:gap-4 text-sm text-slate-400 ml-auto">
         <span className="hidden md:inline"><i className="far fa-calendar mr-1.5"></i>{time.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</span>
