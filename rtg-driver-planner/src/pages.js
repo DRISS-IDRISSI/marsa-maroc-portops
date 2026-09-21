@@ -764,6 +764,20 @@ function restrictedTeamId(user, state) {
   return null;
 }
 
+// Équipes visibles compte tenu de la flotte sélectionnée (bascule RTG/CC,
+// barre latérale — § module Chariots Cavalier) ET de la restriction
+// éventuelle à une seule équipe (Responsable de Shift / Conducteur) : les
+// deux filtres sont indépendants, un compte restreint voit toujours SA
+// équipe, quelle que soit la flotte affichée par ailleurs.
+function fleetTeams(state, restrictedTeamIdValue) {
+  if (restrictedTeamIdValue) return state.teams.filter(t => t.id === restrictedTeamIdValue);
+  return state.teams.filter(t => (t.typeEngin || "RTG") === state.currentFleet);
+}
+
+function fleetTeamIdSet(state, restrictedTeamIdValue) {
+  return new Set(fleetTeams(state, restrictedTeamIdValue).map(t => t.id));
+}
+
 // ==========================================
 // Codes / légende
 // ==========================================
@@ -1508,13 +1522,24 @@ function DriverSearchBox({ state, shiftRestricted, currentUser, todayAssignments
 // 1. Accueil
 // ==========================================
 function Home() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
   const nav = useNavigate();
   const today = new Date();
   const month = today.getUTCMonth() + 1;
   const year = today.getUTCFullYear();
+
+  // Ne considérer que les équipes/conducteurs de la flotte sélectionnée
+  // (bascule RTG/CC) — un compte restreint (Responsable de Shift) reste sur
+  // sa propre équipe quelle que soit cette bascule.
+  const restrictedId = shiftRestricted ? currentUser.teamId : null;
+  const fTeams = fleetTeams(rawState, restrictedId);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
 
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
   const todayIso = RTGDate.toISO(RTGDate.makeDate(year, month, Math.min(today.getUTCDate(), planning.days.length)));
@@ -1544,7 +1569,7 @@ function Home() {
   return (
     <div className="space-y-6 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">RTG Driver Planner</h1>
+        <h1 className="text-2xl font-bold text-white">RTG Driver Planner{!shiftRestricted ? " — " + rawState.currentFleet : ""}</h1>
         <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs RTG — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
       </div>
 
@@ -1726,14 +1751,23 @@ function PlanningGridPrintable({ planning, drivers, config, teams }) {
 }
 
 function PlanningMensuel() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   // isTeamRestricted couvre RESPONSABLE_SHIFT ET CONDUCTEUR (§39, demande
   // explicite de l'exploitant : le conducteur voit le planning de son
   // équipe, en lecture seule) — restrictedTeamId déduit l'équipe pour
   // chacun (team_id direct, ou celle de la fiche conducteur liée).
   const shiftRestricted = isTeamRestricted(currentUser);
-  const ownTeamId = restrictedTeamId(currentUser, state);
+  const ownTeamId = restrictedTeamId(currentUser, rawState);
+  // Ne considérer que les équipes/conducteurs de la flotte sélectionnée
+  // (bascule RTG/CC) — un compte restreint reste sur sa propre équipe quelle
+  // que soit cette bascule.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? ownTeamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
   // ADMIN, RESPONSABLE (Exploitation) et RESPONSABLE_SHIFT peuvent forcer
   // manuellement une affectation depuis cette grille, notamment pour
   // équilibrer à la main les vacations V1/V2 quand l'algorithme ne suffit
@@ -2068,14 +2102,23 @@ function ReposCongesPrintable({ rows, showTeamColumn = true }) {
 // 3. Affectation du jour
 // ==========================================
 function AffectationDuJour() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   // isTeamRestricted couvre RESPONSABLE_SHIFT ET CONDUCTEUR (§39, demande
   // explicite de l'exploitant : le conducteur voit l'affectation du jour de
   // son équipe, en lecture seule — cette page n'a de toute façon aucune
   // action d'édition).
   const shiftRestricted = isTeamRestricted(currentUser);
-  const ownTeamId = restrictedTeamId(currentUser, state);
+  const ownTeamId = restrictedTeamId(currentUser, rawState);
+  // Ne considérer que les équipes/conducteurs de la flotte sélectionnée
+  // (bascule RTG/CC) — un compte restreint reste sur sa propre équipe quelle
+  // que soit cette bascule.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? ownTeamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
   // Un CONDUCTEUR ne peut consulter que la journée en cours et J+1 (demande
   // explicite de l'exploitant) — le sélecteur de date libre est remplacé par
   // deux boutons Aujourd'hui/Demain ci-dessous.

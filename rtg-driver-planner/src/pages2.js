@@ -486,18 +486,28 @@ function CongeSoldeBadge({ driver, state }) {
 // 2/3/4. Congés / Maladies / Absences — page générique
 // ==========================================
 function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStatusCol, addFn, deleteFn }) {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ driverId: "", dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), type: showTypeSelect ? "ABSENCE" : "", commentaire: "" });
   const [error, setError] = useState("");
 
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
+  // propre équipe quelle que soit la flotte affichée par ailleurs.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
+
   const records = state[listKey]
     .filter(r => {
-      if (!shiftRestricted) return true;
       const d = state.drivers.find(dr => dr.id === r.driverId);
-      return d && d.teamId === currentUser.teamId;
+      if (!d) return false;
+      if (!shiftRestricted) return true;
+      return d.teamId === currentUser.teamId;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
   const todayIso = RTGDate.toISO(new Date());
@@ -640,7 +650,7 @@ function CongeJustificatifLink({ path }) {
 // ici. Distincte de RecordsPage (utilisée par Maladies/Absences) car ce
 // workflow d'approbation + justificatif n'existe que pour les congés.
 function CongesPage() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
   const [showForm, setShowForm] = useState(false);
@@ -650,11 +660,21 @@ function CongesPage() {
   const [refusingId, setRefusingId] = useState(null);
   const [refusMotif, setRefusMotif] = useState("");
 
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
+  // propre équipe quelle que soit la flotte affichée par ailleurs.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
+
   const records = state.conges
     .filter(r => {
-      if (!shiftRestricted) return true;
       const d = state.drivers.find(dr => dr.id === r.driverId);
-      return d && d.teamId === currentUser.teamId;
+      if (!d) return false;
+      if (!shiftRestricted) return true;
+      return d.teamId === currentUser.teamId;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
   const pendingCount = records.filter(r => r.statut === "EN_ATTENTE").length;
@@ -800,7 +820,7 @@ function emptyHeureExceptionnelleForm() {
 }
 
 function HeuresExceptionnellesPage() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
   const [showForm, setShowForm] = useState(false);
@@ -808,12 +828,22 @@ function HeuresExceptionnellesPage() {
   const [error, setError] = useState("");
   const [filterDriverId, setFilterDriverId] = useState("");
 
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
+  // propre équipe quelle que soit la flotte affichée par ailleurs.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
+
   const records = state.heuresExceptionnelles
     .filter(r => {
       if (filterDriverId && r.driverId !== filterDriverId) return false;
-      if (!shiftRestricted) return true;
       const d = state.drivers.find(dr => dr.id === r.driverId);
-      return d && d.teamId === currentUser.teamId;
+      if (!d) return false;
+      if (!shiftRestricted) return true;
+      return d.teamId === currentUser.teamId;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
 
@@ -920,9 +950,17 @@ function HeuresExceptionnellesPage() {
 // 6. Remplacement (§27)
 // ==========================================
 function RemplacementPage() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
+  // propre équipe quelle que soit la flotte affichée par ailleurs.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
   const [dateStr, setDateStr] = useState(RTGDate.toISO(new Date()));
   const [absentId, setAbsentId] = useState("");
   const [chosenId, setChosenId] = useState("");
@@ -1105,9 +1143,17 @@ function buildRapportFeriesS3(state, month, year, teamId) {
 }
 
 function RapportRHPage() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
+  // propre équipe quelle que soit la flotte affichée par ailleurs.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
   const now = new Date();
   const [tab, setTab] = useState("rh");
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
@@ -1483,8 +1529,8 @@ const ROLE_OPTIONS = [
   { value: "CONDUCTEUR", label: "Conducteur — accès à SON planning uniquement" }
 ];
 
-function emptyUserForm() {
-  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: "A", driverId: "", email: "" };
+function emptyUserForm(defaultTeamId) {
+  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: defaultTeamId || "", driverId: "", email: "" };
 }
 
 function UserForm({ state, initial, editingId, onCancel, onSaved }) {
@@ -1545,6 +1591,7 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
           <div>
             <label className={LABEL_CLS}>Équipe / Shift</label>
             <select className={FIELD_CLS} value={form.teamId} onChange={e => setForm(f => Object.assign({}, f, { teamId: e.target.value }))}>
+              <option value="">— Sélectionner —</option>
               {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
             </select>
           </div>
@@ -1753,6 +1800,17 @@ function ConducteurAccountsPanel({ state }) {
 function UsersPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
+  // La liste des comptes reste volontairement non filtrée par flotte (un
+  // ADMIN gère tous les comptes RTG et CC au même endroit) — seuls les
+  // sélecteurs équipe/conducteur du formulaire de création respectent la
+  // bascule RTG/CC, pour proposer par défaut les équipes/conducteurs de la
+  // flotte actuellement affichée.
+  const fTeams = fleetTeams(state, null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const formState = useMemo(() => Object.assign({}, state, {
+    teams: fTeams,
+    drivers: state.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [state, fTeams]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [resendStatus, setResendStatus] = useState({}); // userId -> "sending" | "sent" | "error"
@@ -1817,12 +1875,12 @@ function UsersPage() {
         </button>
       </Panel>
 
-      <ConducteurAccountsPanel state={state} />
+      <ConducteurAccountsPanel state={formState} />
 
       {showForm && (
         <Panel title={editingId ? "Modifier l'utilisateur" : "Nouvel utilisateur"} icon="fa-user-shield">
-          <UserForm state={state} editingId={editingId}
-            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || "A", driverId: editingUser.driverId || "", email: editingUser.email || "" } : emptyUserForm()}
+          <UserForm state={formState} editingId={editingId}
+            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || (formState.teams[0] ? formState.teams[0].id : ""), driverId: editingUser.driverId || "", email: editingUser.email || "" } : emptyUserForm(formState.teams[0] ? formState.teams[0].id : "")}
             onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -1910,10 +1968,18 @@ const ASSISTANT_SEVERITY_META = {
 };
 
 function AssistantIntelligentPage() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const nav = useNavigate();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
+  // propre équipe quelle que soit la flotte affichée par ailleurs.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -2669,9 +2735,22 @@ function emptyMouvementManuelForm(teamId) {
 }
 
 function MouvementsRtgPage() {
-  const state = useRtgState();
+  const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
+  // propre équipe quelle que soit la flotte affichée par ailleurs. Le rapport
+  // TOS (rows/totalRows) revient du serveur pour TOUTES les flottes — les
+  // lignes déjà rattachées à un conducteur de l'AUTRE flotte sont retirées
+  // ci-dessous (visibleRows/visibleTotalRows) via rawState.drivers (liste
+  // complète, nécessaire pour bien les reconnaître comme "rattachées" et ne
+  // pas les confondre avec un login réellement non rattaché à personne).
+  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const fTeamIds = new Set(fTeams.map(t => t.id));
+  const state = useMemo(() => Object.assign({}, rawState, {
+    teams: fTeams,
+    drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
+  }), [rawState, fTeams]);
   const now = new Date();
   const [tab, setTab] = useState("detail");
 
@@ -2766,9 +2845,16 @@ function MouvementsRtgPage() {
     RTGStore.ignoreTosLogin(login).then(() => { refreshDetailRows(); refreshTotalRows(); });
   };
 
+  // Ne garder que les lignes de la flotte actuellement affichée : soit non
+  // rattachées à un conducteur (à examiner quelle que soit la flotte), soit
+  // rattachées à un conducteur de la flotte en cours.
+  const fleetFilterRow = r => !r.driverId || fTeamIds.has((rawState.drivers.find(d => d.id === r.driverId) || {}).teamId);
+  const visibleRows = useMemo(() => rows.filter(fleetFilterRow), [rows, fTeamIds, rawState.drivers]);
+  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow), [totalRows, fTeamIds, rawState.drivers]);
+
   const totalByDriver = useMemo(() => {
     const map = {};
-    totalRows.forEach(r => {
+    visibleTotalRows.forEach(r => {
       const key = r.driverId || ("_" + r.loginTos);
       if (!map[key]) {
         map[key] = { driverId: r.driverId, loginTos: r.loginTos, nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, totalMvmt: 0 };
@@ -2781,10 +2867,10 @@ function MouvementsRtgPage() {
       const db = b.driverId ? state.drivers.find(d => d.id === b.driverId) : null;
       return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
     });
-  }, [totalRows, state.drivers]);
+  }, [visibleTotalRows, state.drivers]);
 
-  const totalUnmatchedLogins = [...new Set(totalRows.filter(r => !r.driverId).map(r => r.loginTos))];
-  const totalGrandTotal = totalRows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
+  const totalUnmatchedLogins = [...new Set(visibleTotalRows.filter(r => !r.driverId).map(r => r.loginTos))];
+  const totalGrandTotal = visibleTotalRows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
 
   const exportTotalExcel = () => {
     const headers = ["Matricule", "Nom", "Prénom", "Équipe"].concat(MOUVEMENTS_TOS_COLUMNS.map(c => c.label)).concat(["Total"]);
@@ -2803,7 +2889,7 @@ function MouvementsRtgPage() {
   // responsable que la liste plate par conducteur.
   const byDay = useMemo(() => {
     const days = {};
-    rows.forEach(r => {
+    visibleRows.forEach(r => {
       if (!days[r.dateTravail]) days[r.dateTravail] = {};
       const shiftKey = r.shift || "—";
       if (!days[r.dateTravail][shiftKey]) days[r.dateTravail][shiftKey] = [];
@@ -2821,11 +2907,11 @@ function MouvementsRtgPage() {
         return { shift, rows: shiftRows, total };
       })
     }));
-  }, [rows, state.drivers]);
+  }, [visibleRows, state.drivers]);
 
-  const unmatched = rows.filter(r => !r.driverId);
+  const unmatched = visibleRows.filter(r => !r.driverId);
   const unmatchedLogins = [...new Set(unmatched.map(r => r.loginTos))];
-  const grandTotal = rows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
+  const grandTotal = visibleRows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
 
   return (
     <div className="space-y-4 fade-in">
@@ -2890,8 +2976,8 @@ function MouvementsRtgPage() {
           <label className={LABEL_CLS}>Année</label>
           <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
         </div>
-        {!loading && rows.length > 0 && (
-          <div className="ml-auto text-xs text-slate-400">{rows.length} ligne{rows.length > 1 ? "s" : ""} — <span className="text-white font-bold">{grandTotal}</span> mouvements au total</div>
+        {!loading && visibleRows.length > 0 && (
+          <div className="ml-auto text-xs text-slate-400">{visibleRows.length} ligne{visibleRows.length > 1 ? "s" : ""} — <span className="text-white font-bold">{grandTotal}</span> mouvements au total</div>
         )}
       </div>
 
