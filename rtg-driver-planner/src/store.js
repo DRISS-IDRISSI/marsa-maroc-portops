@@ -98,7 +98,7 @@ const RTGStore = (function () {
       validatedAt: r.validated_at || null
     });
   }
-  function mapHeureRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, heures: r.heures, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
+  function mapHeureRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, heures: r.heures, mouvements: r.mouvements, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   function mapFerieMvtRow(r) { return { id: r.id, date: r.date, driverId: r.driver_id, mouvements: r.mouvements, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at, updatedAt: r.updated_at }; }
   function mapOverrideRow(r) { return { shift: r.shift, vacation: r.vacation, zone: r.zone, status: r.status, startTime: r.start_time, endTime: r.end_time, motif: r.motif, details: r.details, createdAt: r.created_at, updatedAt: r.updated_at }; }
   function mapAuditRow(r) { return { id: r.id, date: r.date, utilisateur: r.utilisateur, driverId: r.driver_id, matricule: r.matricule, action: r.action, details: r.details }; }
@@ -324,6 +324,7 @@ const RTGStore = (function () {
     };
     if ("type" in input) row.type = input.type;
     if ("heures" in input) row.heures = input.heures;
+    if ("mouvements" in input) row.mouvements = input.mouvements;
     const { data, error } = await sb.from(table).insert(row).select().single();
     if (error) { console.error(error); throw error; }
     const record = recordRowMapper(table)(data);
@@ -339,6 +340,7 @@ const RTGStore = (function () {
     if ("dateFin" in patch) dbPatch.date_fin = patch.dateFin;
     if ("type" in patch) dbPatch.type = patch.type;
     if ("heures" in patch) dbPatch.heures = patch.heures;
+    if ("mouvements" in patch) dbPatch.mouvements = patch.mouvements;
     if ("commentaire" in patch) dbPatch.commentaire = patch.commentaire;
     const { data, error } = await sb.from(table).update(dbPatch).eq("id", id).select().single();
     if (error) { console.error(error); throw error; }

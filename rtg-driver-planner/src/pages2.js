@@ -735,7 +735,7 @@ const HEURE_EXCEPTIONNELLE_TYPES = {
 };
 
 function emptyHeureExceptionnelleForm() {
-  return { driverId: "", date: RTGDate.toISO(new Date()), type: "DOUBLAGE", heures: 4, commentaire: "" };
+  return { driverId: "", date: RTGDate.toISO(new Date()), type: "DOUBLAGE", heures: 4, mouvements: "", commentaire: "" };
 }
 
 function HeuresExceptionnellesPage() {
@@ -758,7 +758,7 @@ function HeuresExceptionnellesPage() {
     if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
     const heures = Number(form.heures);
     if (!heures || heures <= 0) { setError("Le nombre d'heures doit être supérieur à 0."); return; }
-    RTGStore.addHeureExceptionnelle({ driverId: form.driverId, dateDebut: form.date, dateFin: form.date, type: form.type, heures: heures, commentaire: form.commentaire });
+    RTGStore.addHeureExceptionnelle({ driverId: form.driverId, dateDebut: form.date, dateFin: form.date, type: form.type, heures: heures, mouvements: form.mouvements === "" ? null : Number(form.mouvements), commentaire: form.commentaire });
     setForm(emptyHeureExceptionnelleForm());
     setError("");
     setShowForm(false);
@@ -790,7 +790,8 @@ function HeuresExceptionnellesPage() {
                 </select>
               </div>
               <div><label className={LABEL_CLS}>Heures</label><input type="number" min="0" step="0.5" className={FIELD_CLS} value={form.heures} onChange={e => setForm(f => Object.assign({}, f, { heures: e.target.value }))} /></div>
-              <div className="sm:col-span-3"><label className={LABEL_CLS}>Commentaire</label><input className={FIELD_CLS} value={form.commentaire} onChange={e => setForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
+              <div><label className={LABEL_CLS}>Mouvements</label><input type="number" min="0" step="1" placeholder="Optionnel" className={FIELD_CLS} value={form.mouvements} onChange={e => setForm(f => Object.assign({}, f, { mouvements: e.target.value }))} /></div>
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Commentaire</label><input className={FIELD_CLS} value={form.commentaire} onChange={e => setForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
             </div>
             {(form.type === "FERIE_TRAVAILLE" || form.type === "DIMANCHE_S3") && (
               <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
@@ -811,12 +812,12 @@ function HeuresExceptionnellesPage() {
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2">Heures</th><th className="hidden sm:table-cell px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
+              <th className="px-3 py-2">Heures</th><th className="px-3 py-2">Mouvements</th><th className="hidden sm:table-cell px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
             {records.length === 0 && (
-              <tr><td colSpan="7" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
+              <tr><td colSpan="8" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
             {records.map(r => {
               const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-300" };
@@ -826,6 +827,7 @@ function HeuresExceptionnellesPage() {
                   <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
                   <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${meta.className}`}>{meta.label}</span></td>
                   <td className="px-3 py-2 text-slate-300 text-center">{r.heures}h</td>
+                  <td className="px-3 py-2 text-slate-300 text-center">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                   <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
                   <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-300 text-xs" /></td>
@@ -2548,12 +2550,12 @@ function MesOverTimePage() {
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2 text-center">Heures</th><th className="px-3 py-2">Commentaire</th>
+              <th className="px-3 py-2 text-center">Heures</th><th className="px-3 py-2 text-center">Mouvements</th><th className="px-3 py-2">Commentaire</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-500 italic">Aucun Over Time enregistré pour cette période.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500 italic">Aucun Over Time enregistré pour cette période.</td></tr>
             )}
             {rows.map(r => {
               const t = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-300" };
@@ -2562,6 +2564,7 @@ function MesOverTimePage() {
                   <td className="px-3 py-2 text-white">{r.dateDebut}{r.dateFin && r.dateFin !== r.dateDebut ? " → " + r.dateFin : ""}</td>
                   <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-[11px] ${t.className}`}>{t.label}</span></td>
                   <td className="px-3 py-2 text-center text-white font-bold">{r.heures}</td>
+                  <td className="px-3 py-2 text-center text-slate-300">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire || "—"}</td>
                 </tr>
               );
@@ -2572,7 +2575,7 @@ function MesOverTimePage() {
               <tr className="border-t-2 border-border font-bold">
                 <td className="px-3 py-2 text-white" colSpan={2}>Total période</td>
                 <td className="px-3 py-2 text-center text-white">{totalHeures}</td>
-                <td></td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           )}
