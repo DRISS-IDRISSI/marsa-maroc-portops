@@ -9,7 +9,7 @@
 // Gmail dédiée (marsamarocrth@gmail.com), lue ici en IMAP.
 //
 // Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
-// toutes les ~30 minutes : se connecte à la boîte Gmail dédiée, cherche les
+// toutes les 5 minutes : se connecte à la boîte Gmail dédiée, cherche les
 // emails NON LUS dont le sujet contient "DRIVER MOVES PER SHIFT", parse la
 // pièce jointe .xls (uniquement l'onglet "RTG" — l'onglet "SC", chariots
 // élévateurs, est hors périmètre de cette application), et enregistre une

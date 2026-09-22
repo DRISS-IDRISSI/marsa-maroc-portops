@@ -47,7 +47,7 @@ select cron.schedule(
 );
 
 -- Vérification : doit afficher le job "import-tos-moves" avec son
--- planning ('*/30 * * * *') et active = true.
+-- planning ('*/5 * * * *') et active = true.
 select jobid, jobname, schedule, active from cron.job where jobname = 'import-tos-moves';
 
 -- ==========================================
