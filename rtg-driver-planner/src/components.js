@@ -192,7 +192,7 @@ function Sidebar() {
     { to: "/maladies", icon: "fa-briefcase-medical", label: "Maladies" },
     { to: "/absences", icon: "fa-user-slash", label: "Absences" },
     { to: "/heures-exceptionnelles", icon: "fa-clock-rotate-left", label: "Over Time" },
-    { to: "/mouvements-rtg", icon: "fa-truck-ramp-box", label: "Mouvements RTG" },
+    { to: "/mouvements-rtg", icon: "fa-truck-ramp-box", label: "Mouvements " + state.currentFleet },
     { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" },
     { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapports" },
     { to: "/assistant", icon: "fa-wand-magic-sparkles", label: "Assistant intelligent" }
