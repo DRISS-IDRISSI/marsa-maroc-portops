@@ -146,11 +146,11 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
         <p className="text-[11px] text-slate-500 mt-1.5">Une fois renseigné, le solde disponible se recalcule automatiquement chaque année suivante (droit de 26j/an + report non expiré − jours de congé déjà pris dans l'appli).</p>
       </div>
       <div className="border-t border-slate-200 pt-3">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Mouvements RTG — import automatique depuis le TOS</p>
+        <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Mouvements — import automatique depuis le TOS</p>
         <div><label className={LABEL_CLS}>Login TOS (uniquement si différent de celui déduit automatiquement)</label>
-          <input placeholder="ex. melghannamtc3" className={FIELD_CLS} value={form.loginTos || ""} onChange={e => setForm(f => Object.assign({}, f, { loginTos: e.target.value }))} />
+          <input placeholder={((state.teams.find(t => t.id === (lockedTeamId || form.teamId)) || {}).typeEngin) === "CC" ? "ex. melghannamtce" : "ex. melghannamtc3"} className={FIELD_CLS} value={form.loginTos || ""} onChange={e => setForm(f => Object.assign({}, f, { loginTos: e.target.value }))} />
         </div>
-        <p className="text-[11px] text-slate-500 mt-1.5">Laissez vide : le login est déduit automatiquement (1ère lettre du prénom + nom + suffixe terminal). Ne renseignez ce champ que si l'import de mouvements RTG ne rattache pas ce conducteur (login TOS orthographié différemment de son nom officiel).</p>
+        <p className="text-[11px] text-slate-500 mt-1.5">Laissez vide : le login est déduit automatiquement (1ère lettre du prénom + nom + suffixe terminal — "tc3" pour un conducteur RTG, "tce" pour un conducteur CC). Ne renseignez ce champ que si l'import de mouvements ne rattache pas ce conducteur (login TOS orthographié différemment de son nom officiel).</p>
       </div>
       <div className="flex gap-2">
         <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : (editingId ? "Enregistrer" : "Créer le conducteur")}</button>
