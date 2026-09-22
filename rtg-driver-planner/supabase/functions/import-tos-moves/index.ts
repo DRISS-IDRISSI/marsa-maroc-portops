@@ -98,7 +98,17 @@ Deno.serve(async _req => {
     });
   }
 
-  const { data: drivers, error: driversError } = await admin.from("drivers").select("id,nom,prenom,actif,login_tos").eq("actif", true);
+  // Uniquement les conducteurs de la flotte RTG : ce rapport ("DRIVER MOVES
+  // PER SHIFT", onglet RTG) ne concerne jamais la flotte CC. Sans ce filtre,
+  // un conducteur CC homonyme d'un conducteur RTG (même 1ère lettre de
+  // prénom + même nom, ex. deux "ADDI") produit le même login dérivé que le
+  // conducteur RTG et rend le rattachement faussement ambigu, alors que le
+  // conducteur CC n'apparaît jamais dans ce rapport.
+  const { data: drivers, error: driversError } = await admin
+    .from("drivers")
+    .select("id,nom,prenom,actif,login_tos,teams!inner(type_engin)")
+    .eq("actif", true)
+    .eq("teams.type_engin", "RTG");
   if (driversError) {
     return new Response(JSON.stringify({ ok: false, error: "Chargement conducteurs échoué : " + driversError.message }), {
       status: 500, headers: { "Content-Type": "application/json" }
