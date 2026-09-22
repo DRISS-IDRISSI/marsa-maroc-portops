@@ -19,9 +19,11 @@
 // Rattachement conducteur : le rapport identifie chaque conducteur par un
 // LOGIN TOS (ex. "mcharihtc3"), jamais par son matricule. Convention confirmée
 // par l'exploitant : LOGIN = 1ère lettre du PRÉNOM + NOM (sans accents/espaces,
-// en minuscules) + suffixe du terminal ("tc3" pour TC3PC — IDENTIQUE pour les
-// deux flottes, le suffixe désigne le terminal, pas l'engin). Le rattachement
-// est donc déterministe : pour chaque conducteur actif, on calcule son login
+// en minuscules) + suffixe du terminal — mais ce suffixe DIFFÈRE selon la
+// flotte (vérifié sur un rapport réel) : "tc3" pour les conducteurs RTG (ex.
+// "aabouelfathtc3"), "tce" pour les conducteurs CC (ex. "aadditce") — voir
+// LOGIN_SUFFIX_BY_FLEET. Le rattachement est donc déterministe : pour chaque
+// conducteur actif, on calcule son login
 // attendu et on le compare au LOGIN du rapport — aucune table de correspondance
 // à maintenir à la main. La comparaison se fait TOUJOURS au sein de la même
 // flotte que l'onglet en cours (un conducteur RTG et un conducteur CC
@@ -87,12 +89,17 @@ function normalizeForLogin(s: string) {
 }
 
 // Convention confirmée par l'exploitant : 1ère lettre du prénom + nom complet
-// (sans accents/espaces/tirets) + suffixe du terminal.
-function deriveTosLogin(driver: { nom: string; prenom: string }) {
+// (sans accents/espaces/tirets) + suffixe du terminal — MAIS ce suffixe n'est
+// PAS le même pour les deux flottes (contrairement à ce que laissait entendre
+// la documentation d'origine) : "tc3" pour les conducteurs RTG (ex.
+// "aabouelfathtc3"), "tce" pour les conducteurs CC (ex. "aadditce") — vérifié
+// directement sur un rapport TOS réel.
+const LOGIN_SUFFIX_BY_FLEET: Record<"RTG" | "CC", string> = { RTG: "tc3", CC: "tce" };
+function deriveTosLogin(driver: { nom: string; prenom: string }, fleet: "RTG" | "CC") {
   const p = normalizeForLogin(driver.prenom);
   const n = normalizeForLogin(driver.nom);
   if (!p || !n) return null;
-  return p.charAt(0) + n + "tc3";
+  return p.charAt(0) + n + LOGIN_SUFFIX_BY_FLEET[fleet];
 }
 
 function excelDateToIso(v: unknown): string | null {
@@ -155,10 +162,10 @@ Deno.serve(async _req => {
   // 1 seul ; plus d'un = ambiguïté à signaler). Un login_tos saisi à la main
   // sur la fiche conducteur (cas d'un compte TOS orthographié différemment du
   // nom officiel) prime sur la déduction automatique.
-  function buildLoginMap(fleetDrivers: typeof drivers) {
+  function buildLoginMap(fleetDrivers: typeof drivers, fleet: "RTG" | "CC") {
     const loginMap = new Map<string, string[]>();
     (fleetDrivers || []).forEach(d => {
-      const login = (d.login_tos && d.login_tos.trim()) ? d.login_tos.trim().toLowerCase() : deriveTosLogin(d);
+      const login = (d.login_tos && d.login_tos.trim()) ? d.login_tos.trim().toLowerCase() : deriveTosLogin(d, fleet);
       if (!login) return;
       if (!loginMap.has(login)) loginMap.set(login, []);
       loginMap.get(login)!.push(d.id);
@@ -167,8 +174,8 @@ Deno.serve(async _req => {
   }
 
   const loginMapByFleet: Record<"RTG" | "CC", Map<string, string[]>> = {
-    RTG: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "RTG")),
-    CC: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "CC"))
+    RTG: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "RTG"), "RTG"),
+    CC: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "CC"), "CC")
   };
 
   // Garde-fou : si malgré tout aucun conducteur n'est reconnu dans AUCUNE des
