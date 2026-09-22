@@ -46,10 +46,10 @@ function DepartButton({ onConfirm }) {
 
 function Panel({ title, icon, children, actions }) {
   return (
-    <div className="bg-card rounded-xl border border-border p-4">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
       <div className="flex items-center gap-2 mb-3">
-        {icon && <i className={`fas ${icon} text-orange-400 text-sm`}></i>}
-        <h3 className="text-white text-sm font-semibold">{title}</h3>
+        {icon && <i className={`fas ${icon} text-orange-500 text-sm`}></i>}
+        <h3 className="text-slate-900 text-sm font-semibold">{title}</h3>
         {actions && <div className="ml-auto">{actions}</div>}
       </div>
       {children}
@@ -57,7 +57,7 @@ function Panel({ title, icon, children, actions }) {
   );
 }
 
-const FIELD_CLS = "bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white w-full";
+const FIELD_CLS = "bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 w-full";
 const LABEL_CLS = "block text-[10px] uppercase tracking-wider text-slate-500 mb-1";
 
 // ==========================================

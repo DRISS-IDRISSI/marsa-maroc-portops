@@ -151,14 +151,14 @@ function AuthGate({ children }) {
 function KPICard({ icon, label, value, sub, color = "blue", highlight }) {
   const c = { blue: "from-blue-600 to-blue-800", orange: "from-orange-500 to-orange-700", green: "from-emerald-500 to-emerald-700", red: "from-red-500 to-red-700", purple: "from-purple-500 to-purple-700" }[color] || "from-blue-600 to-blue-800";
   return (
-    <div className={`bg-card rounded-xl border border-border p-5 transition-all hover:border-marine-400 hover:-translate-y-0.5 ${highlight ? 'ring-1 ring-orange-500/30' : ''} fade-in`}>
+    <div className={`bg-white rounded-xl border border-slate-200 shadow-sm p-5 transition-all hover:border-marine-300 hover:-translate-y-0.5 ${highlight ? 'ring-1 ring-orange-400/40' : ''} fade-in`}>
       <div className="flex items-start justify-between mb-3">
         <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${c} flex items-center justify-center text-white text-lg`}><i className={`fas ${icon}`}></i></div>
-        {highlight && <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full">Alerte</span>}
+        {highlight && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">Alerte</span>}
       </div>
-      <div className="text-2xl font-bold text-white mb-1">{value}</div>
-      <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">{label}</div>
-      {sub && <div className="text-xs text-slate-500">{sub}</div>}
+      <div className="text-2xl font-bold text-slate-900 mb-1">{value}</div>
+      <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">{label}</div>
+      {sub && <div className="text-xs text-slate-400">{sub}</div>}
     </div>
   );
 }
@@ -294,13 +294,13 @@ function Topbar() {
   const [time, setTime] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
   return (
-    <header className="print:hidden h-14 bg-card/80 backdrop-blur border-b border-border flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30">
+    <header className="print:hidden h-14 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30">
       <div className="flex items-center gap-4 min-w-0">
-        <h1 className="hidden sm:block text-lg font-bold text-white lg:ml-0 truncate">CES <span className="text-orange-400">Driver Planner</span></h1>
-        <span className="hidden sm:inline text-xs text-slate-600">|</span>
-        <span className="hidden lg:inline text-xs text-slate-400">Gestion des conducteurs</span>
+        <h1 className="hidden sm:block text-lg font-bold text-slate-900 lg:ml-0 truncate">CES <span className="text-orange-500">Driver Planner</span></h1>
+        <span className="hidden sm:inline text-xs text-slate-300">|</span>
+        <span className="hidden lg:inline text-xs text-slate-500">Gestion des conducteurs</span>
       </div>
-      <div className="flex items-center gap-2 sm:gap-4 text-sm text-slate-400 ml-auto">
+      <div className="flex items-center gap-2 sm:gap-4 text-sm text-slate-500 ml-auto">
         <span className="hidden md:inline"><i className="far fa-calendar mr-1.5"></i>{time.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</span>
         <span><i className="far fa-clock mr-1.5"></i>{time.toLocaleTimeString('fr-FR')}</span>
         <span className="flex items-center gap-1.5 text-xs"><span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span><span className="hidden sm:inline">En ligne</span></span>
@@ -418,9 +418,9 @@ function UpdateBanner() {
 // ==========================================
 function Layout({ children }) {
   return (
-    <div className="flex min-h-screen bg-port print:bg-white">
+    <div className="flex min-h-screen bg-slate-50 print:bg-white">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
         <UpdateBanner />
         <Topbar />
         <main className="flex-1 p-4 lg:p-6 overflow-auto print:p-0">
@@ -428,7 +428,7 @@ function Layout({ children }) {
             {children}
           </div>
         </main>
-        <footer className="print:hidden bg-card border-t border-border px-6 py-3 text-center text-xs text-slate-600">
+        <footer className="print:hidden bg-white border-t border-slate-200 px-6 py-3 text-center text-xs text-slate-500">
           © 2026 Marsa Maroc — CES Driver Planner — Terminal à conteneurs
         </footer>
       </div>

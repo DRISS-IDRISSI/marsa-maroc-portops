@@ -1553,12 +1553,12 @@ function DriverSearchBox({ state, shiftRestricted, currentUser, todayAssignments
   return (
     <div className="relative">
       <div className="relative">
-        <i className="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+        <i className="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un conducteur (matricule, nom...)"
-          className="w-full bg-card border border-border rounded-xl pl-9 pr-3 py-2.5 text-sm text-white" />
+          className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-900" />
       </div>
       {q && (
-        <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto bg-card border border-border rounded-xl shadow-lg">
+        <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg">
           {results.length === 0 && <div className="px-3 py-2 text-xs text-slate-500 italic">Aucun conducteur trouvé.</div>}
           {results.map(d => {
             const a = todayAssignments.find(x => x.driverId === d.id);
@@ -1566,9 +1566,9 @@ function DriverSearchBox({ state, shiftRestricted, currentUser, todayAssignments
             const meta = a ? (RTG_STATUS_META[a.status] || { label: a.status }) : null;
             return (
               <button key={d.id} type="button" onClick={() => goTo(d)}
-                className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-marine-600/30 border-b border-border/50 last:border-0 flex items-center justify-between gap-2">
-                <span><span className="text-slate-400">{d.matricule}</span> — <span className="text-white font-medium">{d.nom} {d.prenom}</span></span>
-                <span className="text-slate-500 shrink-0">{team ? team.nom : d.teamId}{meta ? " · " + meta.label : ""}</span>
+                className="w-full text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex items-center justify-between gap-2">
+                <span><span className="text-slate-400">{d.matricule}</span> — <span className="text-slate-900 font-medium">{d.nom} {d.prenom}</span></span>
+                <span className="text-slate-400 shrink-0">{team ? team.nom : d.teamId}{meta ? " · " + meta.label : ""}</span>
               </button>
             );
           })}
@@ -1640,8 +1640,8 @@ function Home() {
   return (
     <div className="space-y-6 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">CES Driver Planner{!shiftRestricted ? " — " + rawState.currentFleet : ""}</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Gestion des conducteurs — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
+        <h1 className="text-2xl font-bold text-slate-900">CES Driver Planner{!shiftRestricted ? " — " + rawState.currentFleet : ""}</h1>
+        <p className="text-slate-500 text-sm mt-0.5">Gestion des conducteurs — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
       </div>
 
       <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />
@@ -1671,10 +1671,10 @@ function Home() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {byTeam.map(({ team, shift }) => (
-          <div key={team.id} className="bg-card rounded-xl border border-border p-4">
+          <div key={team.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
             <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">{team.nom}</div>
-            <div className="text-2xl font-bold text-white">{shift}</div>
-            <div className="text-xs text-slate-500 mt-1">{(state.config.shifts.find(s => s.id === shift) || {}).start} – {(state.config.shifts.find(s => s.id === shift) || {}).end}</div>
+            <div className="text-2xl font-bold text-slate-900">{shift}</div>
+            <div className="text-xs text-slate-400 mt-1">{(state.config.shifts.find(s => s.id === shift) || {}).start} – {(state.config.shifts.find(s => s.id === shift) || {}).end}</div>
           </div>
         ))}
       </div>
@@ -1682,17 +1682,17 @@ function Home() {
       <ValidationBanner validation={validation} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button onClick={() => nav("/planning")} className="text-left bg-card rounded-xl border border-border p-5 hover:border-orange-400 transition-all flex items-center gap-4">
+        <button onClick={() => nav("/planning")} className="text-left bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-orange-300 transition-all flex items-center gap-4">
           <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-marine-500 to-marine-700 flex items-center justify-center text-white text-lg"><i className="fas fa-calendar-alt"></i></div>
           <div>
-            <div className="text-white font-semibold text-sm">Planning mensuel</div>
+            <div className="text-slate-900 font-semibold text-sm">Planning mensuel</div>
             <div className="text-xs text-slate-500">Vue complète du mois par équipe, rotation shift/zone/vacation</div>
           </div>
         </button>
-        <button onClick={() => nav("/affectation")} className="text-left bg-card rounded-xl border border-border p-5 hover:border-orange-400 transition-all flex items-center gap-4">
+        <button onClick={() => nav("/affectation")} className="text-left bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-orange-300 transition-all flex items-center gap-4">
           <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white text-lg"><i className="fas fa-clipboard-list"></i></div>
           <div>
-            <div className="text-white font-semibold text-sm">Affectation du jour</div>
+            <div className="text-slate-900 font-semibold text-sm">Affectation du jour</div>
             <div className="text-xs text-slate-500">3 shifts × 2 vacations, zones et horaires pour une date donnée</div>
           </div>
         </button>
