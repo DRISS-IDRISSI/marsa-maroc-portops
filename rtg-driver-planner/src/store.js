@@ -654,19 +654,34 @@ const RTGStore = (function () {
   // le reste (congés, heures exceptionnelles...) — chaque page qui en a
   // besoin interroge Supabase directement avec sa propre plage de dates,
   // RLS s'occupant déjà de restreindre ce qui est visible par rôle/équipe.
+  // Paginée par paquets de 1000 (plafond par défaut d'une réponse Supabase) :
+  // un mois chargé (RTG + CC confondus, sans filtre driverId) dépasse
+  // largement ce plafond — sans pagination, seules les lignes les PLUS
+  // RÉCENTES du mois remontaient (tri décroissant), les premiers jours du
+  // mois disparaissant silencieusement de l'appli alors qu'ils existent bien
+  // en base.
+  async function fetchAllRows(table, dateCol, driverId, dateFrom, dateTo) {
+    const PAGE_SIZE = 1000;
+    const rows = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      let query = sb.from(table).select("*").order(dateCol, { ascending: false }).order("id").range(offset, offset + PAGE_SIZE - 1);
+      if (driverId) query = query.eq("driver_id", driverId);
+      if (dateFrom) query = query.gte(dateCol, dateFrom);
+      if (dateTo) query = query.lte(dateCol, dateTo);
+      const { data, error } = await query;
+      if (error) { console.error(error); throw error; }
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE_SIZE) break;
+    }
+    return rows;
+  }
+
   async function fetchMouvementsTos({ driverId, dateFrom, dateTo } = {}) {
-    let query = sb.from("mouvements_tos").select("*").order("date_travail", { ascending: false }).order("shift");
-    if (driverId) query = query.eq("driver_id", driverId);
-    if (dateFrom) query = query.gte("date_travail", dateFrom);
-    if (dateTo) query = query.lte("date_travail", dateTo);
-    let manuelQuery = sb.from("mouvements_manuels").select("*").order("date_travail", { ascending: false });
-    if (driverId) manuelQuery = manuelQuery.eq("driver_id", driverId);
-    if (dateFrom) manuelQuery = manuelQuery.gte("date_travail", dateFrom);
-    if (dateTo) manuelQuery = manuelQuery.lte("date_travail", dateTo);
-    const [tosRes, manuelRes] = await Promise.all([query, manuelQuery]);
-    if (tosRes.error) { console.error(tosRes.error); throw tosRes.error; }
-    if (manuelRes.error) { console.error(manuelRes.error); throw manuelRes.error; }
-    return (tosRes.data || []).map(mapMouvementTosRow).concat((manuelRes.data || []).map(mapMouvementManuelRow));
+    const [tosRows, manuelRows] = await Promise.all([
+      fetchAllRows("mouvements_tos", "date_travail", driverId, dateFrom, dateTo),
+      fetchAllRows("mouvements_manuels", "date_travail", driverId, dateFrom, dateTo)
+    ]);
+    return tosRows.map(mapMouvementTosRow).concat(manuelRows.map(mapMouvementManuelRow));
   }
 
   // Ignorer durablement un login TOS non rattaché à un conducteur (ex.
