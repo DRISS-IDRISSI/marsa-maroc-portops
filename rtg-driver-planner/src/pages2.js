@@ -2315,8 +2315,18 @@ const CONGE_DOC_CODE = "ENCAAPCGRHS10";
 // uniquement le sous-arbre du nœud ciblé, sans hériter des transforms de
 // ses ancêtres, donc capture le document à sa taille réelle quel que soit
 // le niveau de réduction visuelle appliqué ici pour l'affichage.
-function A4ScaledPreview({ widthMm, heightMm, children }) {
-  const outerRef = useRef(null);
+// `scaleBoxRef`/`wrapperRef` (optionnels) donnent au parent une prise directe
+// sur le DOM du wrapper mis à l'échelle — nécessaire pour le neutraliser
+// pendant une capture html2canvas (voir MesCongesPage.submit) : un ancêtre
+// avec `transform: scale(...)` peut faire dupliquer/décaler le texte rendu
+// par html2canvas (bug constaté sur mobile, où le facteur d'échelle est
+// significativement < 1) — html2canvas doit voir le document à sa taille
+// RÉELLE, jamais à travers ce transform.
+function A4ScaledPreview({ widthMm, heightMm, children, wrapperRef: externalWrapperRef, scaleBoxRef: externalScaleBoxRef }) {
+  const internalOuterRef = useRef(null);
+  const internalScaleBoxRef = useRef(null);
+  const outerRef = externalWrapperRef || internalOuterRef;
+  const scaleBoxRef = externalScaleBoxRef || internalScaleBoxRef;
   const [scale, setScale] = useState(1);
   const mmToPx = 96 / 25.4;
   const naturalWidthPx = widthMm * mmToPx;
@@ -2335,7 +2345,7 @@ function A4ScaledPreview({ widthMm, heightMm, children }) {
 
   return (
     <div ref={outerRef} className="w-full overflow-hidden" style={{ height: naturalHeightPx * scale }}>
-      <div style={{ width: naturalWidthPx, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+      <div ref={scaleBoxRef} style={{ width: naturalWidthPx, transform: `scale(${scale})`, transformOrigin: "top left" }}>
         {children}
       </div>
     </div>
@@ -2420,6 +2430,8 @@ function MesCongesPage() {
   const [hasSignature, setHasSignature] = useState(false);
   const signatureCanvasRef = useRef(null);
   const formNodeRef = useRef(null);
+  const previewWrapperRef = useRef(null);
+  const previewScaleBoxRef = useRef(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -2465,12 +2477,35 @@ function MesCongesPage() {
     setHasSignature(false);
   };
 
+  // Le formulaire est affiché réduit (A4ScaledPreview, transform: scale(...))
+  // pour tenir sur un écran étroit — mais un ancêtre transformé pendant la
+  // capture html2canvas fait dupliquer/décaler tout le texte rendu (bug
+  // constaté sur mobile, où le facteur d'échelle est significativement < 1 :
+  // le PDF/justificatif généré affichait un texte fantôme superposé,
+  // illisible). Neutralise le transform et les contraintes de taille du
+  // wrapper le temps de la capture, puis les restaure — le document est
+  // ainsi toujours capturé à sa taille réelle, jamais à travers ce zoom.
+  const withUnscaledCapture = async fn => {
+    const scaleBox = previewScaleBoxRef.current, wrapper = previewWrapperRef.current;
+    const prevTransform = scaleBox ? scaleBox.style.transform : null;
+    const prevWrapperHeight = wrapper ? wrapper.style.height : null;
+    const prevWrapperOverflow = wrapper ? wrapper.style.overflow : null;
+    if (scaleBox) scaleBox.style.transform = "none";
+    if (wrapper) { wrapper.style.height = "auto"; wrapper.style.overflow = "visible"; }
+    try {
+      return await fn();
+    } finally {
+      if (scaleBox) scaleBox.style.transform = prevTransform;
+      if (wrapper) { wrapper.style.height = prevWrapperHeight; wrapper.style.overflow = prevWrapperOverflow; }
+    }
+  };
+
   const downloadPdf = async () => {
     if (!formNodeRef.current) return;
     setPdfBusy(true);
     try {
       await loadPdfLibs();
-      await exportNodeAsPdf(formNodeRef.current, `demande-conge-${driver.matricule}-${form.dateDebut}.pdf`, { fitOnePage: true, orientation: "portrait", forceWidth: 800 });
+      await withUnscaledCapture(() => exportNodeAsPdf(formNodeRef.current, `demande-conge-${driver.matricule}-${form.dateDebut}.pdf`, { fitOnePage: true, orientation: "portrait", forceWidth: 800 }));
     } catch (e) {
       alert("Erreur d'export PDF : " + (e && e.message ? e.message : "réessayez."));
     }
@@ -2488,7 +2523,7 @@ function MesCongesPage() {
     setError(""); setSubmitting(true);
     try {
       await loadPdfLibs();
-      const png = await captureNodeAsPng(formNodeRef.current, 800);
+      const png = await withUnscaledCapture(() => captureNodeAsPng(formNodeRef.current, 800));
       const file = dataUrlToFile(png.dataUrl, `demande-conge-${driver.matricule}-${form.dateDebut}.png`);
       await RTGStore.submitCongeRequest({ driverId: driver.id, dateDebut: form.dateDebut, dateFin: form.dateFin, commentaire: form.commentaire, file: file });
       setForm({ dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
@@ -2534,7 +2569,7 @@ function MesCongesPage() {
 
           <div>
             <label className={LABEL_CLS}>Aperçu — signez directement sur le formulaire ci-dessous</label>
-            <A4ScaledPreview widthMm={210} heightMm={297}>
+            <A4ScaledPreview widthMm={210} heightMm={297} wrapperRef={previewWrapperRef} scaleBoxRef={previewScaleBoxRef}>
               <CongeFormPrintable driver={driver} dateDebut={form.dateDebut} dateFin={form.dateFin} dernierCongePris={dernierCongePris}
                 signatureCanvasRef={signatureCanvasRef} onSignatureChange={setHasSignature} formRef={formNodeRef} />
             </A4ScaledPreview>
