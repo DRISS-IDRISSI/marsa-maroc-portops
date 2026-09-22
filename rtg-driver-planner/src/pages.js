@@ -1227,8 +1227,19 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
     try {
       let override;
       if (status === "PRESENT") {
-        const vacDef = vacDefs.find(v => v.id === vacation);
-        override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: vacDef ? vacDef.start : null, endTime: vacDef ? vacDef.end : null };
+        // "V1+V2" (journée complète, 8h) — cas des stagiaires cavaliers, qui ne
+        // sont pas rattachés à une seule vacation de 4h comme les titulaires.
+        // Horaire = début de V1 jusqu'à fin de V2 du shift.
+        let startTime = null, endTime = null;
+        if (vacation === "V1+V2") {
+          startTime = vacDefs.length ? vacDefs[0].start : null;
+          endTime = vacDefs.length ? vacDefs[vacDefs.length - 1].end : null;
+        } else {
+          const vacDef = vacDefs.find(v => v.id === vacation);
+          startTime = vacDef ? vacDef.start : null;
+          endTime = vacDef ? vacDef.end : null;
+        }
+        override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime };
       } else {
         override = { status: status, shift: null, vacation: null, zone: null, startTime: null, endTime: null };
       }
@@ -1269,6 +1280,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
                 <label className={LABEL_CLS}>Vacation</label>
                 <select className={FIELD_CLS} value={vacation} onChange={e => setVacation(e.target.value)}>
                   {vacDefs.map(v => <option key={v.id} value={v.id}>{v.id} ({v.start}-{v.end})</option>)}
+                  {vacDefs.length > 0 && <option value="V1+V2">Journée complète — V1+V2 (stagiaire 8h)</option>}
                 </select>
               </div>
               <div className="flex-1">
@@ -2221,12 +2233,23 @@ function AffectationDuJour() {
 
   const grouped = {};
   state.config.shifts.forEach(s => {
-    grouped[s.id] = (state.config.vacations[s.id] || []).map(v => ({
+    const vacDefs = state.config.vacations[s.id] || [];
+    grouped[s.id] = vacDefs.map(v => ({
       vacation: v,
       rows: assignments.filter(a => a.shift === s.id && a.vacation === v.id && a.status === "PRESENT")
         .concat(absentByShift[s.id].filter(a => vacationLabelToday[a.driverId] === v.id))
         .sort(byOrdreAffichage)
     }));
+    // "V1+V2" (journée complète, 8h — stagiaires cavaliers, cf. AssignmentEditModal) :
+    // groupe à part, sinon ces affectations manuelles ne correspondent à aucune
+    // vacation de 4h ci-dessus et disparaîtraient silencieusement de la page.
+    const fullDayRows = assignments.filter(a => a.shift === s.id && a.vacation === "V1+V2" && a.status === "PRESENT").sort(byOrdreAffichage);
+    if (fullDayRows.length > 0) {
+      grouped[s.id].push({
+        vacation: { id: "V1+V2", start: vacDefs.length ? vacDefs[0].start : "", end: vacDefs.length ? vacDefs[vacDefs.length - 1].end : "" },
+        rows: fullDayRows
+      });
+    }
   });
   const offRows = assignments.filter(a => a.status === "OFF").sort(byOrdreAffichage);
 
