@@ -2086,17 +2086,31 @@ function ConducteurAccountsPanel({ state }) {
 function UsersPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
-  // La liste des comptes reste volontairement non filtrée par flotte (un
-  // ADMIN gère tous les comptes RTG et CC au même endroit) — seuls les
-  // sélecteurs équipe/conducteur du formulaire de création respectent la
-  // bascule RTG/CC, pour proposer par défaut les équipes/conducteurs de la
-  // flotte actuellement affichée.
+  // La liste des comptes est filtrée par la flotte actuellement affichée
+  // (bascule RTG/CC), comme les autres pages (Conducteurs, Mouvements,
+  // Rapports) — un ADMIN bascule pour voir les comptes de l'autre flotte.
+  // Les comptes ADMIN (transverses aux deux flottes) restent toujours
+  // visibles, quelle que soit la flotte sélectionnée.
   const fTeams = fleetTeams(state, null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const formState = useMemo(() => Object.assign({}, state, {
     teams: fTeams,
     drivers: state.drivers.filter(d => fTeamIds.has(d.teamId))
   }), [state, fTeams]);
+  const visibleUsers = useMemo(() => state.users.filter(u => {
+    if (u.role === "ADMIN") return true;
+    if (u.teamId) {
+      const t = state.teams.find(t2 => t2.id === u.teamId);
+      return t ? (t.typeEngin || "RTG") === state.currentFleet : true;
+    }
+    if (u.driverId) {
+      const d = state.drivers.find(d2 => d2.id === u.driverId);
+      if (!d) return true;
+      const t = state.teams.find(t2 => t2.id === d.teamId);
+      return t ? (t.typeEngin || "RTG") === state.currentFleet : true;
+    }
+    return true;
+  }), [state.users, state.teams, state.drivers, state.currentFleet]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [resendStatus, setResendStatus] = useState({}); // userId -> "sending" | "sent" | "error"
@@ -2131,8 +2145,8 @@ function UsersPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Utilisateurs</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{state.users.length} compte{state.users.length > 1 ? "s" : ""} — Admin, Responsable, Responsable de Shift, Conducteur</p>
+          <h1 className="text-2xl font-bold text-slate-900">Utilisateurs — {state.currentFleet}</h1>
+          <p className="text-slate-400 text-sm mt-0.5">{visibleUsers.length} compte{visibleUsers.length > 1 ? "s" : ""} — Admin, Responsable, Responsable de Shift, Conducteur</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
           <i className="fas fa-plus mr-1.5"></i>Nouvel utilisateur
@@ -2180,7 +2194,7 @@ function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {state.users.map(u => {
+            {visibleUsers.map(u => {
               const team = u.teamId ? state.teams.find(t => t.id === u.teamId) : null;
               const driver = u.driverId ? state.drivers.find(d => d.id === u.driverId) : null;
               const isSelf = currentUser.id === u.id;
