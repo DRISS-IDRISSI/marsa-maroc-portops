@@ -199,14 +199,26 @@ Deno.serve(async _req => {
   // ex. importées avant qu'un "Login TOS" correctif soit renseigné sur la
   // fiche conducteur) sont retentées à chaque exécution — sans ça, une
   // correction faite après coup ne s'appliquerait qu'aux imports futurs,
-  // jamais à l'historique déjà importé.
+  // jamais à l'historique déjà importé. Faite PAR LOT (une requête par login
+  // distinct plutôt qu'une requête par ligne) : avec plusieurs centaines de
+  // lignes non rattachées (ex. après un import massif ou un incident), une
+  // réparation ligne par ligne peut dépasser le temps d'exécution de la
+  // fonction avant même d'avoir traité les emails du jour.
   let reconciledRows = 0;
-  const { data: unmatchedRows } = await admin.from("mouvements_tos").select("id, login_tos, engin").is("driver_id", null);
-  for (const row of unmatchedRows || []) {
-    const matches = loginMapByFleet[fleetForEngin(row.engin)].get(row.login_tos) || [];
-    if (matches.length !== 1) continue;
-    const { error: reconcileError } = await admin.from("mouvements_tos").update({ driver_id: matches[0], match_note: null }).eq("id", row.id);
-    if (!reconcileError) reconciledRows++;
+  const { data: unmatchedRows } = await admin.from("mouvements_tos").select("login_tos, engin").is("driver_id", null);
+  const reconcileTargets = new Map<string, { loginTos: string; fleet: "RTG" | "CC"; driverId: string }>();
+  (unmatchedRows || []).forEach(row => {
+    const fleet = fleetForEngin(row.engin);
+    const matches = loginMapByFleet[fleet].get(row.login_tos) || [];
+    if (matches.length !== 1) return;
+    reconcileTargets.set(fleet + "|" + row.login_tos, { loginTos: row.login_tos, fleet, driverId: matches[0] });
+  });
+  for (const target of reconcileTargets.values()) {
+    let q = admin.from("mouvements_tos").update({ driver_id: target.driverId, match_note: null })
+      .eq("login_tos", target.loginTos).is("driver_id", null);
+    q = target.fleet === "RTG" ? q.ilike("engin", "RTG%") : q.not("engin", "ilike", "RTG%");
+    const { data: updated, error: reconcileError } = await q.select("id");
+    if (!reconcileError) reconciledRows += (updated || []).length;
   }
 
   const client = new ImapFlow({
@@ -304,12 +316,22 @@ Deno.serve(async _req => {
               throw new Error(`Aucun onglet reconnu (${SHEETS.map(s => `"${s.sheetName}"`).join(" / ")}) dans la pièce jointe.`);
             }
 
-            if (records.length > 0) {
+            // Insertion PAR PAQUETS plutôt qu'en un seul upsert géant : un
+            // rapport consolidé multi-jours peut facilement dépasser un
+            // millier de lignes (RTG + SC confondus) en une seule pièce
+            // jointe — un paquet qui échoue (taille, verrou temporaire...)
+            // ne doit pas faire perdre les paquets déjà insérés avec succès.
+            const CHUNK_SIZE = 200;
+            for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+              const chunk = records.slice(i, i + CHUNK_SIZE);
               const { error: upsertError } = await admin
                 .from("mouvements_tos")
-                .upsert(records, { onConflict: "login_tos,date_travail,shift,engin" });
-              if (upsertError) throw new Error("Insertion échouée : " + upsertError.message);
-              importedRows += records.length;
+                .upsert(chunk, { onConflict: "login_tos,date_travail,shift,engin" });
+              if (upsertError) {
+                errors.push(`Email uid=${uid} (paquet ${i}-${i + chunk.length}) : Insertion échouée : ` + upsertError.message);
+                continue;
+              }
+              importedRows += chunk.length;
             }
             markSeen = true;
           }
