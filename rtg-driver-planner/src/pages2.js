@@ -3511,9 +3511,9 @@ function MouvementsRtgPage() {
                     if (isLastOfShift && !isLast) {
                       dataRows.push(
                         <tr key={day.dateIso + "_" + r.dominantShift + "_shiftgap"} aria-hidden="true">
-                          <td className={`p-0 h-1.5 border-l-2 ${frameColor} ${bg}`}></td>
-                          <td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 5} className={`p-0 h-1.5 ${bg}`}></td>
-                          <td className={`p-0 h-1.5 border-r-2 ${frameColor} ${bg}`}></td>
+                          <td className={`p-0 h-2 border-l-2 ${frameColor} border-dashed bg-slate-200/60`}></td>
+                          <td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 5} className={`p-0 h-2 border-t border-b border-dashed border-slate-400 bg-slate-200/60`}></td>
+                          <td className={`p-0 h-2 border-r-2 ${frameColor} border-dashed bg-slate-200/60`}></td>
                         </tr>
                       );
                     }
