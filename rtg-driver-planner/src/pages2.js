@@ -823,7 +823,10 @@ function CongesPage() {
             )}
             {records.map(r => {
               const meta = congeDisplayMeta(r, todayIso);
-              const isPending = r.statut === "EN_ATTENTE";
+              // "À refaire" reste actionnable comme "En attente" (Valider/Refuser/
+              // Refaire restent visibles) : le Responsable garde la main s'il reçoit
+              // le justificatif par un autre canal, ou pour renvoyer l'alerte.
+              const isPending = r.statut === "EN_ATTENTE" || r.statut === "A_REFAIRE";
               const rDriver = state.drivers.find(dr => dr.id === r.driverId);
               const rTeam = rDriver ? state.teams.find(t => t.id === rDriver.teamId) : null;
               const rShiftToday = rTeam ? ShiftRotationEngine.getTeamShiftForDate(rTeam, RTGDate.parseISO(todayIso), state.config) : null;
