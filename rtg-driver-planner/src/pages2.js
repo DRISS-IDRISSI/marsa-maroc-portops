@@ -207,6 +207,57 @@ function buildShiftCycleForCurrentShift(currentShift, weekIndexMod3) {
   return cycle;
 }
 
+// Calcule le shiftCycle à appliquer pour que `team` soit sur `currentShift`
+// LA SEMAINE EN COURS (au moment du clic) — même calcul qu'à la création
+// (TeamForm ci-dessous), réutilisé pour corriger le point de départ d'une
+// équipe déjà créée (ex. plusieurs équipes créées avec le même shift par
+// erreur, qui se retrouvent alors toutes sur le même shift chaque jour).
+function shiftCycleForThisWeek(currentShift, config) {
+  const refWeek = RTGDate.startOfWeekMonday(RTGDate.parseISO(config.referenceWeekStart));
+  const targetWeek = RTGDate.startOfWeekMonday(RTGDate.parseISO(RTGDate.toISO(new Date())));
+  const diffWeeks = Math.floor(RTGDate.diffDays(refWeek, targetWeek) / 7);
+  const weekIndexMod3 = ((diffWeeks % 3) + 3) % 3;
+  return buildShiftCycleForCurrentShift(currentShift, weekIndexMod3);
+}
+
+// Corriger le point de départ de rotation d'une équipe déjà créée (§ bug :
+// plusieurs équipes CC créées le même jour avec le même "Shift cette
+// semaine" par défaut se retrouvaient toutes sur le même shift chaque
+// jour). Réservé à Admin/Responsable (mêmes droits que TeamNameEditor).
+function TeamShiftEditor({ team, state, editable }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(ShiftRotationEngine.getTeamShiftForDate(team, new Date(), state.config));
+  const [saving, setSaving] = useState(false);
+
+  if (!editable) return null;
+
+  if (!editing) {
+    return (
+      <button onClick={() => { setValue(ShiftRotationEngine.getTeamShiftForDate(team, new Date(), state.config)); setEditing(true); }} title="Corriger le shift de cette équipe pour la semaine en cours"
+        className="flex items-center gap-1 text-[10px] font-medium text-sky-400/80 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/60 rounded px-1.5 py-0.5">
+        <i className="fas fa-rotate text-[9px]"></i>Régler le shift
+      </button>
+    );
+  }
+  const save = async () => {
+    setSaving(true);
+    try { await RTGStore.updateTeam(team.id, { shiftCycle: shiftCycleForThisWeek(value, state.config) }); setEditing(false); }
+    catch (e) { alert("Erreur : " + (e && e.message ? e.message : "réessayez.")); }
+    setSaving(false);
+  };
+  return (
+    <span className="flex items-center gap-1.5 mb-1">
+      <select className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white" value={value} onChange={e => setValue(e.target.value)}>
+        <option value="S1">Shift 1 cette semaine</option>
+        <option value="S2">Shift 2 cette semaine</option>
+        <option value="S3">Shift 3 cette semaine</option>
+      </select>
+      <button disabled={saving} onClick={save} className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50"><i className="fas fa-check"></i></button>
+      <button disabled={saving} onClick={() => setEditing(false)} className="text-slate-500 hover:text-white"><i className="fas fa-times"></i></button>
+    </span>
+  );
+}
+
 function TeamForm({ state, typeEngin, onCancel, onSaved }) {
   const [nom, setNom] = useState("");
   const [currentShift, setCurrentShift] = useState("S1");
@@ -219,11 +270,7 @@ function TeamForm({ state, typeEngin, onCancel, onSaved }) {
     if (!id || id === typeEngin + "_") { setError("Nom invalide."); return; }
     setSaving(true);
     try {
-      const refWeek = RTGDate.startOfWeekMonday(RTGDate.parseISO(state.config.referenceWeekStart));
-      const targetWeek = RTGDate.startOfWeekMonday(new Date());
-      const diffWeeks = Math.floor(RTGDate.diffDays(refWeek, targetWeek) / 7);
-      const weekIndexMod3 = ((diffWeeks % 3) + 3) % 3;
-      const shiftCycle = buildShiftCycleForCurrentShift(currentShift, weekIndexMod3);
+      const shiftCycle = shiftCycleForThisWeek(currentShift, state.config);
       await RTGStore.addTeam({ id, nom: nom.trim(), shiftCycle, typeEngin });
       onSaved();
     } catch (err) {
@@ -330,7 +377,8 @@ function DriversPage() {
             <div key={t.id} className="bg-card rounded-xl border border-border p-4">
               <TeamNameEditor team={t} editable={!shiftRestricted} />
               <div className="text-xs text-slate-500 -mt-0.5 mb-1">{shift} aujourd'hui</div>
-              <div className="text-2xl font-bold text-white">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
+              <div className="text-2xl font-bold text-white mb-1">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
+              <TeamShiftEditor team={t} state={state} editable={!shiftRestricted} />
             </div>
           );
         })}
