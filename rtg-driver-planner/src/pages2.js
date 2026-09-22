@@ -797,22 +797,25 @@ function CongesPage() {
         <table className="w-full text-xs">
           <thead className="bg-surface text-slate-400">
             <tr className="text-left">
-              <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
+              <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Équipe / Shift</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
               <th className="px-3 py-2">Statut</th><th className="hidden sm:table-cell px-3 py-2">Solde</th><th className="px-3 py-2">Justificatif</th>
               <th className="px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
             {records.length === 0 && (
-              <tr><td colSpan="9" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
+              <tr><td colSpan="10" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
             {records.map(r => {
               const meta = congeDisplayMeta(r, todayIso);
               const isPending = r.statut === "EN_ATTENTE";
               const rDriver = state.drivers.find(dr => dr.id === r.driverId);
+              const rTeam = rDriver ? state.teams.find(t => t.id === rDriver.teamId) : null;
+              const rShiftToday = rTeam ? ShiftRotationEngine.getTeamShiftForDate(rTeam, RTGDate.parseISO(todayIso), state.config) : null;
               return (
                 <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
+                  <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{rTeam ? rTeam.nom : "—"}{rShiftToday ? " — " + rShiftToday + " (auj.)" : ""}</td>
                   <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
                   <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
                   <td className="px-3 py-2">
