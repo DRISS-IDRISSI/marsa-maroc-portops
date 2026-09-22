@@ -6,7 +6,7 @@
 // pour cette application) envoie un email avec ce rapport en pièce jointe
 // .xls à la fin de CHAQUE shift (S1/S2/S3). L'exploitant a mis en place une
 // règle de transfert automatique sur sa boîte professionnelle vers une boîte
-// Gmail dédiée (marsamarocrth@gmail.com), lue ici en IMAP.
+// Gmail dédiée (gestioneffectif@gmail.com), lue ici en IMAP.
 //
 // Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
 // toutes les 5 minutes : se connecte à la boîte Gmail dédiée, cherche les
@@ -43,7 +43,7 @@
 // de rétention.
 //
 // Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
-//   - TOS_GMAIL_USER : marsamarocrth@gmail.com
+//   - TOS_GMAIL_USER : gestioneffectif@gmail.com
 //   - TOS_GMAIL_APP_PASSWORD : mot de passe d'application Gmail de ce compte
 //     (2FA à activer sur ce compte, puis générer un mot de passe d'application
 //     — même procédure que pour GMAIL_APP_PASSWORD utilisé pour l'envoi).
