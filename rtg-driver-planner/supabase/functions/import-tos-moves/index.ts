@@ -11,20 +11,26 @@
 // Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
 // toutes les 5 minutes : se connecte à la boîte Gmail dédiée, cherche les
 // emails NON LUS dont le sujet contient "DRIVER MOVES PER SHIFT", parse la
-// pièce jointe .xls (uniquement l'onglet "RTG" — l'onglet "SC", chariots
-// élévateurs, est hors périmètre de cette application), et enregistre une
-// ligne par conducteur x engin dans la table mouvements_tos.
+// pièce jointe .xls — DEUX onglets, un par flotte : "RTG" et "SC" (Straddle
+// Carrier, le nom technique du chariot cavalier — flotte "CC" dans cette
+// application) — et enregistre une ligne par conducteur x engin dans la
+// table mouvements_tos, pour les deux flottes.
 //
 // Rattachement conducteur : le rapport identifie chaque conducteur par un
 // LOGIN TOS (ex. "mcharihtc3"), jamais par son matricule. Convention confirmée
 // par l'exploitant : LOGIN = 1ère lettre du PRÉNOM + NOM (sans accents/espaces,
-// en minuscules) + suffixe du terminal ("tc3" pour TC3PC). Le rattachement est
-// donc déterministe : pour chaque conducteur actif, on calcule son login
+// en minuscules) + suffixe du terminal ("tc3" pour TC3PC — IDENTIQUE pour les
+// deux flottes, le suffixe désigne le terminal, pas l'engin). Le rattachement
+// est donc déterministe : pour chaque conducteur actif, on calcule son login
 // attendu et on le compare au LOGIN du rapport — aucune table de correspondance
-// à maintenir à la main. Un login sans correspondance (ou ambigu, si jamais 2
-// conducteurs actifs partageaient le même login dérivé) est importé quand même
-// (driver_id = null, match_note renseigné) pour rester visible et corrigeable
-// plutôt que d'être silencieusement perdu.
+// à maintenir à la main. La comparaison se fait TOUJOURS au sein de la même
+// flotte que l'onglet en cours (un conducteur RTG et un conducteur CC
+// homonymes ne sont jamais comparés entre eux, même s'ils partagent le même
+// login dérivé — l'un des deux n'apparaît de toute façon jamais dans cet
+// onglet). Un login sans correspondance dans sa flotte (ou ambigu, si jamais
+// 2 conducteurs actifs de la même flotte partageaient le même login dérivé)
+// est importé quand même (driver_id = null, match_note renseigné) pour rester
+// visible et corrigeable plutôt que d'être silencieusement perdu.
 //
 // Les emails traités sont recherchés par DATE (derniers jours), pas par
 // statut lu/non lu : le statut "lu" d'un email peut changer à tout moment
@@ -53,8 +59,24 @@ import { ImapFlow } from "npm:imapflow@1";
 import { simpleParser } from "npm:mailparser@3";
 import * as XLSX from "npm:xlsx@0.18.5";
 
-const RTG_SHEET_NAME = "RTG";
 const SUBJECT_FILTER = "DRIVER MOVES PER SHIFT";
+
+// Un onglet par flotte : nom de l'onglet dans le .xls, valeur attendue de la
+// colonne TYPE_ENGIN sur ses lignes, et flotte correspondante côté
+// application (teams.type_engin) pour restreindre le rattachement — voir
+// l'en-tête du fichier.
+const SHEETS: { sheetName: string; typeEnginValue: string; fleet: "RTG" | "CC" }[] = [
+  { sheetName: "RTG", typeEnginValue: "RTG", fleet: "RTG" },
+  { sheetName: "SC", typeEnginValue: "SC", fleet: "CC" }
+];
+
+// Déduit la flotte d'un code engin déjà enregistré (mouvements_tos.engin), pour
+// l'auto-réparation ci-dessous — même convention que inferEnginFleet côté UI
+// (pages2.js) : un code commençant par "RTG" est de la flotte RTG, tout le
+// reste (codes SC/CC) est de la flotte CC.
+function fleetForEngin(engin: string): "RTG" | "CC" {
+  return /^RTG/i.test(engin || "") ? "RTG" : "CC";
+}
 
 function stripAccents(s: string) {
   return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -98,17 +120,17 @@ Deno.serve(async _req => {
     });
   }
 
-  // Uniquement les conducteurs de la flotte RTG : ce rapport ("DRIVER MOVES
-  // PER SHIFT", onglet RTG) ne concerne jamais la flotte CC. Sans ce filtre,
+  // Tous les conducteurs actifs, des deux flottes — mais le rattachement d'un
+  // login se fait TOUJOURS au sein d'une seule flotte à la fois (voir
+  // buildLoginMap ci-dessous), jamais tous conducteurs confondus : sans ça,
   // un conducteur CC homonyme d'un conducteur RTG (même 1ère lettre de
-  // prénom + même nom, ex. deux "ADDI") produit le même login dérivé que le
-  // conducteur RTG et rend le rattachement faussement ambigu, alors que le
-  // conducteur CC n'apparaît jamais dans ce rapport.
+  // prénom + même nom, ex. deux "ADDI") produirait le même login dérivé que
+  // son homonyme et rendrait le rattachement faussement ambigu, alors que
+  // chacun n'apparaît que dans l'onglet de sa propre flotte.
   const { data: drivers, error: driversError } = await admin
     .from("drivers")
     .select("id,nom,prenom,actif,login_tos,teams!inner(type_engin)")
-    .eq("actif", true)
-    .eq("teams.type_engin", "RTG");
+    .eq("actif", true);
   if (driversError) {
     return new Response(JSON.stringify({ ok: false, error: "Chargement conducteurs échoué : " + driversError.message }), {
       status: 500, headers: { "Content-Type": "application/json" }
@@ -119,13 +141,21 @@ Deno.serve(async _req => {
   // 1 seul ; plus d'un = ambiguïté à signaler). Un login_tos saisi à la main
   // sur la fiche conducteur (cas d'un compte TOS orthographié différemment du
   // nom officiel) prime sur la déduction automatique.
-  const loginMap = new Map<string, string[]>();
-  (drivers || []).forEach(d => {
-    const login = (d.login_tos && d.login_tos.trim()) ? d.login_tos.trim().toLowerCase() : deriveTosLogin(d);
-    if (!login) return;
-    if (!loginMap.has(login)) loginMap.set(login, []);
-    loginMap.get(login)!.push(d.id);
-  });
+  function buildLoginMap(fleetDrivers: typeof drivers) {
+    const loginMap = new Map<string, string[]>();
+    (fleetDrivers || []).forEach(d => {
+      const login = (d.login_tos && d.login_tos.trim()) ? d.login_tos.trim().toLowerCase() : deriveTosLogin(d);
+      if (!login) return;
+      if (!loginMap.has(login)) loginMap.set(login, []);
+      loginMap.get(login)!.push(d.id);
+    });
+    return loginMap;
+  }
+
+  const loginMapByFleet: Record<"RTG" | "CC", Map<string, string[]>> = {
+    RTG: buildLoginMap((drivers || []).filter(d => (d.teams as unknown as { type_engin: string })?.type_engin === "RTG")),
+    CC: buildLoginMap((drivers || []).filter(d => (d.teams as unknown as { type_engin: string })?.type_engin === "CC"))
+  };
 
   // Logins volontairement ignorés (ex. conducteur tracteur ayant ponctuellement
   // opéré un RTG) — jamais insérés, et toute ligne déjà importée pour l'un
@@ -145,9 +175,9 @@ Deno.serve(async _req => {
   // correction faite après coup ne s'appliquerait qu'aux imports futurs,
   // jamais à l'historique déjà importé.
   let reconciledRows = 0;
-  const { data: unmatchedRows } = await admin.from("mouvements_tos").select("id, login_tos").is("driver_id", null);
+  const { data: unmatchedRows } = await admin.from("mouvements_tos").select("id, login_tos, engin").is("driver_id", null);
   for (const row of unmatchedRows || []) {
-    const matches = loginMap.get(row.login_tos) || [];
+    const matches = loginMapByFleet[fleetForEngin(row.engin)].get(row.login_tos) || [];
     if (matches.length !== 1) continue;
     const { error: reconcileError } = await admin.from("mouvements_tos").update({ driver_id: matches[0], match_note: null }).eq("id", row.id);
     if (!reconcileError) reconciledRows++;
@@ -191,53 +221,61 @@ Deno.serve(async _req => {
             markSeen = true; // pour la propreté visuelle de la boîte, sans effet sur le traitement
           } else {
             const wb = XLSX.read(xlsAttachment.content, { type: "buffer", cellDates: true });
-            const sheet = wb.Sheets[RTG_SHEET_NAME];
-            if (!sheet) {
-              throw new Error(`Onglet "${RTG_SHEET_NAME}" introuvable dans la pièce jointe.`);
-            }
-            // Les 2 premières lignes du fichier TOS sont des titres ; l'en-tête
-            // des colonnes est à la 3ème ligne (index 2).
-            const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: 2, defval: null });
 
             const records = [];
-            for (const row of rows) {
-              if (String(row.TYPE_ENGIN || "").toUpperCase() !== "RTG") continue;
-              const rawLogin = String(row.LOGIN || "").trim().toLowerCase();
-              if (!rawLogin || ignoredLogins.has(rawLogin)) continue;
-              const dateTravail = excelDateToIso(row.DATE_TRAVAIL);
-              if (!dateTravail) continue;
+            let anySheetFound = false;
+            for (const cfg of SHEETS) {
+              const sheet = wb.Sheets[cfg.sheetName];
+              if (!sheet) continue;
+              anySheetFound = true;
+              const loginMap = loginMapByFleet[cfg.fleet];
+              // Les 2 premières lignes du fichier TOS sont des titres ; l'en-tête
+              // des colonnes est à la 3ème ligne (index 2).
+              const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: 2, defval: null });
 
-              const matches = loginMap.get(rawLogin) || [];
-              let driverId: string | null = null;
-              let matchNote: string | null = null;
-              if (matches.length === 1) {
-                driverId = matches[0];
-              } else if (matches.length === 0) {
-                matchNote = "Aucun conducteur RTG actif ne correspond à ce login.";
-                unmatchedLogins.add(rawLogin);
-              } else {
-                matchNote = "Plusieurs conducteurs RTG actifs correspondent à ce login (ambigu) : " + matches.join(", ");
-                unmatchedLogins.add(rawLogin);
+              for (const row of rows) {
+                if (String(row.TYPE_ENGIN || "").toUpperCase() !== cfg.typeEnginValue) continue;
+                const rawLogin = String(row.LOGIN || "").trim().toLowerCase();
+                if (!rawLogin || ignoredLogins.has(rawLogin)) continue;
+                const dateTravail = excelDateToIso(row.DATE_TRAVAIL);
+                if (!dateTravail) continue;
+
+                const matches = loginMap.get(rawLogin) || [];
+                let driverId: string | null = null;
+                let matchNote: string | null = null;
+                if (matches.length === 1) {
+                  driverId = matches[0];
+                } else if (matches.length === 0) {
+                  matchNote = `Aucun conducteur ${cfg.fleet} actif ne correspond à ce login.`;
+                  unmatchedLogins.add(rawLogin);
+                } else {
+                  matchNote = `Plusieurs conducteurs ${cfg.fleet} actifs correspondent à ce login (ambigu) : ` + matches.join(", ");
+                  unmatchedLogins.add(rawLogin);
+                }
+
+                records.push({
+                  driver_id: driverId,
+                  login_tos: rawLogin,
+                  date_travail: dateTravail,
+                  shift: String(row.SHIFT || ""),
+                  engin: String(row.ENGIN || ""),
+                  facility: row.FACILITY ? String(row.FACILITY) : null,
+                  nombre_in: toInt(row.NOMBRE_IN),
+                  nombre_out: toInt(row.NOMBRE_OUT),
+                  nombre_move: toInt(row.NOMBRE_MOVE),
+                  nombre_shifting: toInt(row.NOMBRE_SHIFTING),
+                  nombre_disch: toInt(row.NOMBRE_DISCH),
+                  nombre_load: toInt(row.NOMBRE_LOAD),
+                  nombre_autre: toInt(row.NOMBRE_AUTRE),
+                  total_mvmt: toInt(row.TOTAL_MVMT),
+                  match_note: matchNote,
+                  source_message_id: parsed.messageId || null
+                });
               }
+            }
 
-              records.push({
-                driver_id: driverId,
-                login_tos: rawLogin,
-                date_travail: dateTravail,
-                shift: String(row.SHIFT || ""),
-                engin: String(row.ENGIN || ""),
-                facility: row.FACILITY ? String(row.FACILITY) : null,
-                nombre_in: toInt(row.NOMBRE_IN),
-                nombre_out: toInt(row.NOMBRE_OUT),
-                nombre_move: toInt(row.NOMBRE_MOVE),
-                nombre_shifting: toInt(row.NOMBRE_SHIFTING),
-                nombre_disch: toInt(row.NOMBRE_DISCH),
-                nombre_load: toInt(row.NOMBRE_LOAD),
-                nombre_autre: toInt(row.NOMBRE_AUTRE),
-                total_mvmt: toInt(row.TOTAL_MVMT),
-                match_note: matchNote,
-                source_message_id: parsed.messageId || null
-              });
+            if (!anySheetFound) {
+              throw new Error(`Aucun onglet reconnu (${SHEETS.map(s => `"${s.sheetName}"`).join(" / ")}) dans la pièce jointe.`);
             }
 
             if (records.length > 0) {
