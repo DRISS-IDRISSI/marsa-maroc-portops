@@ -49,7 +49,7 @@ function generateTempPassword() {
   return out;
 }
 
-async function sendResetEmail(to, username, tempPassword) {
+async function sendResetEmail(to, username, tempPassword, isConducteur) {
   const client = new SMTPClient({
     connection: { hostname: "smtp.gmail.com", port: 465, tls: true, auth: { username: GMAIL_USER, password: GMAIL_APP_PASSWORD } }
   });
@@ -64,7 +64,7 @@ async function sendResetEmail(to, username, tempPassword) {
     "",
     "Si vous n'êtes pas à l'origine de cette demande, contactez un administrateur.",
     "",
-    "Ceci est un message automatique — merci de ne pas y répondre.",
+    "Ceci est un message automatique — merci de ne pas y répondre." + (isConducteur ? " Pour toute question ou information, contactez M. FELLAH." : ""),
     "",
     "CES Driver Planner — Marsa Maroc TC3PC"
   ].join("\n");
@@ -109,7 +109,7 @@ Deno.serve(async req => {
     const { error: updateError } = await admin.auth.admin.updateUserById(profile.id, { password: tempPassword });
     if (updateError) { console.error(updateError); throw updateError; }
 
-    await sendResetEmail(targetEmail, profile.username, tempPassword);
+    await sendResetEmail(targetEmail, profile.username, tempPassword, profile.role === "CONDUCTEUR");
 
     return new Response(JSON.stringify(GENERIC_RESPONSE), { headers: jsonHeaders });
   } catch (e) {

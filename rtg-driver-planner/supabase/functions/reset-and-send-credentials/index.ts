@@ -86,7 +86,7 @@ function buildHtml({ driverName, username, password, appUrl, role, fleet }: { dr
   const safePassword = escapeHtml(password);
   const safeUrl = escapeHtml(appUrl);
   const contactLine = role === "CONDUCTEUR"
-    ? "En cas de problème de connexion, contactez votre Responsable de Shift."
+    ? "En cas de problème de connexion, contactez votre Responsable de Shift. Pour toute question ou information, contactez M. FELLAH."
     : "En cas de problème de connexion, contactez un administrateur de l'application.";
   return `
   <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
