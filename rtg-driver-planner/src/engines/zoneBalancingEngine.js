@@ -8,10 +8,11 @@
 //     équitablement (un seul par zone, sans doublon) sur les N-1 autres zones.
 //   - Si N conducteurs présents ou plus, les N zones (1ère comprise) sont toutes
 //     occupées : chacune reçoit d'abord floor(n/N) conducteurs, puis le reste
-//     (toujours < N, donc absorbé par les N-1 autres zones) est distribué en +1,
-//     une zone à la fois, dans l'ordre DOUBLING_ORDER ci-dessous (décision
-//     explicite de l'exploitant pour les RTG — C, D, B, E, F, G, H) ; la 1ère
-//     zone ne reçoit jamais cette part supplémentaire avant les autres.
+//     (toujours < N) est distribué en +1, une zone à la fois, dans l'ordre
+//     DOUBLING_ORDER ci-dessous suivi de la 1ère zone en dernier (décision
+//     explicite de l'exploitant pour les RTG — D, C, B, E, F, G, H, puis A) ;
+//     la 1ère zone ne reçoit donc cette part supplémentaire qu'en dernier,
+//     jamais avant les autres.
 //
 // S'applique systématiquement à chaque créneau (pas seulement en cas de
 // dépassement), en remplacement de la simple rotation individuelle pour la
@@ -24,10 +25,12 @@
 // Ordre dans lequel les zones B-H reçoivent un doublon au-delà de 8 présents
 // sur un créneau RTG (le 9ᵉ présent double la 1ʳᵉ de cette liste, le 10ᵉ la 2ᵉ,
 // etc.) — décision explicite de l'exploitant, pas un simple ordre alphabétique.
-// Une zone du créneau absente de cette liste (ex. postes cavalier CC) est
-// ajoutée à la suite, dans son ordre d'origine (voir assignZonesForSlot), pour
-// rester robuste sur une liste de zones différente.
-const DOUBLING_ORDER = ["C", "D", "B", "E", "F", "G", "H"];
+// La 1ère zone (A) est ajoutée en dernier dans assignZonesForSlot (jamais
+// prioritaire, mais pas exclue pour autant au-delà de 16 présents). Une zone
+// du créneau absente de cette liste (ex. postes cavalier CC) est ajoutée à la
+// suite, dans son ordre d'origine (voir assignZonesForSlot), pour rester
+// robuste sur une liste de zones différente.
+const DOUBLING_ORDER = ["D", "C", "B", "E", "F", "G", "H"];
 
 const ZoneBalancingEngine = {
   // `entries` : tableau d'objets portant une propriété `zone` mutable (déjà remplie
@@ -57,9 +60,12 @@ const ZoneBalancingEngine = {
     }
 
     const base = Math.floor(n / zoneList.length);
-    const remainder = n % zoneList.length; // toujours < zoneList.length, donc < others.length+1
+    const remainder = n % zoneList.length; // toujours < zoneList.length
+    // La 1ère zone (A) est ajoutée EN DERNIER : elle reste éligible au-delà de
+    // 16 présents, mais toujours après les 7 autres zones.
     const doublingOrder = DOUBLING_ORDER.filter(z => others.indexOf(z) !== -1)
-      .concat(others.filter(z => DOUBLING_ORDER.indexOf(z) === -1));
+      .concat(others.filter(z => DOUBLING_ORDER.indexOf(z) === -1))
+      .concat([zoneA]);
 
     let idx = 0;
     for (let r = 0; r < base && idx < n; r++) {

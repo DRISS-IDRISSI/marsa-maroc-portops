@@ -549,22 +549,23 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         }
         const counts = slotZoneCounts[slotKey];
         const zoneList = zonesForFleet(state.config, (team && team.typeEngin) || "RTG") || [];
-        const others = zoneList.slice(1); // B..H — la zone A n'est jamais prioritaire.
+        const others = zoneList.slice(1); // B..H — la zone A n'est jamais prioritaire en premier.
         // Même ordre de doublement que ZoneBalancingEngine (DOUBLING_ORDER) :
         // d'abord toute zone B-H encore totalement libre, puis — au-delà de
         // 8 présents sur ce créneau — celle qui a REÇU LE MOINS de doublons
-        // jusqu'ici, départagée par cet ordre (C, D, B, E, F, G, H).
+        // jusqu'ici, départagée par cet ordre (D, C, B, E, F, G, H, puis A en
+        // tout dernier).
         const doublingOrder = DOUBLING_ORDER.filter(z => others.indexOf(z) !== -1)
-          .concat(others.filter(z => DOUBLING_ORDER.indexOf(z) === -1));
+          .concat(others.filter(z => DOUBLING_ORDER.indexOf(z) === -1))
+          .concat([zoneList[0]]);
         let zone = others.find(z => !counts[z]);
         if (!zone) {
           const minCount = Math.min(...doublingOrder.map(z => counts[z] || 0));
           zone = doublingOrder.find(z => (counts[z] || 0) === minCount);
         }
         if (!zone) {
-          // Cas extrême (config.zones vide au-delà de A) : zone A si encore
-          // libre, sinon repli sur la rotation individuelle habituelle.
-          zone = !counts[zoneList[0]] ? zoneList[0] : ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
+          // Cas extrême (zoneList vide) : repli sur la rotation individuelle habituelle.
+          zone = ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, state.teams);
         }
         counts[zone] = (counts[zone] || 0) + 1;
 
