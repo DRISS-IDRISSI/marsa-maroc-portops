@@ -602,13 +602,13 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             <p className="text-xs text-slate-400 mb-3">Sélectionnez le fichier Excel (.xlsx) du planning réel : les repos (« R ») seront forcés manuellement et les congés (« C ») créés comme périodes de congé, uniquement pour les conducteurs de cette équipe et ce mois.</p>
             <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-600" />
             <div className="mt-4 pt-3 border-t border-slate-200 space-y-1.5">
-              <button onClick={() => setStep("resetConfirm")} className="block text-[11px] text-red-400 hover:text-red-300 underline">
+              <button onClick={() => setStep("resetConfirm")} className="block text-[11px] text-red-400 hover:text-red-700 underline">
                 Réinitialiser les repos/congés déjà importés pour cette équipe et ce mois
               </button>
-              <button onClick={() => setStep("fullResetConfirm")} className="block text-[11px] text-red-400 hover:text-red-300 underline">
+              <button onClick={() => setStep("fullResetConfirm")} className="block text-[11px] text-red-400 hover:text-red-700 underline">
                 Remise à zéro complète du planning (repos + congés + maladies, y compris modifications manuelles) pour cette équipe et ce mois
               </button>
-              <button onClick={() => setStep("staleVacationConfirm")} className="block text-[11px] text-sky-400 hover:text-sky-300 underline">
+              <button onClick={() => setStep("staleVacationConfirm")} className="block text-[11px] text-sky-400 hover:text-sky-700 underline">
                 Corriger les vacations (V1/V2) devenues obsolètes après une mise à jour du moteur, pour cette équipe et ce mois
               </button>
             </div>
@@ -648,7 +648,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "fullResetConfirm" && (
           <div className="space-y-3">
-            <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+            <p className="text-xs text-red-700 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
               <i className="fas fa-triangle-exclamation mr-1.5"></i><span className="font-semibold">Action plus radicale.</span> Ceci supprime TOUTES les affectations manuelles (import Excel, équilibrage V1/V2 case par case, remplacement...), TOUS les congés et TOUTES les maladies touchant <span className="text-slate-900 font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}. Le planning redevient entièrement calculé par l'algorithme (aucune trace manuelle) avant réimport. Utile si une modification manuelle antérieure fausse encore le résultat après une réinitialisation simple.
             </p>
             <div className="flex gap-2">
@@ -671,7 +671,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "error" && (
           <div>
-            <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-sm text-red-700 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
             <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Réessayer</button>
           </div>
         )}
@@ -685,7 +685,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
               <p className="text-amber-400">Matricules non reconnus dans cette équipe : {parsed.unmatchedMatricules.join(", ")}</p>
             )}
             {parsed.fallbackMatches.length > 0 && (
-              <p className="text-sky-300">Matricule différent mais conducteur reconnu par {parsed.fallbackMatches[0].via === "nom" ? "nom" : "numéro"} : {parsed.fallbackMatches.map(f => f.nom + " " + f.prenom + " (fichier " + f.matriculeFichier + " → appli " + f.matriculeAppli + ")").join(", ")}</p>
+              <p className="text-sky-700">Matricule différent mais conducteur reconnu par {parsed.fallbackMatches[0].via === "nom" ? "nom" : "numéro"} : {parsed.fallbackMatches.map(f => f.nom + " " + f.prenom + " (fichier " + f.matriculeFichier + " → appli " + f.matriculeAppli + ")").join(", ")}</p>
             )}
             <p><span className="text-slate-900 font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
             <p><span className="text-slate-900 font-semibold">{maladiesToApply.length}</span> plage(s) de maladie à créer{parsed.maladieRanges.length !== maladiesToApply.length ? " (" + (parsed.maladieRanges.length - maladiesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
@@ -711,7 +711,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         {step === "congesApplied" && congeResult && (
           <div className="space-y-3 text-xs">
             <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult.congesCreated} congé(s) et {congeResult.maladiesCreated} maladie(s) créé(s).</p>
-            {(congeResult.congeErrors > 0 || congeResult.maladieErrors > 0) && <p className="text-red-300">{congeResult.congeErrors + congeResult.maladieErrors} erreur(s) — voir la console.</p>}
+            {(congeResult.congeErrors > 0 || congeResult.maladieErrors > 0) && <p className="text-red-700">{congeResult.congeErrors + congeResult.maladieErrors} erreur(s) — voir la console.</p>}
             <button onClick={() => setStep("previewRepos")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les repos</button>
           </div>
         )}
@@ -720,7 +720,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           <div className="space-y-3 text-xs text-slate-600">
             <p><span className="text-slate-900 font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length + reposConflicts.length ? " (" + (parsed.reposDays.length - reposToApply.length - reposConflicts.length) + " déjà correct(s), ignoré(s))" : ""}.</p>
             {reposConflicts.length > 0 && (
-              <p className="text-red-300">
+              <p className="text-red-700">
                 <i className="fas fa-triangle-exclamation mr-1.5"></i>{reposConflicts.length} repos NON appliqué(s) car ils créeraient 2 repos consécutifs (règle absolue) : {reposConflicts.slice(0, 8).map(c => {
                   const d = drivers.find(x => x.id === c.driverId);
                   return (d ? d.nom : c.driverId) + "/" + c.iso.slice(8, 10);
@@ -738,7 +738,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
                     const d = drivers.find(x => x.id === r.driverId);
                     const key = r.driverId + "_" + r.iso;
                     let verdict, cls;
-                    if (conflictKeys.has(key)) { verdict = "REJETÉ (conflit 2 repos consécutifs)"; cls = "text-red-300"; }
+                    if (conflictKeys.has(key)) { verdict = "REJETÉ (conflit 2 repos consécutifs)"; cls = "text-red-700"; }
                     else if (toApplyKeys.has(key)) { verdict = "sera forcé"; cls = "text-emerald-400"; }
                     else { verdict = "déjà correct, ignoré"; cls = "text-slate-500"; }
                     return <div key={idx} className={cls}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {r.iso.slice(8, 10)}/{r.iso.slice(5, 7)} — {verdict}</div>;
@@ -759,7 +759,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         {step === "done" && applyResult && (
           <div className="space-y-2 text-xs">
             <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s) et " + congeResult.maladiesCreated + " maladie(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
-            {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-300">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
+            {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-700">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
             <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Fermer</button>
           </div>
         )}
@@ -829,14 +829,14 @@ function fleetTeamIdSet(state, restrictedTeamIdValue) {
 // Codes / légende
 // ==========================================
 const RTG_STATUS_META = {
-  PRESENT: { code: "C", label: "Travail", className: "bg-amber-500/25 text-amber-300 border-amber-500/40" },
-  REPOS: { code: "R", label: "Repos", className: "bg-rose-500/20 text-rose-300 border-rose-500/30" },
-  CONGE: { code: "CG", label: "Congé", className: "bg-orange-600/30 text-orange-300 border-orange-600/40" },
-  MALADIE: { code: "M", label: "Maladie", className: "bg-purple-600/30 text-purple-300 border-purple-600/40" },
-  ABSENCE: { code: "A", label: "Absence", className: "bg-red-600/30 text-red-300 border-red-600/40" },
-  FORMATION: { code: "F", label: "Formation", className: "bg-blue-600/30 text-blue-300 border-blue-600/40" },
+  PRESENT: { code: "C", label: "Travail", className: "bg-amber-500/25 text-amber-700 border-amber-500/40" },
+  REPOS: { code: "R", label: "Repos", className: "bg-rose-500/20 text-rose-700 border-rose-500/30" },
+  CONGE: { code: "CG", label: "Congé", className: "bg-orange-600/30 text-orange-700 border-orange-600/40" },
+  MALADIE: { code: "M", label: "Maladie", className: "bg-purple-600/30 text-purple-700 border-purple-600/40" },
+  ABSENCE: { code: "A", label: "Absence", className: "bg-red-600/30 text-red-700 border-red-600/40" },
+  FORMATION: { code: "F", label: "Formation", className: "bg-blue-600/30 text-blue-700 border-blue-600/40" },
   OFF: { code: "OFF", label: "Off (Shift 3 dimanche)", className: "bg-slate-950 text-slate-500 border-slate-800" },
-  FERIE: { code: "FÉR", label: "Jour férié (chômé)", className: "bg-indigo-500/25 text-indigo-300 border-indigo-500/40" }
+  FERIE: { code: "FÉR", label: "Jour férié (chômé)", className: "bg-indigo-500/25 text-indigo-700 border-indigo-500/40" }
 };
 
 // Couleurs pastel (imprimables — consommation d'encre raisonnable) pour le
@@ -1176,7 +1176,7 @@ function ValidationBanner({ validation }) {
     );
   }
   return (
-    <details className="bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+    <details className="bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
       <summary className="cursor-pointer font-medium flex items-center gap-2">
         <i className="fas fa-triangle-exclamation"></i> {validation.count} anomalie{validation.count > 1 ? "s" : ""} détectée{validation.count > 1 ? "s" : ""}
       </summary>
@@ -1403,7 +1403,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   const holiday = HolidayEngine.getEffectiveHoliday(RTGDate.parseISO(day.iso), team, config);
                   const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
                   return (
-                    <th key={day.iso} className={`border border-slate-200/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"} ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`} title={holiday ? holiday.label : undefined}>
+                    <th key={day.iso} className={`border border-slate-200/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-700" : "text-slate-400"} ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`} title={holiday ? holiday.label : undefined}>
                       {String(day.day).padStart(2, "0")}
                     </th>
                   );
@@ -1454,7 +1454,7 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
     <div>
       <p className="sm:hidden text-[11px] text-slate-500 mb-1.5"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir tous les jours</p>
       {canEdit && (
-        <p className="text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg px-3 py-2 mb-3">
+        <p className="text-[11px] text-sky-700 bg-sky-500/10 border border-sky-500/30 rounded-lg px-3 py-2 mb-3">
           <i className="fas fa-pen mr-1.5"></i>Cliquez sur une case pour modifier manuellement l'affectation d'un conducteur et équilibrer les vacations.
         </p>
       )}
@@ -1485,7 +1485,7 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
 // & congés" séparé.
 function ZoneOrStatutBadge({ a }) {
   if (a.status === "PRESENT") {
-    return <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{a.zone}</span>;
+    return <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 font-bold">{a.zone}</span>;
   }
   const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "bg-slate-700/40 text-slate-600 border-slate-600/40" };
   return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>;
@@ -1518,13 +1518,13 @@ function ShiftBlock({ title, icon, rows }) {
                 <tr key={a.driverId} className={`border-b border-slate-200/50 ${a.vacationBalanceAlert ? "bg-red-500/10" : ""}`}
                   title={a.vacationBalanceAlert ? "Cette vacation reste en excédent par rapport à l'autre — à faire passer exceptionnellement dans l'autre vacation si possible." : undefined}>
                   <td className="py-1.5 pr-3 text-slate-600">{a.matricule}</td>
-                  <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-300" : "text-slate-900"}`}>
+                  <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-700" : "text-slate-900"}`}>
                     <button onClick={() => goToDriver(a.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{a.nom}</button>
                     {a.vacationBalanceAlert && <i className="fas fa-triangle-exclamation ml-1.5 text-red-400" title="Vacation en surnombre"></i>}
                   </td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-600">{a.prenom}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
-                  <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-300 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span> : "—"}</td>
+                  <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-700 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span> : "—"}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime ? `${a.startTime}–${a.endTime}` : "—"}</td>
                   <td className="py-1.5 pr-3"><ZoneOrStatutBadge a={a} /></td>
                 </tr>
@@ -1647,7 +1647,7 @@ function Home() {
       <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />
 
       {pendingConges.length > 0 && (
-        <button onClick={() => nav("/conges")} className="w-full text-left flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl px-4 py-3 text-sm hover:bg-amber-500/15 transition-all">
+        <button onClick={() => nav("/conges")} className="w-full text-left flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-700 rounded-xl px-4 py-3 text-sm hover:bg-amber-500/15 transition-all">
           <i className="fas fa-bell text-amber-400"></i>
           <span className="font-medium">
             {pendingConges.length} demande{pendingConges.length > 1 ? "s" : ""} de congé en attente de validation
@@ -2408,7 +2408,7 @@ function AffectationDuJour() {
       </div>
 
       {holiday && (
-        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 rounded-xl px-4 py-3 text-sm print:hidden">
+        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-700 rounded-xl px-4 py-3 text-sm print:hidden">
           <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} — journée chômée, aucune affectation générée
         </div>
       )}

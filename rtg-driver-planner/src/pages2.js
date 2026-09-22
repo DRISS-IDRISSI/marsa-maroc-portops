@@ -9,7 +9,7 @@ function ConfirmButton({ label, confirmLabel, onConfirm, className }) {
     return (
       <span className="inline-flex items-center gap-1.5">
         <span className="text-xs text-slate-400">{confirmLabel || "Confirmer ?"}</span>
-        <button onClick={() => { setConfirming(false); onConfirm(); }} className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30">Oui</button>
+        <button onClick={() => { setConfirming(false); onConfirm(); }} className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-700 hover:bg-red-500/30">Oui</button>
         <button onClick={() => setConfirming(false)} className="text-xs px-2 py-1 rounded bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
       </span>
     );
@@ -36,12 +36,12 @@ function DepartButton({ onConfirm }) {
         <select value={motif} onChange={e => setMotif(e.target.value)} className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900">
           {Object.entries(DEPART_MOTIF_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
         </select>
-        <button onClick={() => { setOpen(false); onConfirm(motif); }} className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30">Confirmer</button>
+        <button onClick={() => { setOpen(false); onConfirm(motif); }} className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-700 hover:bg-red-500/30">Confirmer</button>
         <button onClick={() => setOpen(false)} className="text-xs px-2 py-1 rounded bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
       </span>
     );
   }
-  return <button onClick={() => setOpen(true)} className="text-xs px-2 py-1 rounded bg-marine-800 text-red-400 hover:text-red-300">Départ</button>;
+  return <button onClick={() => setOpen(true)} className="text-xs px-2 py-1 rounded bg-marine-800 text-red-400 hover:text-red-700">Départ</button>;
 }
 
 function Panel({ title, icon, children, actions }) {
@@ -173,7 +173,7 @@ function TeamNameEditor({ team, editable }) {
       <div className="flex items-center gap-1.5 mb-1">
         <input autoFocus value={value} onChange={e => setValue(e.target.value)}
           className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs text-slate-900 w-32" />
-        <button onClick={() => { if (value.trim()) RTGStore.updateTeam(team.id, { nom: value.trim() }); setEditing(false); }} className="text-emerald-400 hover:text-emerald-300"><i className="fas fa-check"></i></button>
+        <button onClick={() => { if (value.trim()) RTGStore.updateTeam(team.id, { nom: value.trim() }); setEditing(false); }} className="text-emerald-400 hover:text-emerald-700"><i className="fas fa-check"></i></button>
         <button onClick={() => { setValue(team.nom); setEditing(false); }} className="text-slate-500 hover:text-slate-900"><i className="fas fa-times"></i></button>
       </div>
     );
@@ -252,7 +252,7 @@ function TeamShiftEditor({ team, state, editable }) {
         <option value="S2">Shift 2 cette semaine</option>
         <option value="S3">Shift 3 cette semaine</option>
       </select>
-      <button disabled={saving} onClick={save} className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50"><i className="fas fa-check"></i></button>
+      <button disabled={saving} onClick={save} className="text-emerald-400 hover:text-emerald-700 disabled:opacity-50"><i className="fas fa-check"></i></button>
       <button disabled={saving} onClick={() => setEditing(false)} className="text-slate-500 hover:text-slate-900"><i className="fas fa-times"></i></button>
     </span>
   );
@@ -397,7 +397,7 @@ function ImportConducteursModal({ team, state, onClose }) {
 
         {step === "error" && (
           <div>
-            <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-sm text-red-700 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
             <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Réessayer</button>
           </div>
         )}
@@ -424,7 +424,7 @@ function ImportConducteursModal({ team, state, onClose }) {
         {step === "done" && result && (
           <div className="space-y-2 text-xs">
             <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{result.created} conducteur(s) créé(s).</p>
-            {result.errors > 0 && <p className="text-red-300">{result.errors} erreur(s) : {result.errorDetails.join(", ")}</p>}
+            {result.errors > 0 && <p className="text-red-700">{result.errors} erreur(s) : {result.errorDetails.join(", ")}</p>}
             <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Fermer</button>
           </div>
         )}
@@ -590,7 +590,7 @@ function DriversPage() {
                     <td className="hidden sm:table-cell px-3 py-2 text-slate-600">{d.prenom}</td>
                     <td className="px-3 py-2 text-slate-400">{team ? team.nom : d.teamId}</td>
                     <td className="hidden sm:table-cell px-3 py-2 text-slate-400">{shift}</td>
-                    <td className="hidden sm:table-cell px-3 py-2 text-center"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{d.initialZone}</span></td>
+                    <td className="hidden sm:table-cell px-3 py-2 text-center"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 font-bold">{d.initialZone}</span></td>
                     <td className="hidden sm:table-cell px-3 py-2 text-center">{d.initialVacation}</td>
                     <td className="hidden sm:table-cell px-3 py-2">
                       {d.actif !== false
@@ -600,11 +600,11 @@ function DriversPage() {
                     <td className="hidden sm:table-cell px-3 py-2"><CongeSoldeBadge driver={d} state={state} /></td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-300">Modifier</button>
+                        <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-700">Modifier</button>
                         <button onClick={() => setHistoryFor(historyFor === d.id ? null : d.id)} className="text-marine-300 hover:text-slate-900">Historique</button>
                         {d.actif !== false
                           ? <DepartButton onConfirm={motif => RTGStore.setDriverActive(d.id, false, motif)} />
-                          : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, true)} className="text-emerald-400 hover:text-emerald-300 text-xs" />}
+                          : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, true)} className="text-emerald-400 hover:text-emerald-700 text-xs" />}
                       </div>
                     </td>
                   </tr>
@@ -712,7 +712,7 @@ function CongeSoldeBadge({ driver, state }) {
   if (!driver) return <span className="text-slate-600">—</span>;
   const solde = CongeBalanceEngine.soldeDisponible(driver, state);
   if (!solde) return <span className="text-slate-600" title="Solde de départ non renseigné (fiche conducteur)">—</span>;
-  const cls = solde.disponible <= 0 ? "bg-red-500/20 text-red-300" : solde.disponible <= 5 ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-400";
+  const cls = solde.disponible <= 0 ? "bg-red-500/20 text-red-700" : solde.disponible <= 5 ? "bg-amber-500/20 text-amber-700" : "bg-emerald-500/20 text-emerald-400";
   return (
     <span className={`px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${cls}`}
       title={`Droit ${solde.droit}j + report ${solde.report}j − pris ${solde.pris}j en ${solde.annee}`}>
@@ -826,10 +826,10 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
                 <td className="px-3 py-2 text-slate-600">{r.dateDebut}</td>
                 <td className="px-3 py-2 text-slate-600">{r.dateFin}</td>
                 {showStatusCol && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded border ${temporalMeta.className}`}>{temporalMeta.label}</span></td>}
-                {showTypeSelect && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${r.type === "FORMATION" ? "bg-blue-600/30 text-blue-300" : "bg-red-600/30 text-red-300"}`}>{r.type === "FORMATION" ? "Formation" : "Absence"}</span></td>}
+                {showTypeSelect && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${r.type === "FORMATION" ? "bg-blue-600/30 text-blue-700" : "bg-red-600/30 text-red-700"}`}>{r.type === "FORMATION" ? "Formation" : "Absence"}</span></td>}
                 <td className="px-3 py-2 text-slate-400">{r.type && !showTypeSelect ? r.type : r.commentaire}</td>
                 <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
-                <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteFn(r.id)} className="text-red-400 hover:text-red-300 text-xs" /></td>
+                <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteFn(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></td>
               </tr>
               );
             })}
@@ -844,10 +844,10 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
 // responsable est VALIDE dès sa création ; seule une demande en
 // libre-service envoyée par un conducteur passe par EN_ATTENTE.
 const CONGE_STATUT_META = {
-  EN_ATTENTE: { label: "En attente", className: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
+  EN_ATTENTE: { label: "En attente", className: "bg-amber-500/20 text-amber-700 border-amber-500/30" },
   VALIDE: { label: "Validé", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
-  REFUSE: { label: "Refusé", className: "bg-red-500/20 text-red-300 border-red-500/30" },
-  A_REFAIRE: { label: "À refaire", className: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30" }
+  REFUSE: { label: "Refusé", className: "bg-red-500/20 text-red-700 border-red-500/30" },
+  A_REFAIRE: { label: "À refaire", className: "bg-fuchsia-500/20 text-fuchsia-700 border-fuchsia-500/30" }
 };
 
 // Distinction visuelle demandée par l'exploitant, UNIQUEMENT pour les
@@ -857,9 +857,9 @@ const CONGE_STATUT_META = {
 // cours, ou pas encore commencé). "En attente"/"Refusé" gardent leur
 // couleur habituelle (CONGE_STATUT_META), sans rapport avec la date.
 const CONGE_TEMPORAL_META = {
-  EN_COURS: { label: "En cours", className: "bg-sky-500/20 text-sky-300 border-sky-500/30" },
+  EN_COURS: { label: "En cours", className: "bg-sky-500/20 text-sky-700 border-sky-500/30" },
   ACHEVE: { label: "Terminé", className: "bg-slate-700/40 text-slate-400 border-slate-600/40" },
-  FUTUR: { label: "À venir", className: "bg-violet-500/20 text-violet-300 border-violet-500/30" }
+  FUTUR: { label: "À venir", className: "bg-violet-500/20 text-violet-700 border-violet-500/30" }
 };
 function congeDisplayMeta(r, todayIso) {
   if (r.statut === "EN_ATTENTE" || r.statut === "REFUSE" || r.statut === "A_REFAIRE") return CONGE_STATUT_META[r.statut];
@@ -882,7 +882,7 @@ function CongeJustificatifLink({ path }) {
     setBusy(false);
   };
   return (
-    <button onClick={open} disabled={busy} className="text-orange-400 hover:text-orange-300 disabled:opacity-50">
+    <button onClick={open} disabled={busy} className="text-orange-400 hover:text-orange-700 disabled:opacity-50">
       <i className="fas fa-paperclip mr-1"></i>{busy ? "Ouverture..." : "Voir"}
     </button>
   );
@@ -1039,24 +1039,24 @@ function CongesPage() {
                         refusingId === r.id ? (
                           <span className="flex items-center gap-1">
                             <input autoFocus placeholder="Motif (optionnel)" value={refusMotif} onChange={e => setRefusMotif(e.target.value)} className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900 w-28" />
-                            <button disabled={busyId === r.id} onClick={() => refuse(r.id)} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">OK</button>
+                            <button disabled={busyId === r.id} onClick={() => refuse(r.id)} className="text-red-400 hover:text-red-700 text-xs disabled:opacity-50">OK</button>
                             <button onClick={() => { setRefusingId(null); setRefusMotif(""); }} className="text-slate-500 hover:text-slate-900 text-xs">Annuler</button>
                           </span>
                         ) : refaisantId === r.id ? (
                           <span className="flex items-center gap-1">
                             <input autoFocus placeholder="Motif (ex. justificatif illisible)" value={refaireMotif} onChange={e => setRefaireMotif(e.target.value)} className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900 w-36" />
-                            <button disabled={busyId === r.id} onClick={() => refaire(r.id)} className="text-fuchsia-400 hover:text-fuchsia-300 text-xs disabled:opacity-50">OK</button>
+                            <button disabled={busyId === r.id} onClick={() => refaire(r.id)} className="text-fuchsia-400 hover:text-fuchsia-700 text-xs disabled:opacity-50">OK</button>
                             <button onClick={() => { setRefaisantId(null); setRefaireMotif(""); }} className="text-slate-500 hover:text-slate-900 text-xs">Annuler</button>
                           </span>
                         ) : (
                           <React.Fragment>
-                            <button disabled={busyId === r.id} onClick={() => validate(r.id)} className="text-emerald-400 hover:text-emerald-300 text-xs disabled:opacity-50">Valider</button>
-                            <button disabled={busyId === r.id} onClick={() => setRefusingId(r.id)} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">Refuser</button>
-                            <button disabled={busyId === r.id} onClick={() => setRefaisantId(r.id)} className="text-fuchsia-400 hover:text-fuchsia-300 text-xs disabled:opacity-50">Refaire</button>
+                            <button disabled={busyId === r.id} onClick={() => validate(r.id)} className="text-emerald-400 hover:text-emerald-700 text-xs disabled:opacity-50">Valider</button>
+                            <button disabled={busyId === r.id} onClick={() => setRefusingId(r.id)} className="text-red-400 hover:text-red-700 text-xs disabled:opacity-50">Refuser</button>
+                            <button disabled={busyId === r.id} onClick={() => setRefaisantId(r.id)} className="text-fuchsia-400 hover:text-fuchsia-700 text-xs disabled:opacity-50">Refaire</button>
                           </React.Fragment>
                         )
                       )}
-                      <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteConge(r.id)} className="text-red-400 hover:text-red-300 text-xs" />
+                      <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteConge(r.id)} className="text-red-400 hover:text-red-700 text-xs" />
                     </div>
                   </td>
                 </tr>
@@ -1085,9 +1085,9 @@ function AbsencesPage() {
 // 5. Heures exceptionnelles — doublage / férié travaillé / dimanche S3 (§29)
 // ==========================================
 const HEURE_EXCEPTIONNELLE_TYPES = {
-  DOUBLAGE: { label: "Doublage", icon: "fa-layer-group", className: "bg-amber-600/30 text-amber-300" },
-  FERIE_TRAVAILLE: { label: "Jour férié travaillé", icon: "fa-star-and-crescent", className: "bg-indigo-600/30 text-indigo-300" },
-  DIMANCHE_S3: { label: "3ème shift dimanche (nécessité de service)", icon: "fa-triangle-exclamation", className: "bg-rose-600/30 text-rose-300" }
+  DOUBLAGE: { label: "Doublage", icon: "fa-layer-group", className: "bg-amber-600/30 text-amber-700" },
+  FERIE_TRAVAILLE: { label: "Jour férié travaillé", icon: "fa-star-and-crescent", className: "bg-indigo-600/30 text-indigo-700" },
+  DIMANCHE_S3: { label: "3ème shift dimanche (nécessité de service)", icon: "fa-triangle-exclamation", className: "bg-rose-600/30 text-rose-700" }
 };
 
 function emptyHeureExceptionnelleForm() {
@@ -1210,7 +1210,7 @@ function HeuresExceptionnellesPage() {
                   <td className="px-3 py-2 text-slate-600 text-center">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                   <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
-                  <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-300 text-xs" /></td>
+                  <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></td>
                 </tr>
               );
             })}
@@ -1311,7 +1311,7 @@ function RemplacementPage() {
                       <td className="py-1.5 pr-3 text-slate-600">{c.driver.matricule}</td>
                       <td className="py-1.5 pr-3 text-slate-900 font-medium">{c.driver.nom}</td>
                       <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-600">{c.driver.prenom}</td>
-                      <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{assignments.find(a => a.driverId === c.driver.id) ? assignments.find(a => a.driverId === c.driver.id).zone : "—"}</span></td>
+                      <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 font-bold">{assignments.find(a => a.driverId === c.driver.id) ? assignments.find(a => a.driverId === c.driver.id).zone : "—"}</span></td>
                       <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.joursTravailles}</td>
                       <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.joursRepos}</td>
                       <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.derniereAffectation || "—"}</td>
@@ -1332,7 +1332,7 @@ function RemplacementPage() {
         <Panel title="Confirmation du remplacement" icon="fa-triangle-exclamation">
           <p className="text-sm text-slate-600 mb-3">
             <span className="text-slate-900 font-medium">{chosen.driver.nom} {chosen.driver.prenom}</span> reprendra la zone{" "}
-            <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{preview.zone}</span> le {dateStr} à la place de{" "}
+            <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 font-bold">{preview.zone}</span> le {dateStr} à la place de{" "}
             <span className="text-slate-900 font-medium">{absentDriver.nom} {absentDriver.prenom}</span> ({absentDriver && (assignments.find(a=>a.driverId===absentId)||{}).status}).
           </p>
           <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3">
@@ -2107,7 +2107,7 @@ function UsersPage() {
   if (!currentUser || currentUser.role !== "ADMIN") {
     return (
       <div className="space-y-4 fade-in">
-        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
           <i className="fas fa-lock"></i> Cette page est réservée aux administrateurs.
         </div>
       </div>
@@ -2188,11 +2188,11 @@ function UsersPage() {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button onClick={() => { setEditingId(u.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-300">Modifier</button>
+                      <button onClick={() => { setEditingId(u.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-700">Modifier</button>
                       {u.actif !== false
-                        ? <ConfirmButton label="Désactiver" confirmLabel={isSelf ? "Vous déconnecter ?" : "Désactiver ?"} onConfirm={() => RTGStore.setUserActive(u.id, false)} className="text-red-400 hover:text-red-300 text-xs" />
-                        : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setUserActive(u.id, true)} className="text-emerald-400 hover:text-emerald-300 text-xs" />}
-                      {!isSelf && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteUser(u.id)} className="text-red-400 hover:text-red-300 text-xs" />}
+                        ? <ConfirmButton label="Désactiver" confirmLabel={isSelf ? "Vous déconnecter ?" : "Désactiver ?"} onConfirm={() => RTGStore.setUserActive(u.id, false)} className="text-red-400 hover:text-red-700 text-xs" />
+                        : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setUserActive(u.id, true)} className="text-emerald-400 hover:text-emerald-700 text-xs" />}
+                      {!isSelf && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteUser(u.id)} className="text-red-400 hover:text-red-700 text-xs" />}
                       {u.actif !== false && targetEmail && (
                         resendState === "sending" ? (
                           <span className="text-slate-400">Envoi...</span>
@@ -2205,7 +2205,7 @@ function UsersPage() {
                             label={resendState === "error" ? "Réessayer" : "Renvoyer identifiants"}
                             confirmLabel={"Générer un nouveau mot de passe et l'envoyer à " + targetEmail + " ?"}
                             onConfirm={() => resendCredentials(u)}
-                            className="text-sky-400 hover:text-sky-300 text-xs" />
+                            className="text-sky-400 hover:text-sky-700 text-xs" />
                         )
                       )}
                       {u.actif !== false && targetEmail && u.credentialsSentAt && resendState !== "error" && resendState !== "sending" && (
@@ -2213,7 +2213,7 @@ function UsersPage() {
                           label="Renvoyer"
                           confirmLabel={"Générer un nouveau mot de passe et le renvoyer à " + targetEmail + " ?"}
                           onConfirm={() => resendCredentials(u)}
-                          className="text-sky-400 hover:text-sky-300 text-xs" />
+                          className="text-sky-400 hover:text-sky-700 text-xs" />
                       )}
                     </div>
                     {resendState === "error" && resendError[u.id] && (
@@ -2237,9 +2237,9 @@ function UsersPage() {
 // approches).
 // ==========================================
 const ASSISTANT_SEVERITY_META = {
-  critical: { label: "Critique", icon: "fa-circle-exclamation", cls: "bg-red-500/10 border-red-500/30 text-red-300" },
-  warning: { label: "Avertissement", icon: "fa-triangle-exclamation", cls: "bg-amber-500/10 border-amber-500/30 text-amber-300" },
-  info: { label: "Info", icon: "fa-circle-info", cls: "bg-sky-500/10 border-sky-500/30 text-sky-300" }
+  critical: { label: "Critique", icon: "fa-circle-exclamation", cls: "bg-red-500/10 border-red-500/30 text-red-700" },
+  warning: { label: "Avertissement", icon: "fa-triangle-exclamation", cls: "bg-amber-500/10 border-amber-500/30 text-amber-700" },
+  info: { label: "Info", icon: "fa-circle-info", cls: "bg-sky-500/10 border-sky-500/30 text-sky-700" }
 };
 
 function AssistantIntelligentPage() {
@@ -2304,16 +2304,16 @@ function AssistantIntelligentPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold text-red-300">{counts.critical || 0}</div>
-          <div className="text-xs text-red-300/80 uppercase tracking-wider">Critiques</div>
+          <div className="text-2xl font-bold text-red-700">{counts.critical || 0}</div>
+          <div className="text-xs text-red-700/80 uppercase tracking-wider">Critiques</div>
         </div>
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold text-amber-300">{counts.warning || 0}</div>
-          <div className="text-xs text-amber-300/80 uppercase tracking-wider">Avertissements</div>
+          <div className="text-2xl font-bold text-amber-700">{counts.warning || 0}</div>
+          <div className="text-xs text-amber-700/80 uppercase tracking-wider">Avertissements</div>
         </div>
         <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold text-sky-300">{counts.info || 0}</div>
-          <div className="text-xs text-sky-300/80 uppercase tracking-wider">Infos</div>
+          <div className="text-2xl font-bold text-sky-700">{counts.info || 0}</div>
+          <div className="text-xs text-sky-700/80 uppercase tracking-wider">Infos</div>
         </div>
       </div>
 
@@ -2379,7 +2379,7 @@ function MonPlanningPage() {
 
   if (!driver) {
     return (
-      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
         <i className="fas fa-triangle-exclamation"></i> Votre compte n'est rattaché à aucune fiche conducteur. Contactez un administrateur.
       </div>
     );
@@ -2687,7 +2687,7 @@ function MesCongesPage() {
 
   if (!driver) {
     return (
-      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
         <i className="fas fa-triangle-exclamation"></i> Votre compte n'est rattaché à aucune fiche conducteur. Contactez un administrateur.
       </div>
     );
@@ -2765,16 +2765,16 @@ function MesCongesPage() {
       </div>
 
       {aRefaireRequests.length > 0 && (
-        <div className="bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-300 rounded-xl px-4 py-3 text-sm space-y-1">
+        <div className="bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-700 rounded-xl px-4 py-3 text-sm space-y-1">
           <div className="font-medium flex items-center gap-2"><i className="fas fa-triangle-exclamation"></i>
             Votre responsable vous demande de refaire {aRefaireRequests.length > 1 ? "ces demandes" : "cette demande"} de congé
           </div>
           {aRefaireRequests.map(c => (
-            <div key={c.id} className="text-xs text-fuchsia-300/80">
+            <div key={c.id} className="text-xs text-fuchsia-700/80">
               {c.dateDebut} → {c.dateFin}{c.motifRefus ? " — " + c.motifRefus : ""}
             </div>
           ))}
-          <p className="text-[11px] text-fuchsia-300/70">Remplissez et envoyez une nouvelle demande ci-dessous.</p>
+          <p className="text-[11px] text-fuchsia-700/70">Remplissez et envoyez une nouvelle demande ci-dessous.</p>
         </div>
       )}
 
@@ -2784,7 +2784,7 @@ function MesCongesPage() {
             <div><span className="text-2xl font-bold text-slate-900">{solde.disponible}</span> <span className="text-slate-400">jour{solde.disponible > 1 ? "s" : ""} ouvrable{solde.disponible > 1 ? "s" : ""} disponible{solde.disponible > 1 ? "s" : ""}</span></div>
             <div className="text-[11px] text-slate-500">Droit {solde.annee} : {solde.droit}j + report : {solde.report}j − déjà pris {solde.annee} : {solde.pris}j</div>
             {joursDemandes > 0 && (
-              <div className={`text-xs px-2 py-1 rounded ${joursDemandes > solde.disponible ? "bg-red-500/20 text-red-300" : "bg-marine-700 text-slate-600"}`}>
+              <div className={`text-xs px-2 py-1 rounded ${joursDemandes > solde.disponible ? "bg-red-500/20 text-red-700" : "bg-marine-700 text-slate-600"}`}>
                 Cette demande décompterait {joursDemandes} jour{joursDemandes > 1 ? "s" : ""} ouvrable{joursDemandes > 1 ? "s" : ""}
                 {joursDemandes > solde.disponible ? " — dépasse le solde disponible" : ""}
               </div>
@@ -2900,7 +2900,7 @@ function MesMouvementsPage() {
 
   if (!driver) {
     return (
-      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
         <i className="fas fa-triangle-exclamation"></i> Votre compte n'est rattaché à aucune fiche conducteur. Contactez un administrateur.
       </div>
     );
@@ -2982,7 +2982,7 @@ function MesOverTimePage() {
 
   if (!driver) {
     return (
-      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
         <i className="fas fa-triangle-exclamation"></i> Votre compte n'est rattaché à aucune fiche conducteur. Contactez un administrateur.
       </div>
     );
@@ -3340,7 +3340,7 @@ function MouvementsRtgPage() {
           <i className="fas fa-triangle-exclamation mr-1.5"></i>
           {unmatchedLogins.length} login{unmatchedLogins.length > 1 ? "s" : ""} TOS non rattaché{unmatchedLogins.length > 1 ? "s" : ""} à un conducteur de l'application :{" "}
           {unmatchedLogins.map((l, i) => (
-            <span key={l}>{i > 0 ? ", " : ""}{l} <button onClick={() => ignoreLogin(l)} className="underline hover:text-amber-300">(ignorer)</button></span>
+            <span key={l}>{i > 0 ? ", " : ""}{l} <button onClick={() => ignoreLogin(l)} className="underline hover:text-amber-700">(ignorer)</button></span>
           ))}
         </div>
       )}
@@ -3382,7 +3382,7 @@ function MouvementsRtgPage() {
                           <td className="px-3 py-1.5 text-slate-600">{r.source === "MANUEL" ? <span className="text-sky-400">{r.engin}</span> : r.engin}</td>
                           {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-600">{r[c.key]}</td>)}
                           <td className="px-3 py-1.5 text-center text-slate-900 font-bold">{r.totalMvmt}</td>
-                          <td className="px-3 py-1.5">{r.source === "MANUEL" && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteManuel(r.id)} className="text-red-400 hover:text-red-300 text-[11px]" />}</td>
+                          <td className="px-3 py-1.5">{r.source === "MANUEL" && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteManuel(r.id)} className="text-red-400 hover:text-red-700 text-[11px]" />}</td>
                         </tr>
                       );
                     })}
@@ -3422,7 +3422,7 @@ function MouvementsRtgPage() {
           <i className="fas fa-triangle-exclamation mr-1.5"></i>
           {totalUnmatchedLogins.length} login{totalUnmatchedLogins.length > 1 ? "s" : ""} TOS non rattaché{totalUnmatchedLogins.length > 1 ? "s" : ""} à un conducteur de l'application :{" "}
           {totalUnmatchedLogins.map((l, i) => (
-            <span key={l}>{i > 0 ? ", " : ""}{l} <button onClick={() => ignoreLogin(l)} className="underline hover:text-amber-300">(ignorer)</button></span>
+            <span key={l}>{i > 0 ? ", " : ""}{l} <button onClick={() => ignoreLogin(l)} className="underline hover:text-amber-700">(ignorer)</button></span>
           ))}
         </div>
       )}
