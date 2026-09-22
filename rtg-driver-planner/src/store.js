@@ -840,10 +840,10 @@ const RTGStore = (function () {
   // juste après la création d'un compte CONDUCTEUR, seul moment où le mot de
   // passe en clair est encore connu. best-effort : ne bloque jamais la
   // création du compte elle-même en cas d'échec d'envoi.
-  async function sendCredentialsEmail({ to, driverName, username, password, userId }) {
+  async function sendCredentialsEmail({ to, driverName, username, password, userId, fleet }) {
     const appUrl = window.location.origin + window.location.pathname;
     const { error } = await sb.functions.invoke("send-credentials-email", {
-      body: { to, driverName, username, password, appUrl }
+      body: { to, driverName, username, password, appUrl, fleet }
     });
     if (error) { console.error(error); throw new Error(await extractFunctionErrorMessage(error)); }
     if (userId) await markCredentialsSent(userId);

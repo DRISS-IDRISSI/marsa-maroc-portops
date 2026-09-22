@@ -960,7 +960,7 @@ function renderShortEmailHtml(isoDate: string, isShiftScoped: boolean, teamNom: 
     <div style="font-family:Arial,sans-serif;color:#1a1a1a;">
       <p>Bonjour,</p>
       <p>${bodyLine}</p>
-      <p style="color:#94a3b8;font-size:11px;margin-top:24px;">Message automatique — RTG Driver Planner, Marsa Maroc TC3PC — ${formatDateFr(isoDate)}.</p>
+      <p style="color:#94a3b8;font-size:11px;margin-top:24px;">Message automatique — CES Driver Planner, Marsa Maroc TC3PC — ${formatDateFr(isoDate)}.</p>
     </div>`;
 }
 
@@ -1157,7 +1157,7 @@ async function buildShiftReportPdf(dateIso: string, shiftDef: any, teamNom: stri
     drawSectionTable(cursor, `OFF — Shift 3 dimanche — ${offRows.length} conducteur${offRows.length > 1 ? "s" : ""}`, rows);
   }
 
-  cursor.page.drawText("Document généré automatiquement par RTG Driver Planner.", { x: PAGE_MARGIN, y: PAGE_MARGIN / 2, size: 7, font, color: rgb(0.5, 0.5, 0.55) });
+  cursor.page.drawText("Document généré automatiquement par CES Driver Planner.", { x: PAGE_MARGIN, y: PAGE_MARGIN / 2, size: 7, font, color: rgb(0.5, 0.5, 0.55) });
 
   return await doc.save();
 }

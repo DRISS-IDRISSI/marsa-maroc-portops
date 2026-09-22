@@ -52,11 +52,12 @@ function escapeHtml(s: string) {
 // Le mode d'emploi doit correspondre à ce que le rôle du compte peut
 // réellement faire — un Responsable/Admin n'a pas les mêmes usages qu'un
 // conducteur (ex. il valide des congés, il ne "dépose" pas de demande).
-function featureListHtml(role: string) {
+function featureListHtml(role: string, fleet?: string) {
+  const mouvementsLabel = fleet === "CC" ? "mouvements" : "mouvements RTG";
   if (role === "CONDUCTEUR") {
     return `
       <li><strong>Mon planning</strong> : consulter votre planning mensuel et vos vacations.</li>
-      <li><strong>Mes mouvements</strong> : voir le détail de vos mouvements RTG importés depuis le TOS.</li>
+      <li><strong>Mes mouvements</strong> : voir le détail de vos ${mouvementsLabel} importés depuis le TOS.</li>
       <li><strong>Congés / Maladies / Absences</strong> : déposer une demande de congé, voir son statut, et le solde restant.</li>
       <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
   }
@@ -65,7 +66,7 @@ function featureListHtml(role: string) {
       <li><strong>Affectation du jour</strong> : consulter et ajuster l'affectation de votre équipe.</li>
       <li><strong>Planning mensuel</strong> : planning de votre équipe.</li>
       <li><strong>Congés / Maladies / Absences</strong> : valider ou refuser les demandes de votre équipe.</li>
-      <li><strong>Mouvements RTG</strong> : mouvements de votre équipe.</li>
+      <li><strong>Mouvements</strong> : mouvements de votre équipe.</li>
       <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
   }
   // RESPONSABLE ou ADMIN : accès à toutes les équipes.
@@ -73,13 +74,13 @@ function featureListHtml(role: string) {
       <li><strong>Planning mensuel / Affectation du jour</strong> : toutes les équipes.</li>
       <li><strong>Conducteurs</strong> : gestion des fiches conducteurs.</li>
       <li><strong>Congés / Maladies / Absences</strong> : validation, toutes équipes.</li>
-      <li><strong>Mouvements RTG</strong> : suivi des imports TOS, toutes équipes.</li>
+      <li><strong>Mouvements</strong> : suivi des imports TOS, toutes équipes.</li>
       <li><strong>Rapports</strong> : exports et rapports RH.</li>${role === "ADMIN" ? `
       <li><strong>Utilisateurs</strong> : gestion des comptes et rôles.</li>` : ""}
       <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
 }
 
-function buildHtml({ driverName, username, password, appUrl, role }: { driverName: string; username: string; password: string; appUrl: string; role: string }) {
+function buildHtml({ driverName, username, password, appUrl, role, fleet }: { driverName: string; username: string; password: string; appUrl: string; role: string; fleet?: string }) {
   const safeName = escapeHtml(driverName);
   const safeUsername = escapeHtml(username);
   const safePassword = escapeHtml(password);
@@ -89,9 +90,9 @@ function buildHtml({ driverName, username, password, appUrl, role }: { driverNam
     : "En cas de problème de connexion, contactez un administrateur de l'application.";
   return `
   <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
-    <h2 style="color: #0f172a;">Vos identifiants — RTG Driver Planner</h2>
+    <h2 style="color: #0f172a;">Vos identifiants — CES Driver Planner</h2>
     <p>Bonjour ${safeName},</p>
-    <p>Voici vos identifiants pour l'application <strong>RTG Driver Planner</strong> (planning, mouvements, congés) :</p>
+    <p>Voici vos identifiants pour l'application <strong>CES Driver Planner</strong> (planning, mouvements, congés) :</p>
     <table style="border-collapse: collapse; margin: 12px 0;">
       <tr><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-weight: bold;">Identifiant</td><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-family: monospace;">${safeUsername}</td></tr>
       <tr><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-weight: bold;">Mot de passe</td><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-family: monospace;">${safePassword}</td></tr>
@@ -118,11 +119,11 @@ function buildHtml({ driverName, username, password, appUrl, role }: { driverNam
     </ol>
 
     <h3 style="color: #0f172a; margin-top: 24px;">Ce que vous pouvez faire dans l'application</h3>
-    <ul style="font-size: 14px;">${featureListHtml(role)}
+    <ul style="font-size: 14px;">${featureListHtml(role, fleet)}
     </ul>
 
     <p style="margin-top: 24px; font-size: 12px; color: #64748b;">Ceci est un message automatique — merci de ne pas y répondre. ${contactLine}</p>
-    <p style="font-size: 12px; color: #64748b;">RTG Driver Planner — Marsa Maroc TC3PC</p>
+    <p style="font-size: 12px; color: #64748b;">CES Driver Planner — Marsa Maroc TC3PC</p>
   </div>`;
 }
 
@@ -165,10 +166,15 @@ Deno.serve(async req => {
 
     let targetEmail = target.email || null;
     let driverName = target.nom || "";
+    let fleet: string | undefined;
     if (target.role === "CONDUCTEUR" && target.driver_id) {
-      const { data: driver } = await admin.from("drivers").select("email,nom,prenom").eq("id", target.driver_id).maybeSingle();
+      const { data: driver } = await admin.from("drivers").select("email,nom,prenom,team_id").eq("id", target.driver_id).maybeSingle();
       targetEmail = driver && driver.email ? driver.email : null;
       if (driver) driverName = driver.nom + " " + driver.prenom;
+      if (driver && driver.team_id) {
+        const { data: team } = await admin.from("teams").select("type_engin").eq("id", driver.team_id).maybeSingle();
+        fleet = team ? team.type_engin : undefined;
+      }
     }
     if (!targetEmail) {
       return new Response(JSON.stringify({ error: "Aucun email renseigné pour ce compte." }), { status: 400, headers: jsonHeaders });
@@ -178,11 +184,11 @@ Deno.serve(async req => {
     const { error: updateError } = await admin.auth.admin.updateUserById(target.id, { password: tempPassword });
     if (updateError) { console.error(updateError); throw updateError; }
 
-    const html = buildHtml({ driverName, username: target.username, password: tempPassword, appUrl, role: target.role });
+    const html = buildHtml({ driverName, username: target.username, password: tempPassword, appUrl, role: target.role, fleet });
     const client = new SMTPClient({
       connection: { hostname: "smtp.gmail.com", port: 465, tls: true, auth: { username: GMAIL_USER, password: GMAIL_APP_PASSWORD } }
     });
-    await client.send({ from: GMAIL_USER, to: targetEmail, subject: "Vos identifiants — RTG Driver Planner", content: "auto", html });
+    await client.send({ from: GMAIL_USER, to: targetEmail, subject: "Vos identifiants — CES Driver Planner", content: "auto", html });
     await client.close();
 
     return new Response(JSON.stringify({ ok: true }), { headers: jsonHeaders });

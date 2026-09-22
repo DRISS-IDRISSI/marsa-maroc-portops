@@ -1962,7 +1962,7 @@ function ConducteurAccountsPanel({ state }) {
       while (!ok) {
         try {
           const newUser = await RTGStore.addUser({ nom: d.nom + " " + d.prenom, username: username, password: password, role: "CONDUCTEUR", driverId: d.id });
-          created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password, email: d.email || "", userId: newUser.id });
+          created.push({ matricule: d.matricule, nom: d.nom, prenom: d.prenom, username: username, password: password, email: d.email || "", userId: newUser.id, fleet: state.currentFleet });
           ok = true;
         } catch (e) {
           if (isRateLimitError(e) && attempt < 4) {
@@ -1997,7 +1997,7 @@ function ConducteurAccountsPanel({ state }) {
     if (!r.email) return;
     setEmailStatus(s => Object.assign({}, s, { [r.matricule]: "sending" }));
     try {
-      await RTGStore.sendCredentialsEmail({ to: r.email, driverName: r.nom + " " + r.prenom, username: r.username, password: r.password, userId: r.userId });
+      await RTGStore.sendCredentialsEmail({ to: r.email, driverName: r.nom + " " + r.prenom, username: r.username, password: r.password, userId: r.userId, fleet: r.fleet });
       setEmailStatus(s => Object.assign({}, s, { [r.matricule]: "sent" }));
     } catch (e) {
       console.error(e);

@@ -56,7 +56,7 @@ async function sendResetEmail(to, username, tempPassword) {
   const content = [
     "Bonjour,",
     "",
-    `Un nouveau mot de passe temporaire a été généré pour votre compte RTG Driver Planner (identifiant : ${username}) :`,
+    `Un nouveau mot de passe temporaire a été généré pour votre compte CES Driver Planner (identifiant : ${username}) :`,
     "",
     `Mot de passe temporaire : ${tempPassword}`,
     "",
@@ -66,9 +66,9 @@ async function sendResetEmail(to, username, tempPassword) {
     "",
     "Ceci est un message automatique — merci de ne pas y répondre.",
     "",
-    "RTG Driver Planner — Marsa Maroc TC3PC"
+    "CES Driver Planner — Marsa Maroc TC3PC"
   ].join("\n");
-  await client.send({ from: GMAIL_USER, to: to, subject: "Réinitialisation de votre mot de passe — RTG Driver Planner", content: content });
+  await client.send({ from: GMAIL_USER, to: to, subject: "Réinitialisation de votre mot de passe — CES Driver Planner", content: content });
   await client.close();
 }
 

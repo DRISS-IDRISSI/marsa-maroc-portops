@@ -31,16 +31,17 @@ function escapeHtml(s: string) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function buildHtml({ driverName, username, password, appUrl }: { driverName: string; username: string; password: string; appUrl: string }) {
+function buildHtml({ driverName, username, password, appUrl, fleet }: { driverName: string; username: string; password: string; appUrl: string; fleet?: string }) {
   const safeName = escapeHtml(driverName);
   const safeUsername = escapeHtml(username);
   const safePassword = escapeHtml(password);
   const safeUrl = escapeHtml(appUrl);
+  const mouvementsLabel = fleet === "CC" ? "mouvements" : "mouvements RTG";
   return `
   <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
-    <h2 style="color: #0f172a;">Bienvenue sur RTG Driver Planner</h2>
+    <h2 style="color: #0f172a;">Bienvenue sur CES Driver Planner</h2>
     <p>Bonjour ${safeName},</p>
-    <p>Un accès à l'application <strong>RTG Driver Planner</strong> (planning, mouvements, congés) a été créé pour vous. Voici vos identifiants :</p>
+    <p>Un accès à l'application <strong>CES Driver Planner</strong> (planning, mouvements, congés) a été créé pour vous. Voici vos identifiants :</p>
     <table style="border-collapse: collapse; margin: 12px 0;">
       <tr><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-weight: bold;">Identifiant</td><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-family: monospace;">${safeUsername}</td></tr>
       <tr><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-weight: bold;">Mot de passe</td><td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-family: monospace;">${safePassword}</td></tr>
@@ -69,13 +70,13 @@ function buildHtml({ driverName, username, password, appUrl }: { driverName: str
     <h3 style="color: #0f172a; margin-top: 24px;">Ce que vous pouvez faire dans l'application</h3>
     <ul style="font-size: 14px;">
       <li><strong>Mon planning</strong> : consulter votre planning mensuel et vos vacations.</li>
-      <li><strong>Mes mouvements</strong> : voir le détail de vos mouvements RTG importés depuis le TOS.</li>
+      <li><strong>Mes mouvements</strong> : voir le détail de vos ${mouvementsLabel} importés depuis le TOS.</li>
       <li><strong>Congés / Maladies / Absences</strong> : déposer une demande de congé, voir son statut, et le solde restant.</li>
       <li><strong>Mon compte</strong> : changer votre mot de passe.</li>
     </ul>
 
     <p style="margin-top: 24px; font-size: 12px; color: #64748b;">Ceci est un message automatique — merci de ne pas y répondre. En cas de problème de connexion, contactez votre Responsable de Shift.</p>
-    <p style="font-size: 12px; color: #64748b;">RTG Driver Planner — Marsa Maroc TC3PC</p>
+    <p style="font-size: 12px; color: #64748b;">CES Driver Planner — Marsa Maroc TC3PC</p>
   </div>`;
 }
 
@@ -87,13 +88,13 @@ Deno.serve(async req => {
       throw new Error("GMAIL_USER / GMAIL_APP_PASSWORD non configurés (Project Settings > Edge Functions > Secrets).");
     }
     const body = await req.json();
-    const { to, driverName, username, password, appUrl } = body || {};
+    const { to, driverName, username, password, appUrl, fleet } = body || {};
     if (!to || !username || !password || !appUrl) {
       return new Response(JSON.stringify({ error: "Champs requis manquants (to, username, password, appUrl)." }),
         { status: 400, headers: Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" }) });
     }
 
-    const html = buildHtml({ driverName: driverName || "", username, password, appUrl });
+    const html = buildHtml({ driverName: driverName || "", username, password, appUrl, fleet });
 
     const client = new SMTPClient({
       connection: {
@@ -103,7 +104,7 @@ Deno.serve(async req => {
         auth: { username: GMAIL_USER, password: GMAIL_APP_PASSWORD }
       }
     });
-    await client.send({ from: GMAIL_USER, to: to, subject: "Vos identifiants — RTG Driver Planner", content: "auto", html });
+    await client.send({ from: GMAIL_USER, to: to, subject: "Vos identifiants — CES Driver Planner", content: "auto", html });
     await client.close();
 
     return new Response(JSON.stringify({ ok: true }), { headers: Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" }) });

@@ -51,7 +51,7 @@ function buildMessage({ driverName, dateDebut, dateFin, decision, motifRefus }) 
     if (motifRefus) lignes.push("", `Motif : ${motifRefus}`);
     lignes.push("", "Merci de renvoyer une nouvelle demande depuis l'application, rubrique \"Mes congés\".");
   }
-  lignes.push("", "Ceci est un message automatique — merci de ne pas y répondre.", "", "RTG Driver Planner — Marsa Maroc TC3PC");
+  lignes.push("", "Ceci est un message automatique — merci de ne pas y répondre.", "", "CES Driver Planner — Marsa Maroc TC3PC");
   return { subject, content: lignes.join("\n") };
 }
 
