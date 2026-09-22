@@ -1497,8 +1497,12 @@ function ZoneOrStatutBadge({ a }) {
 function ShiftBlock({ title, icon, rows }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
+  // Bordure plus marquée + ombre (au lieu du simple border-slate-200 des
+  // autres cartes) : ce bloc est toujours affiché à côté d'un autre (V1 à
+  // côté de V2, § grid-cols-2) — les deux se confondaient l'un dans l'autre
+  // sur le fond clair, sans repère visuel net entre les deux.
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="bg-white rounded-xl border-2 border-slate-300 shadow-md p-4">
       <div className="flex items-center gap-2 mb-3">
         <i className={`fas ${icon} text-orange-400 text-sm`}></i>
         <h3 className="text-slate-900 text-sm font-semibold">{title}</h3>

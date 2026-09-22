@@ -594,7 +594,7 @@ function DriversPage() {
                     <td className="hidden sm:table-cell px-3 py-2 text-center">{d.initialVacation}</td>
                     <td className="hidden sm:table-cell px-3 py-2">
                       {d.actif !== false
-                        ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Actif</span>
+                        ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700">Actif</span>
                         : <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400" title={d.motifDepart ? DEPART_MOTIF_LABELS[d.motifDepart] || d.motifDepart : ""}>Inactif{d.motifDepart ? " — " + (DEPART_MOTIF_LABELS[d.motifDepart] || d.motifDepart) : ""}</span>}
                     </td>
                     <td className="hidden sm:table-cell px-3 py-2"><CongeSoldeBadge driver={d} state={state} /></td>
@@ -2183,7 +2183,7 @@ function UsersPage() {
                   <td className="px-3 py-2 text-slate-400">{team ? team.nom : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
                   <td className="px-3 py-2">
                     {u.actif !== false
-                      ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Actif</span>
+                      ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700">Actif</span>
                       : <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">Inactif</span>}
                   </td>
                   <td className="px-3 py-2">
