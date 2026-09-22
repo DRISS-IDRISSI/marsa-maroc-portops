@@ -1207,7 +1207,7 @@ function ValidationBanner({ validation }) {
 }
 
 function Cell({ assignment, detailLevel, onEdit, weekStart }) {
-  const weekStartCls = weekStart ? "border-l-2 border-l-orange-500/70" : "";
+  const weekStartCls = weekStart ? "border-l-4 border-l-orange-600" : "";
   if (!assignment) return <td className={`border border-slate-200/60 bg-slate-50/40 ${weekStartCls}`}></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
   // Jour de travail (PRESENT) : case vierge, comme sur le rapport imprimable —
@@ -1385,7 +1385,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
       {drivers.length === 0 ? (
         <p className="text-xs text-slate-500 italic px-0.5 mb-2">Aucun conducteur dans ce groupe.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="overflow-x-auto rounded-xl border-2 border-slate-300 shadow-md">
           <table className="border-collapse text-xs w-full">
             <thead>
               {shiftRuns && (
@@ -1394,7 +1394,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   <th className="sticky left-14 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10 min-w-[90px] sm:min-w-[110px]" rowSpan="2">Nom</th>
                   <th className="hidden sm:table-cell border border-slate-200/60 px-2 py-2 text-left text-slate-600 min-w-[90px]" rowSpan="2">Prénom</th>
                   {shiftRuns.map((run, i) => (
-                    <th key={i} colSpan={run.count} className="border border-slate-200/60 px-1 py-1.5 text-center text-slate-400 text-[10px] font-semibold uppercase">{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
+                    <th key={i} colSpan={run.count} className={`border border-slate-200/60 px-1 py-1.5 text-center text-slate-400 text-[10px] font-semibold uppercase ${i > 0 ? "border-l-4 border-l-orange-600" : ""}`}>{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
                   ))}
                 </tr>
               )}
@@ -1406,7 +1406,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   const holiday = HolidayEngine.getEffectiveHoliday(RTGDate.parseISO(day.iso), team, config);
                   const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
                   return (
-                    <th key={day.iso} className={`border border-slate-200/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-700" : "text-slate-400"} ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`} title={holiday ? holiday.label : undefined}>
+                    <th key={day.iso} className={`border border-slate-200/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-700" : "text-slate-400"} ${weekStart ? "border-l-4 border-l-orange-600" : ""}`} title={holiday ? holiday.label : undefined}>
                       {String(day.day).padStart(2, "0")}
                     </th>
                   );
@@ -1436,7 +1436,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                     return n + (a && a.status === "PRESENT" ? 1 : 0);
                   }, 0);
                   const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
-                  return <td key={day.iso} className={`border border-slate-200/60 text-center text-[11px] text-slate-900 px-1 py-1.5 ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`}>{count}</td>;
+                  return <td key={day.iso} className={`border border-slate-200/60 text-center text-[11px] text-slate-900 px-1 py-1.5 ${weekStart ? "border-l-4 border-l-orange-600" : ""}`}>{count}</td>;
                 })}
               </tr>
             </tbody>
