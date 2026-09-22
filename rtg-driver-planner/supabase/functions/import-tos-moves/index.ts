@@ -137,6 +137,20 @@ Deno.serve(async _req => {
     });
   }
 
+  // Selon la version de PostgREST/supabase-js, une ressource imbriquée
+  // to-one (teams!inner(...)) peut être renvoyée soit comme un objet, soit
+  // comme un tableau à un élément — gérer les deux formes explicitement
+  // plutôt que de supposer l'une d'elles est CRITIQUE ici : une mauvaise
+  // supposition rend cette fonction silencieuse (aucune erreur), avec pour
+  // conséquence que TOUS les conducteurs sont exclus des deux flottes, donc
+  // plus AUCUN login ne correspond jamais à personne — et l'upsert plus bas
+  // écrase alors le rattachement déjà correct des lignes déjà importées
+  // (driver_id remis à null) à chaque exécution du cron.
+  function driverFleet(d: { teams: unknown }): string | null {
+    const t = Array.isArray(d.teams) ? d.teams[0] : d.teams;
+    return (t && (t as { type_engin?: string }).type_engin) || null;
+  }
+
   // login TOS attendu -> liste des driver_id qui y correspondent (normalement
   // 1 seul ; plus d'un = ambiguïté à signaler). Un login_tos saisi à la main
   // sur la fiche conducteur (cas d'un compte TOS orthographié différemment du
@@ -153,9 +167,21 @@ Deno.serve(async _req => {
   }
 
   const loginMapByFleet: Record<"RTG" | "CC", Map<string, string[]>> = {
-    RTG: buildLoginMap((drivers || []).filter(d => (d.teams as unknown as { type_engin: string })?.type_engin === "RTG")),
-    CC: buildLoginMap((drivers || []).filter(d => (d.teams as unknown as { type_engin: string })?.type_engin === "CC"))
+    RTG: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "RTG")),
+    CC: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "CC"))
   };
+
+  // Garde-fou : si malgré tout aucun conducteur n'est reconnu dans AUCUNE des
+  // deux flottes alors que la table drivers n'est pas vide, quelque chose ne
+  // va pas dans la forme des données renvoyées par la requête ci-dessus —
+  // mieux vaut échouer bruyamment que de continuer et écraser silencieusement
+  // le rattachement déjà correct de toutes les lignes existantes.
+  if ((drivers || []).length > 0 && loginMapByFleet.RTG.size === 0 && loginMapByFleet.CC.size === 0) {
+    return new Response(JSON.stringify({
+      ok: false,
+      error: "Aucun conducteur reconnu dans une flotte (RTG ou CC) alors que " + (drivers || []).length + " conducteur(s) actif(s) existent — anomalie dans la forme des données renvoyées par la requête 'drivers'. Import annulé par sécurité (aucune écriture effectuée)."
+    }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
 
   // Logins volontairement ignorés (ex. conducteur tracteur ayant ponctuellement
   // opéré un RTG) — jamais insérés, et toute ligne déjà importée pour l'un
