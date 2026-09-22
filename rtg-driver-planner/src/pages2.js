@@ -2904,6 +2904,13 @@ function inferEnginFleet(engin) {
   return /^RTG/i.test(e) ? "RTG" : "CC";
 }
 
+// Ordre d'affichage des shifts (S1 avant S2 avant S3...) — un shift non
+// reconnu (ex. absent) est relégué en fin de liste plutôt que de casser le tri.
+function shiftSortKey(shift) {
+  const m = String(shift || "").match(/^S(\d+)$/i);
+  return m ? Number(m[1]) : 99;
+}
+
 const MOUVEMENTS_TOS_COLUMNS = [
   { key: "nombreIn", label: "IN" },
   { key: "nombreOut", label: "OUT" },
@@ -3337,6 +3344,8 @@ function MouvementsRtgPage() {
     });
     return Object.keys(days).sort((a, b) => b.localeCompare(a)).map(dateIso => {
       const rows = groupMouvementsRows(days[dateIso], r => r.driverId || ("_" + r.loginTos)).sort((a, b) => {
+        const shiftCmp = shiftSortKey(a.dominantShift) - shiftSortKey(b.dominantShift);
+        if (shiftCmp !== 0) return shiftCmp;
         const da = a.driverId ? state.drivers.find(d => d.id === a.driverId) : null;
         const db = b.driverId ? state.drivers.find(d => d.id === b.driverId) : null;
         return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
