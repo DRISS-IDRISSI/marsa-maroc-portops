@@ -1469,7 +1469,16 @@ function RapportRHPage() {
     const map = {};
     mvtRows.forEach(r => {
       if (dayIso && r.dateTravail !== dayIso) return;
+      // fetchMouvementsTos ne filtre pas par flotte (RTG/CC) — sans ce
+      // filtre, les conducteurs CC (non rattachés faute d'appartenir à la
+      // flotte affichée, `state.drivers` étant déjà restreint à la flotte
+      // en cours) apparaîtraient mélangés aux RTG dans ce rapport.
       const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
+      if (r.driverId) {
+        if (!d) return;
+      } else if (inferEnginFleet(r.engin) !== rawState.currentFleet) {
+        return;
+      }
       if (effectiveTeamId !== "all" && (!d || d.teamId !== effectiveTeamId)) return;
       const key = r.driverId || ("_" + r.loginTos);
       if (!map[key]) {
@@ -1484,7 +1493,7 @@ function RapportRHPage() {
       return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
     });
     return { rows, total: rows.reduce((s, r) => s + r.totalMvmt, 0) };
-  }, [mvtRows, state.drivers, effectiveTeamId, dayIso]);
+  }, [mvtRows, state.drivers, rawState.currentFleet, effectiveTeamId, dayIso]);
 
   const th = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
   const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
@@ -2866,6 +2875,21 @@ function MesCongesPage() {
 // global (table potentiellement volumineuse) : chaque page interroge
 // directement Supabase pour sa période affichée.
 // ==========================================
+
+// Le code engin du rapport TOS (ex. "RTG16") identifie clairement la
+// flotte RTG ; tout le reste (postes cavalier CC...) est considéré CC par
+// élimination — l'appli ne gère que ces deux flottes. Retourne null si le
+// code est absent/vide : dans ce cas on ne peut rien déduire, la ligne
+// reste visible sur les deux flottes plutôt que d'être masquée à tort.
+// Partagé entre toutes les vues "Mouvements" (page dédiée + rapport RH) —
+// une ligne non rattachée (driver_id null) n'a pas d'autre moyen de savoir
+// à quelle flotte elle appartient.
+function inferEnginFleet(engin) {
+  const e = String(engin || "").trim();
+  if (!e) return null;
+  return /^RTG/i.test(e) ? "RTG" : "CC";
+}
+
 const MOUVEMENTS_TOS_COLUMNS = [
   { key: "nombreIn", label: "IN" },
   { key: "nombreOut", label: "OUT" },
@@ -3241,16 +3265,6 @@ function MouvementsRtgPage() {
       .catch(e => alert("Erreur : " + (e && e.message ? e.message : "réessayez.") + "\n\nSi le login réapparaît malgré un \"ignorer\" réussi, la fonction d'import TOS déployée sur Supabase n'est peut-être pas à jour — voir avec l'administrateur pour la redéployer."));
   };
 
-  // Le code engin du rapport TOS (ex. "RTG16") identifie clairement la
-  // flotte RTG ; tout le reste (postes cavalier CC...) est considéré CC par
-  // élimination — l'appli ne gère que ces deux flottes. Retourne null si le
-  // code est absent/vide : dans ce cas on ne peut rien déduire, la ligne
-  // reste visible sur les deux flottes plutôt que d'être masquée à tort.
-  const inferEnginFleet = engin => {
-    const e = String(engin || "").trim();
-    if (!e) return null;
-    return /^RTG/i.test(e) ? "RTG" : "CC";
-  };
   // Ne garder que les lignes de la flotte actuellement affichée : rattachées
   // à un conducteur de la flotte en cours, OU non rattachées mais dont le
   // code engin indique cette flotte (ou dont la flotte ne peut pas être
