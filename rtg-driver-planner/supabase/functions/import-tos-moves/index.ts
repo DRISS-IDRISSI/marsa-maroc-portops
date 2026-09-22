@@ -211,15 +211,25 @@ Deno.serve(async _req => {
   // lignes non rattachées (ex. après un import massif ou un incident), une
   // réparation ligne par ligne peut dépasser le temps d'exécution de la
   // fonction avant même d'avoir traité les emails du jour.
+  // PostgREST plafonne une réponse .select() à 1000 lignes par défaut : sans
+  // pagination explicite, un incident ou un import massif laissant plus de
+  // 1000 lignes non rattachées en base ferait toujours revenir le MÊME
+  // premier millier à chaque exécution — les logins situés au-delà ne
+  // seraient alors JAMAIS réparés, peu importe le nombre de passages du cron.
   let reconciledRows = 0;
-  const { data: unmatchedRows } = await admin.from("mouvements_tos").select("login_tos, engin").is("driver_id", null);
   const reconcileTargets = new Map<string, { loginTos: string; fleet: "RTG" | "CC"; driverId: string }>();
-  (unmatchedRows || []).forEach(row => {
-    const fleet = fleetForEngin(row.engin);
-    const matches = loginMapByFleet[fleet].get(row.login_tos) || [];
-    if (matches.length !== 1) return;
-    reconcileTargets.set(fleet + "|" + row.login_tos, { loginTos: row.login_tos, fleet, driverId: matches[0] });
-  });
+  const PAGE_SIZE = 1000;
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data: page } = await admin.from("mouvements_tos").select("login_tos, engin").is("driver_id", null)
+      .range(offset, offset + PAGE_SIZE - 1);
+    (page || []).forEach(row => {
+      const fleet = fleetForEngin(row.engin);
+      const matches = loginMapByFleet[fleet].get(row.login_tos) || [];
+      if (matches.length !== 1) return;
+      reconcileTargets.set(fleet + "|" + row.login_tos, { loginTos: row.login_tos, fleet, driverId: matches[0] });
+    });
+    if (!page || page.length < PAGE_SIZE) break;
+  }
   for (const target of reconcileTargets.values()) {
     let q = admin.from("mouvements_tos").update({ driver_id: target.driverId, match_note: null })
       .eq("login_tos", target.loginTos).is("driver_id", null);
