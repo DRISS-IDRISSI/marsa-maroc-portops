@@ -2897,28 +2897,37 @@ function withMouvementsDisplay(r) {
 
 // Regroupe plusieurs lignes de mouvements (ex. plusieurs engins/shifts d'un
 // même conducteur le même jour) en une seule, par la clé retournée par
-// `keyFn` — les shifts et engins distincts restent listés (traçabilité),
-// les compteurs sont sommés, et `sourceRows` garde les lignes d'origine
-// (nécessaire pour les mouvements manuels : chacun reste supprimable
-// individuellement même après regroupement à l'affichage).
+// `keyFn`. Le shift affiché (`dominantShift`) est celui qui totalise le plus
+// de mouvements ce jour-là (ex. S2=24, S3=1 → seul S2 est affiché — décision
+// explicite de l'exploitant, un shift marginal ne doit pas polluer
+// l'affichage) ; les engins distincts, eux, restent tous listés
+// (traçabilité). Les compteurs sont sommés, et `sourceRows` garde les
+// lignes d'origine (nécessaire pour les mouvements manuels : chacun reste
+// supprimable individuellement même après regroupement à l'affichage).
 function groupMouvementsRows(rows, keyFn) {
   const map = {};
   rows.forEach(r => {
     const key = keyFn(r);
     if (!map[key]) {
       map[key] = Object.assign({}, r, {
-        id: key, shifts: [], engins: [], sourceRows: [],
+        id: key, engins: [], sourceRows: [], shiftTotals: {},
         nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, totalMvmt: 0
       });
     }
     const g = map[key];
-    if (r.shift && g.shifts.indexOf(r.shift) === -1) g.shifts.push(r.shift);
+    if (r.shift) g.shiftTotals[r.shift] = (g.shiftTotals[r.shift] || 0) + (r.totalMvmt || 0);
     if (r.engin && g.engins.indexOf(r.engin) === -1) g.engins.push(r.engin);
     g.sourceRows.push(r);
     MOUVEMENTS_TOS_COLUMNS.forEach(c => { g[c.key] += r[c.key] || 0; });
     g.totalMvmt += r.totalMvmt || 0;
   });
-  return Object.values(map);
+  return Object.values(map).map(g => {
+    const shiftEntries = Object.entries(g.shiftTotals);
+    const dominantShift = shiftEntries.length > 0
+      ? shiftEntries.sort((a, b) => b[1] - a[1])[0][0]
+      : null;
+    return Object.assign(g, { dominantShift });
+  });
 }
 
 function MesMouvementsPage() {
@@ -2986,7 +2995,7 @@ function MesMouvementsPage() {
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
-              <th className="px-3 py-2">Date</th><th className="px-3 py-2">Shift(s)</th><th className="px-3 py-2">Engin(s)</th>
+              <th className="px-3 py-2">Date</th><th className="px-3 py-2">Shift</th><th className="px-3 py-2">Engin(s)</th>
               {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <th key={c.key} className="px-3 py-2 text-center">{c.label}</th>)}
               <th className="px-3 py-2 text-center font-bold">Total</th>
             </tr>
@@ -3001,7 +3010,7 @@ function MesMouvementsPage() {
               return (
                 <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-slate-900">{r.dateTravail}</td>
-                  <td className="px-3 py-2 text-slate-600">{r.shifts.join(", ")}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.dominantShift}</td>
                   <td className="px-3 py-2 text-slate-600">{r.engins.join(", ")}</td>
                   {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-600">{disp[c.key]}</td>)}
                   <td className="px-3 py-2 text-center text-slate-900 font-bold">{r.totalMvmt}</td>
@@ -3411,7 +3420,7 @@ function MouvementsRtgPage() {
               <thead className="text-slate-500">
                 <tr className="text-left">
                   <th className="px-4 py-1">Conducteur</th><th className="px-3 py-1">Équipe</th>
-                  <th className="px-3 py-1">Shift(s)</th><th className="px-3 py-1">Engin(s)</th>
+                  <th className="px-3 py-1">Shift</th><th className="px-3 py-1">Engin(s)</th>
                   {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <th key={c.key} className="px-3 py-1 text-center">{c.label}</th>)}
                   <th className="px-3 py-1 text-center font-bold">Total</th>
                   <th className="px-3 py-1"></th>
@@ -3427,7 +3436,7 @@ function MouvementsRtgPage() {
                     <tr key={r.id} className="border-t border-slate-200/60 hover:bg-marine-600/10">
                       <td className="px-4 py-1.5 text-slate-900">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
                       <td className="px-3 py-1.5 text-slate-600">{team ? team.nom : "—"}</td>
-                      <td className="px-3 py-1.5 text-slate-600">{r.shifts.join(", ")}</td>
+                      <td className="px-3 py-1.5 text-slate-600">{r.dominantShift}</td>
                       <td className="px-3 py-1.5 text-slate-600">{manuelRows.length > 0 && manuelRows.length === r.sourceRows.length ? <span className="text-sky-400">{r.engins.join(", ")}</span> : r.engins.join(", ")}</td>
                       {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-600">{disp[c.key]}</td>)}
                       <td className="px-3 py-1.5 text-center text-slate-900 font-bold">{r.totalMvmt}</td>
