@@ -3426,7 +3426,7 @@ function MouvementsRtgPage() {
       {!loading && byDay.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
               <thead className="text-slate-500">
                 <tr className="text-left">
                   <th className="px-4 py-1">Conducteur</th><th className="px-3 py-1">Équipe</th>
@@ -3437,34 +3437,58 @@ function MouvementsRtgPage() {
                 </tr>
               </thead>
               <tbody>
-                {byDay.map((day, dayIdx) => day.rows.map((r, rowIdx) => {
-                  const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
-                  const team = d ? state.teams.find(t => t.id === d.teamId) : null;
-                  const disp = withMouvementsDisplay(r);
-                  const manuelRows = r.sourceRows.filter(sr => sr.source === "MANUEL");
-                  // Encadrement par journée : bordure épaisse au changement de
-                  // date + léger fond alterné, pour séparer visuellement les
-                  // journées dans ce tableau désormais à plat (une seule date
-                  // par groupe de lignes, plutôt qu'un bloc séparé par jour).
-                  const dayStartCls = rowIdx === 0 ? "border-t-2 border-t-slate-400" : "border-t border-slate-200/60";
-                  const dayBgCls = dayIdx % 2 === 0 ? "bg-white" : "bg-slate-50/70";
-                  return (
-                    <tr key={day.dateIso + "_" + r.id} className={`${dayStartCls} ${dayBgCls} hover:bg-marine-600/10`}>
-                      <td className="px-4 py-1.5 text-slate-900">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
-                      <td className="px-3 py-1.5 text-slate-600">{team ? team.nom : "—"}</td>
-                      <td className="px-3 py-1.5 text-slate-900">{RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}</td>
-                      <td className="px-3 py-1.5 text-slate-600">{r.dominantShift}</td>
-                      <td className="px-3 py-1.5 text-slate-600">{manuelRows.length > 0 && manuelRows.length === r.sourceRows.length ? <span className="text-sky-400">{r.engins.join(", ")}</span> : r.engins.join(", ")}</td>
-                      {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-600">{disp[c.key]}</td>)}
-                      <td className="px-3 py-1.5 text-center text-slate-900 font-bold">{r.totalMvmt}</td>
-                      <td className="px-3 py-1.5">
-                        {manuelRows.map(mr => (
-                          <ConfirmButton key={mr.id} label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteManuel(mr.id)} className="text-red-400 hover:text-red-700 text-[11px] block" />
-                        ))}
-                      </td>
-                    </tr>
-                  );
-                }))}
+                {byDay.map((day, dayIdx) => {
+                  const dataRows = day.rows.map((r, rowIdx) => {
+                    const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
+                    const team = d ? state.teams.find(t => t.id === d.teamId) : null;
+                    const disp = withMouvementsDisplay(r);
+                    const manuelRows = r.sourceRows.filter(sr => sr.source === "MANUEL");
+                    // Encadrement par journée, coins arrondis : chaque groupe
+                    // de lignes partageant la même date forme un cadre continu
+                    // (bordure gauche/droite sur toutes ses lignes, bordure
+                    // haute + coins arrondis sur la 1ère, bordure basse +
+                    // coins arrondis sur la dernière) — nécessite
+                    // border-collapse: separate ci-dessus, sinon les coins
+                    // arrondis ne s'affichent pas sur des cellules de tableau.
+                    // Un espace entre chaque cadre est ajouté via une ligne
+                    // "espaceur" transparente (voir plus bas), pas via
+                    // border-spacing (qui séparerait aussi les lignes d'un
+                    // même jour, cassant l'effet de cadre continu).
+                    const isFirst = rowIdx === 0;
+                    const isLast = rowIdx === day.rows.length - 1;
+                    const bg = dayIdx % 2 === 0 ? "bg-white" : "bg-slate-50/70";
+                    const frameColor = "border-slate-300";
+                    const topEdge = isFirst ? `border-t-2 ${frameColor}` : "";
+                    const botEdge = isLast ? `border-b-2 ${frameColor}` : "";
+                    const midCellCls = `${bg} ${topEdge} ${botEdge}`;
+                    const firstCellCls = `${bg} border-l-2 ${frameColor} ${topEdge} ${botEdge} ${isFirst ? "rounded-tl-lg" : ""} ${isLast ? "rounded-bl-lg" : ""}`;
+                    const lastCellCls = `${bg} border-r-2 ${frameColor} ${topEdge} ${botEdge} ${isFirst ? "rounded-tr-lg" : ""} ${isLast ? "rounded-br-lg" : ""}`;
+                    return (
+                      <tr key={day.dateIso + "_" + r.id} className="hover:bg-marine-600/10">
+                        <td className={`px-4 py-1.5 text-slate-900 ${firstCellCls}`}>{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
+                        <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{team ? team.nom : "—"}</td>
+                        <td className={`px-3 py-1.5 text-slate-900 ${midCellCls}`}>{RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}</td>
+                        <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{r.dominantShift}</td>
+                        <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{manuelRows.length > 0 && manuelRows.length === r.sourceRows.length ? <span className="text-sky-400">{r.engins.join(", ")}</span> : r.engins.join(", ")}</td>
+                        {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className={`px-3 py-1.5 text-center text-slate-600 ${midCellCls}`}>{disp[c.key]}</td>)}
+                        <td className={`px-3 py-1.5 text-center text-slate-900 font-bold ${midCellCls}`}>{r.totalMvmt}</td>
+                        <td className={`px-3 py-1.5 ${lastCellCls}`}>
+                          {manuelRows.map(mr => (
+                            <ConfirmButton key={mr.id} label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteManuel(mr.id)} className="text-red-400 hover:text-red-700 text-[11px] block" />
+                          ))}
+                        </td>
+                      </tr>
+                    );
+                  });
+                  if (dayIdx < byDay.length - 1) {
+                    dataRows.push(
+                      <tr key={day.dateIso + "_spacer"} aria-hidden="true">
+                        <td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 7} className="p-0 h-2 border-0"></td>
+                      </tr>
+                    );
+                  }
+                  return dataRows;
+                })}
               </tbody>
             </table>
           </div>
