@@ -252,6 +252,18 @@ Deno.serve(async _req => {
   const unmatchedLogins = new Set<string>();
   const errors: string[] = [];
 
+  // ImapFlow (et le socket TLS sous-jacent) émet ses erreurs de connexion via
+  // un événement 'error' (EventEmitter), PAS via une promesse rejetée — sans
+  // écouteur explicite, une simple coupure réseau côté Gmail (fréquente,
+  // ex. "peer closed connection without sending TLS close_notify") remonte
+  // comme une erreur non gérée qui fait planter TOUTE la fonction (crash de
+  // l'isolate, réponse 5xx), alors qu'elle devrait rester une erreur réseau
+  // ordinaire et non bloquante comme les autres, capturées ci-dessous dans
+  // `errors`.
+  client.on("error", err => {
+    errors.push("Erreur de connexion IMAP (non bloquante) : " + (err instanceof Error ? err.message : String(err)));
+  });
+
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
