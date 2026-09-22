@@ -343,7 +343,7 @@ function ChangePasswordPage() {
   return (
     <div className="space-y-4 fade-in max-w-md">
       <div>
-        <h1 className="text-2xl font-bold text-white">Mon compte</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Mon compte</h1>
         <p className="text-slate-400 text-sm mt-0.5">{currentUser ? currentUser.nom + " — " + currentUser.username : ""}</p>
       </div>
       <Panel title="Changer mon mot de passe" icon="fa-key">

@@ -590,18 +590,18 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "applyingConges", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
-      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white border border-slate-200 rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold text-sm">Importer Repos &amp; Congés depuis Excel</h3>
-          {["applying", "applyingConges", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
+          <h3 className="text-slate-900 font-semibold text-sm">Importer Repos &amp; Congés depuis Excel</h3>
+          {["applying", "applyingConges", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><i className="fas fa-xmark"></i></button>}
         </div>
-        <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}</p>
+        <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-slate-900 font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}</p>
 
         {step === "pick" && (
           <div>
             <p className="text-xs text-slate-400 mb-3">Sélectionnez le fichier Excel (.xlsx) du planning réel : les repos (« R ») seront forcés manuellement et les congés (« C ») créés comme périodes de congé, uniquement pour les conducteurs de cette équipe et ce mois.</p>
-            <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-300" />
-            <div className="mt-4 pt-3 border-t border-border space-y-1.5">
+            <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-600" />
+            <div className="mt-4 pt-3 border-t border-slate-200 space-y-1.5">
               <button onClick={() => setStep("resetConfirm")} className="block text-[11px] text-red-400 hover:text-red-300 underline">
                 Réinitialiser les repos/congés déjà importés pour cette équipe et ce mois
               </button>
@@ -618,7 +618,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         {step === "staleVacationConfirm" && (
           <div className="space-y-3">
             <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-              <i className="fas fa-triangle-exclamation mr-1.5"></i>Recherche, parmi les affectations manuelles "Présent" de <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}, celles dont la vacation (V1/V2) ne correspond plus au calcul automatique à jour, et les supprime (le calcul automatique corrigé s'applique alors). Les repos, congés et remplacements forcés manuellement ne sont jamais touchés.
+              <i className="fas fa-triangle-exclamation mr-1.5"></i>Recherche, parmi les affectations manuelles "Présent" de <span className="text-slate-900 font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}, celles dont la vacation (V1/V2) ne correspond plus au calcul automatique à jour, et les supprime (le calcul automatique corrigé s'applique alors). Les repos, congés et remplacements forcés manuellement ne sont jamais touchés.
             </p>
             <div className="flex gap-2">
               <button onClick={doClearStaleVacation} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Rechercher et corriger</button>
@@ -637,7 +637,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         {step === "resetConfirm" && (
           <div className="space-y-3">
             <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-              <i className="fas fa-triangle-exclamation mr-1.5"></i>Ceci supprime tous les repos forcés et congés créés par un import Excel pour <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}, pour repartir d'une base propre avant de réimporter. Les autres modifications (Remplacement, édition manuelle case par case sans import, congés saisis normalement) ne sont pas touchées.
+              <i className="fas fa-triangle-exclamation mr-1.5"></i>Ceci supprime tous les repos forcés et congés créés par un import Excel pour <span className="text-slate-900 font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}, pour repartir d'une base propre avant de réimporter. Les autres modifications (Remplacement, édition manuelle case par case sans import, congés saisis normalement) ne sont pas touchées.
             </p>
             <div className="flex gap-2">
               <button onClick={doReset} className="px-4 py-2 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700">Confirmer la suppression</button>
@@ -649,7 +649,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         {step === "fullResetConfirm" && (
           <div className="space-y-3">
             <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
-              <i className="fas fa-triangle-exclamation mr-1.5"></i><span className="font-semibold">Action plus radicale.</span> Ceci supprime TOUTES les affectations manuelles (import Excel, équilibrage V1/V2 case par case, remplacement...), TOUS les congés et TOUTES les maladies touchant <span className="text-white font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}. Le planning redevient entièrement calculé par l'algorithme (aucune trace manuelle) avant réimport. Utile si une modification manuelle antérieure fausse encore le résultat après une réinitialisation simple.
+              <i className="fas fa-triangle-exclamation mr-1.5"></i><span className="font-semibold">Action plus radicale.</span> Ceci supprime TOUTES les affectations manuelles (import Excel, équilibrage V1/V2 case par case, remplacement...), TOUS les congés et TOUTES les maladies touchant <span className="text-slate-900 font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}. Le planning redevient entièrement calculé par l'algorithme (aucune trace manuelle) avant réimport. Utile si une modification manuelle antérieure fausse encore le résultat après une réinitialisation simple.
             </p>
             <div className="flex gap-2">
               <button onClick={doFullReset} className="px-4 py-2 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700">Confirmer la remise à zéro complète</button>
@@ -658,7 +658,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           </div>
         )}
 
-        {step === "resetting" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Suppression en cours…</p>}
+        {step === "resetting" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Suppression en cours…</p>}
 
         {step === "resetDone" && resetResult && (
           <div className="space-y-2 text-xs">
@@ -667,18 +667,18 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           </div>
         )}
 
-        {step === "parsing" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Analyse du fichier…</p>}
+        {step === "parsing" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Analyse du fichier…</p>}
 
         {step === "error" && (
           <div>
             <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
-            <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Réessayer</button>
+            <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Réessayer</button>
           </div>
         )}
 
         {step === "preview" && parsed && (
-          <div className="space-y-3 text-xs text-slate-300">
-            <p>Feuille utilisée : <span className="text-white">{parsed.sheetName}</span> (ligne d'en-tête : {parsed.headerRowNumber})</p>
+          <div className="space-y-3 text-xs text-slate-600">
+            <p>Feuille utilisée : <span className="text-slate-900">{parsed.sheetName}</span> (ligne d'en-tête : {parsed.headerRowNumber})</p>
             <p className="text-slate-500">Vérification colonnes détectées — jour 1 : colonne {parsed.dayColumnsInfo[0] && parsed.dayColumnsInfo[0].col} ; jour {parsed.dayColumnsInfo.length}: colonne {parsed.dayColumnsInfo[parsed.dayColumnsInfo.length - 1] && parsed.dayColumnsInfo[parsed.dayColumnsInfo.length - 1].col}. Comparez avec le fichier Excel avant d'appliquer si un doute persiste.</p>
             <p>{parsed.matchedCount} conducteur(s) de l'équipe reconnu(s) dans le fichier.</p>
             {parsed.unmatchedMatricules.length > 0 && (
@@ -687,8 +687,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             {parsed.fallbackMatches.length > 0 && (
               <p className="text-sky-300">Matricule différent mais conducteur reconnu par {parsed.fallbackMatches[0].via === "nom" ? "nom" : "numéro"} : {parsed.fallbackMatches.map(f => f.nom + " " + f.prenom + " (fichier " + f.matriculeFichier + " → appli " + f.matriculeAppli + ")").join(", ")}</p>
             )}
-            <p><span className="text-white font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
-            <p><span className="text-white font-semibold">{maladiesToApply.length}</span> plage(s) de maladie à créer{parsed.maladieRanges.length !== maladiesToApply.length ? " (" + (parsed.maladieRanges.length - maladiesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
+            <p><span className="text-slate-900 font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
+            <p><span className="text-slate-900 font-semibold">{maladiesToApply.length}</span> plage(s) de maladie à créer{parsed.maladieRanges.length !== maladiesToApply.length ? " (" + (parsed.maladieRanges.length - maladiesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
             {parsed.unknownCodes.length > 0 && (
               <p className="text-amber-400">Codes non reconnus ignorés : {parsed.unknownCodes.slice(0, 8).map(u => u.matricule + "/j" + u.day + "=" + u.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}</p>
             )}
@@ -706,7 +706,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           </div>
         )}
 
-        {step === "applyingConges" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Création des congés/maladies en cours… {progress.done}/{progress.total}</p>}
+        {step === "applyingConges" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Création des congés/maladies en cours… {progress.done}/{progress.total}</p>}
 
         {step === "congesApplied" && congeResult && (
           <div className="space-y-3 text-xs">
@@ -717,8 +717,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         )}
 
         {step === "previewRepos" && parsed && (
-          <div className="space-y-3 text-xs text-slate-300">
-            <p><span className="text-white font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length + reposConflicts.length ? " (" + (parsed.reposDays.length - reposToApply.length - reposConflicts.length) + " déjà correct(s), ignoré(s))" : ""}.</p>
+          <div className="space-y-3 text-xs text-slate-600">
+            <p><span className="text-slate-900 font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length + reposConflicts.length ? " (" + (parsed.reposDays.length - reposToApply.length - reposConflicts.length) + " déjà correct(s), ignoré(s))" : ""}.</p>
             {reposConflicts.length > 0 && (
               <p className="text-red-300">
                 <i className="fas fa-triangle-exclamation mr-1.5"></i>{reposConflicts.length} repos NON appliqué(s) car ils créeraient 2 repos consécutifs (règle absolue) : {reposConflicts.slice(0, 8).map(c => {
@@ -727,9 +727,9 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
                 }).join(", ")}{reposConflicts.length > 8 ? "…" : ""} — à vérifier manuellement.
               </p>
             )}
-            <p><span className="text-white font-semibold">{presenceCorrectionsToApply.length}</span> repos actuellement présents dans l'appli (auto ou déjà forcés manuellement) seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
+            <p><span className="text-slate-900 font-semibold">{presenceCorrectionsToApply.length}</span> repos actuellement présents dans l'appli (auto ou déjà forcés manuellement) seront annulés (remis en présence), car le fichier indique que le conducteur travaillait ce jour-là.</p>
             <details className="text-slate-500">
-              <summary className="cursor-pointer hover:text-slate-300">Détail des repos détectés dans le fichier, par conducteur (vérification)</summary>
+              <summary className="cursor-pointer hover:text-slate-600">Détail des repos détectés dans le fichier, par conducteur (vérification)</summary>
               <div className="mt-1.5 max-h-48 overflow-y-auto space-y-0.5">
                 {(() => {
                   const toApplyKeys = new Set(reposToApply.map(r => r.driverId + "_" + r.iso));
@@ -746,7 +746,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
                 })()}
               </div>
             </details>
-            <p><span className="text-white font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>
+            <p><span className="text-slate-900 font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>
             <div className="flex gap-2 pt-2">
               <button onClick={applyRest} disabled={reposToApply.length === 0 && presenceCorrectionsToApply.length === 0 && orderCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
               <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
@@ -754,13 +754,13 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           </div>
         )}
 
-        {step === "applying" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Application en cours… {progress.done}/{progress.total}</p>}
+        {step === "applying" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Application en cours… {progress.done}/{progress.total}</p>}
 
         {step === "done" && applyResult && (
           <div className="space-y-2 text-xs">
             <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s) et " + congeResult.maladiesCreated + " maladie(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
             {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-300">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
-            <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Fermer</button>
+            <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Fermer</button>
           </div>
         )}
       </div>
@@ -1124,30 +1124,30 @@ function Legend() {
 function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId, teams, detailLevel, setDetailLevel, lockTeam, lockMonth }) {
   const months = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
   return (
-    <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+    <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
       {lockMonth ? (
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mois</label>
-          <div className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white">{months[month - 1]} {year}</div>
+          <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900">{months[month - 1]} {year}</div>
         </div>
       ) : (
         <>
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mois</label>
-            <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white">
+            <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900">
               {months.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Année</label>
-            <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className="w-24 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
+            <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900" />
           </div>
         </>
       )}
       {!lockTeam && (
       <div>
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Équipe</label>
-        <select value={teamId} onChange={e => setTeamId(e.target.value)} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white">
+        <select value={teamId} onChange={e => setTeamId(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900">
           <option value="all">Toutes les équipes</option>
           {teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
         </select>
@@ -1208,7 +1208,7 @@ function ValidationBanner({ validation }) {
 
 function Cell({ assignment, detailLevel, onEdit, weekStart }) {
   const weekStartCls = weekStart ? "border-l-2 border-l-orange-500/70" : "";
-  if (!assignment) return <td className={`border border-border/60 bg-surface/40 ${weekStartCls}`}></td>;
+  if (!assignment) return <td className={`border border-slate-200/60 bg-slate-50/40 ${weekStartCls}`}></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
   // Jour de travail (PRESENT) : case vierge, comme sur le rapport imprimable —
   // le code "C" (Travail) ne s'affiche plus, pour éviter la confusion avec
@@ -1224,7 +1224,7 @@ function Cell({ assignment, detailLevel, onEdit, weekStart }) {
   const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
   return (
     <td
-      className={`border border-border/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
+      className={`border border-slate-200/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
       title={title}
       onClick={onEdit}
     >
@@ -1309,9 +1309,9 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+      <div className="bg-white border border-slate-200 rounded-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
         <div className="mb-3">
-          <div className="text-white font-semibold text-sm">{driver.matricule} — {driver.nom} {driver.prenom}</div>
+          <div className="text-slate-900 font-semibold text-sm">{driver.matricule} — {driver.nom} {driver.prenom}</div>
           <div className="text-xs text-slate-500">{RTGDate.formatFr(RTGDate.parseISO(iso))}{isManual ? " · déjà modifié manuellement" : ""}</div>
         </div>
         <div className="space-y-3">
@@ -1344,7 +1344,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
         </p>
         <div className="flex gap-2 mt-4">
           <button disabled={saving} onClick={save} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Enregistrer</button>
-          {isManual && <button disabled={saving} onClick={resetToAuto} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white disabled:opacity-50">Revenir à l'auto</button>}
+          {isManual && <button disabled={saving} onClick={resetToAuto} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white disabled:opacity-50">Revenir à l'auto</button>}
           <button disabled={saving} onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white ml-auto disabled:opacity-50">Fermer</button>
         </div>
       </div>
@@ -1382,28 +1382,28 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
       {drivers.length === 0 ? (
         <p className="text-xs text-slate-500 italic px-0.5 mb-2">Aucun conducteur dans ce groupe.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="border-collapse text-xs w-full">
             <thead>
               {shiftRuns && (
-                <tr className="bg-surface">
-                  <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10" rowSpan="2">Mat</th>
-                  <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]" rowSpan="2">Nom</th>
-                  <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]" rowSpan="2">Prénom</th>
+                <tr className="bg-slate-50">
+                  <th className="sticky left-0 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10" rowSpan="2">Mat</th>
+                  <th className="sticky left-14 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10 min-w-[90px] sm:min-w-[110px]" rowSpan="2">Nom</th>
+                  <th className="hidden sm:table-cell border border-slate-200/60 px-2 py-2 text-left text-slate-600 min-w-[90px]" rowSpan="2">Prénom</th>
                   {shiftRuns.map((run, i) => (
-                    <th key={i} colSpan={run.count} className="border border-border/60 px-1 py-1.5 text-center text-slate-400 text-[10px] font-semibold uppercase">{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
+                    <th key={i} colSpan={run.count} className="border border-slate-200/60 px-1 py-1.5 text-center text-slate-400 text-[10px] font-semibold uppercase">{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
                   ))}
                 </tr>
               )}
-              <tr className="bg-surface">
-                {!shiftRuns && <th className="sticky left-0 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10">Mat</th>}
-                {!shiftRuns && <th className="sticky left-14 bg-surface border border-border/60 px-2 py-2 text-left text-slate-300 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>}
-                {!shiftRuns && <th className="hidden sm:table-cell border border-border/60 px-2 py-2 text-left text-slate-300 min-w-[90px]">Prénom</th>}
+              <tr className="bg-slate-50">
+                {!shiftRuns && <th className="sticky left-0 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10">Mat</th>}
+                {!shiftRuns && <th className="sticky left-14 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>}
+                {!shiftRuns && <th className="hidden sm:table-cell border border-slate-200/60 px-2 py-2 text-left text-slate-600 min-w-[90px]">Prénom</th>}
                 {planning.days.map(day => {
                   const holiday = HolidayEngine.getEffectiveHoliday(RTGDate.parseISO(day.iso), team, config);
                   const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
                   return (
-                    <th key={day.iso} className={`border border-border/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"} ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`} title={holiday ? holiday.label : undefined}>
+                    <th key={day.iso} className={`border border-slate-200/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-300" : "text-slate-400"} ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`} title={holiday ? holiday.label : undefined}>
                       {String(day.day).padStart(2, "0")}
                     </th>
                   );
@@ -1413,9 +1413,9 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
             <tbody>
               {drivers.map(driver => (
                 <tr key={driver.id} className="hover:bg-marine-600/10">
-                  <td className="sticky left-0 bg-card border border-border/60 px-2 py-1.5 text-slate-300 z-10">{driver.matricule}</td>
-                  <td className="sticky left-14 bg-card border border-border/60 px-2 py-1.5 text-white font-medium z-10"><button onClick={() => goToDriver(driver.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{driver.nom}</button></td>
-                  <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
+                  <td className="sticky left-0 bg-white border border-slate-200/60 px-2 py-1.5 text-slate-600 z-10">{driver.matricule}</td>
+                  <td className="sticky left-14 bg-white border border-slate-200/60 px-2 py-1.5 text-slate-900 font-medium z-10"><button onClick={() => goToDriver(driver.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{driver.nom}</button></td>
+                  <td className="hidden sm:table-cell border border-slate-200/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
                   {planning.days.map(day => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
                     const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
@@ -1423,17 +1423,17 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   })}
                 </tr>
               ))}
-              <tr className="bg-surface/70 font-bold">
-                <td className="sticky left-0 bg-surface/70 border border-border/60 px-2 py-1.5 text-slate-300 z-10" colSpan="1">—</td>
-                <td className="sticky left-14 bg-surface/70 border border-border/60 px-2 py-1.5 text-white z-10" colSpan="1">Nombre de présent</td>
-                <td className="hidden sm:table-cell border border-border/60 px-2 py-1.5"></td>
+              <tr className="bg-slate-50/70 font-bold">
+                <td className="sticky left-0 bg-slate-50/70 border border-slate-200/60 px-2 py-1.5 text-slate-600 z-10" colSpan="1">—</td>
+                <td className="sticky left-14 bg-slate-50/70 border border-slate-200/60 px-2 py-1.5 text-slate-900 z-10" colSpan="1">Nombre de présent</td>
+                <td className="hidden sm:table-cell border border-slate-200/60 px-2 py-1.5"></td>
                 {planning.days.map(day => {
                   const count = drivers.reduce((n, driver) => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
                     return n + (a && a.status === "PRESENT" ? 1 : 0);
                   }, 0);
                   const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
-                  return <td key={day.iso} className={`border border-border/60 text-center text-[11px] text-white px-1 py-1.5 ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`}>{count}</td>;
+                  return <td key={day.iso} className={`border border-slate-200/60 text-center text-[11px] text-slate-900 px-1 py-1.5 ${weekStart ? "border-l-2 border-l-orange-500/70" : ""}`}>{count}</td>;
                 })}
               </tr>
             </tbody>
@@ -1465,7 +1465,7 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
         const v2 = teamDrivers.filter(d => d.initialVacation === "V2");
         return (
           <div key={teamId} className="mb-6 last:mb-0">
-            {teamIds.length > 1 && <h3 className="text-white font-semibold text-sm mb-2">{team ? team.nom : teamId}</h3>}
+            {teamIds.length > 1 && <h3 className="text-slate-900 font-semibold text-sm mb-2">{team ? team.nom : teamId}</h3>}
             <VacationGroupTable label="Vacation 1" drivers={v1} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
             <VacationGroupTable label="Vacation 2" drivers={v2} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
           </div>
@@ -1487,7 +1487,7 @@ function ZoneOrStatutBadge({ a }) {
   if (a.status === "PRESENT") {
     return <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{a.zone}</span>;
   }
-  const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "bg-slate-700/40 text-slate-300 border-slate-600/40" };
+  const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "bg-slate-700/40 text-slate-600 border-slate-600/40" };
   return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>;
 }
 
@@ -1495,10 +1495,10 @@ function ShiftBlock({ title, icon, rows }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   return (
-    <div className="bg-card rounded-xl border border-border p-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
       <div className="flex items-center gap-2 mb-3">
         <i className={`fas ${icon} text-orange-400 text-sm`}></i>
-        <h3 className="text-white text-sm font-semibold">{title}</h3>
+        <h3 className="text-slate-900 text-sm font-semibold">{title}</h3>
         <span className="ml-auto text-xs text-slate-500">{rows.length} conducteur{rows.length > 1 ? "s" : ""}</span>
       </div>
       {rows.length === 0 ? (
@@ -1507,7 +1507,7 @@ function ShiftBlock({ title, icon, rows }) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="text-slate-400">
-              <tr className="text-left border-b border-border">
+              <tr className="text-left border-b border-slate-200">
                 <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="hidden sm:table-cell py-1.5 pr-3">Prénom</th>
                 <th className="hidden sm:table-cell py-1.5 pr-3">Équipe</th><th className="py-1.5 pr-3">Vacation</th><th className="hidden sm:table-cell py-1.5 pr-3">Horaire</th>
                 <th className="py-1.5 pr-3">Zone</th>
@@ -1515,14 +1515,14 @@ function ShiftBlock({ title, icon, rows }) {
             </thead>
             <tbody>
               {rows.map(a => (
-                <tr key={a.driverId} className={`border-b border-border/50 ${a.vacationBalanceAlert ? "bg-red-500/10" : ""}`}
+                <tr key={a.driverId} className={`border-b border-slate-200/50 ${a.vacationBalanceAlert ? "bg-red-500/10" : ""}`}
                   title={a.vacationBalanceAlert ? "Cette vacation reste en excédent par rapport à l'autre — à faire passer exceptionnellement dans l'autre vacation si possible." : undefined}>
-                  <td className="py-1.5 pr-3 text-slate-300">{a.matricule}</td>
-                  <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-300" : "text-white"}`}>
+                  <td className="py-1.5 pr-3 text-slate-600">{a.matricule}</td>
+                  <td className={`py-1.5 pr-3 font-medium ${a.vacationBalanceAlert ? "text-red-300" : "text-slate-900"}`}>
                     <button onClick={() => goToDriver(a.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{a.nom}</button>
                     {a.vacationBalanceAlert && <i className="fas fa-triangle-exclamation ml-1.5 text-red-400" title="Vacation en surnombre"></i>}
                   </td>
-                  <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{a.prenom}</td>
+                  <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-600">{a.prenom}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
                   <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-300 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span> : "—"}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime ? `${a.startTime}–${a.endTime}` : "—"}</td>
@@ -1934,7 +1934,7 @@ function PlanningMensuel() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-white">Planning mensuel RTG</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Planning mensuel RTG</h1>
           <p className="text-slate-400 text-sm mt-0.5">Généré automatiquement par le moteur de planification (shift / zone / vacation / repos)</p>
         </div>
         <div className="flex gap-2">
@@ -1972,7 +1972,7 @@ function PlanningMensuel() {
         <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} teams={state.teams} canEdit={canEditPlanning} />
       </div>
 
-      <div className="bg-card rounded-xl border border-border p-4 print:hidden">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 print:hidden">
         <Legend />
       </div>
 
@@ -2015,17 +2015,17 @@ function FerieMouvementsRow({ dateStr, driverId, label }) {
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-3 py-2 border-b border-border/50 last:border-0">
-      <div className="text-xs text-slate-300 font-medium w-40 shrink-0">{label}</div>
+    <div className="flex flex-wrap items-end gap-3 py-2 border-b border-slate-200/50 last:border-0">
+      <div className="text-xs text-slate-600 font-medium w-40 shrink-0">{label}</div>
       <div>
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Mouvements réalisés</label>
         <input type="number" min="0" value={value} onChange={e => { setValue(e.target.value); setSaved(false); }}
-          className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-white w-28" />
+          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-900 w-28" />
       </div>
       <div className="flex-1 min-w-[140px]">
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Commentaire</label>
         <input value={comment} onChange={e => { setComment(e.target.value); setSaved(false); }}
-          className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-white w-full" />
+          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-900 w-full" />
       </div>
       <button onClick={save} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Enregistrer</button>
       {saved && <span className="text-xs text-emerald-400"><i className="fas fa-circle-check mr-1"></i>Enregistré</span>}
@@ -2036,20 +2036,20 @@ function FerieMouvementsRow({ dateStr, driverId, label }) {
 function FerieMouvementsPanel({ dateStr, presentDrivers }) {
   if (presentDrivers.length === 0) {
     return (
-      <div className="bg-card rounded-xl border border-border p-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
         <div className="flex items-center gap-2 mb-1">
           <i className="fas fa-truck-ramp-box text-orange-400 text-sm"></i>
-          <h3 className="text-white text-sm font-semibold">Mouvements réalisés — jour férié</h3>
+          <h3 className="text-slate-900 text-sm font-semibold">Mouvements réalisés — jour férié</h3>
         </div>
         <p className="text-xs text-slate-500 italic">Aucun conducteur présent ce jour férié (aucun enregistrement "jour férié travaillé" — page Over Time).</p>
       </div>
     );
   }
   return (
-    <div className="bg-card rounded-xl border border-border p-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
       <div className="flex items-center gap-2 mb-2">
         <i className="fas fa-truck-ramp-box text-orange-400 text-sm"></i>
-        <h3 className="text-white text-sm font-semibold">Mouvements réalisés — jour férié</h3>
+        <h3 className="text-slate-900 text-sm font-semibold">Mouvements réalisés — jour férié</h3>
       </div>
       {presentDrivers.map(a => <FerieMouvementsRow key={a.driverId} dateStr={dateStr} driverId={a.driverId} label={a.matricule + " — " + a.nom + " " + a.prenom} />)}
     </div>
@@ -2368,7 +2368,7 @@ function AffectationDuJour() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-white">Affectation du jour</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Affectation du jour</h1>
           <p className="text-slate-400 text-sm mt-0.5">Sélectionnez une date, et éventuellement un shift, pour voir l'affectation détaillée</p>
         </div>
         <div className="flex gap-2">
@@ -2377,7 +2377,7 @@ function AffectationDuJour() {
         </div>
       </div>
 
-      <div className="bg-card rounded-xl border border-border p-4 flex flex-wrap items-end gap-3 print:hidden">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-3 print:hidden">
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Date</label>
           {dateLocked ? (
@@ -2388,7 +2388,7 @@ function AffectationDuJour() {
                 className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${dateStr === tomorrowIso ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Demain</button>
             </div>
           ) : (
-            <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white" />
+            <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900" />
           )}
         </div>
         <div className="text-xs text-slate-500">{RTGDate.formatFr(RTGDate.parseISO(dateStr))}</div>
@@ -2421,7 +2421,7 @@ function AffectationDuJour() {
 
       <div className="print:hidden space-y-4">
         {visibleShifts.map(s => (
-          <div key={s.id} className="space-y-3 pb-4 border-b border-border/60 last:border-0">
+          <div key={s.id} className="space-y-3 pb-4 border-b border-slate-200/60 last:border-0">
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {grouped[s.id].map(({ vacation, rows }) => (

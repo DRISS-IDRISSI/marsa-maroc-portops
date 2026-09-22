@@ -33,7 +33,7 @@ function DepartButton({ onConfirm }) {
   if (open) {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <select value={motif} onChange={e => setMotif(e.target.value)} className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white">
+        <select value={motif} onChange={e => setMotif(e.target.value)} className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900">
           {Object.entries(DEPART_MOTIF_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
         </select>
         <button onClick={() => { setOpen(false); onConfirm(motif); }} className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30">Confirmer</button>
@@ -129,7 +129,7 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
         <div><label className={LABEL_CLS}>Date d'entrée</label><input type="date" className={FIELD_CLS} value={form.dateEntree} onChange={e => setForm(f => Object.assign({}, f, { dateEntree: e.target.value }))} /></div>
         <div className="sm:col-span-2"><label className={LABEL_CLS}>Observation</label><input className={FIELD_CLS} value={form.observation} onChange={e => setForm(f => Object.assign({}, f, { observation: e.target.value }))} /></div>
       </div>
-      <div className="border-t border-border pt-3">
+      <div className="border-t border-slate-200 pt-3">
         <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Solde de congé — reliquat antérieur à l'appli (saisie unique, à partir des archives RH)</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
@@ -145,7 +145,7 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
         </div>
         <p className="text-[11px] text-slate-500 mt-1.5">Une fois renseigné, le solde disponible se recalcule automatiquement chaque année suivante (droit de 26j/an + report non expiré − jours de congé déjà pris dans l'appli).</p>
       </div>
-      <div className="border-t border-border pt-3">
+      <div className="border-t border-slate-200 pt-3">
         <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Mouvements RTG — import automatique depuis le TOS</p>
         <div><label className={LABEL_CLS}>Login TOS (uniquement si différent de celui déduit automatiquement)</label>
           <input placeholder="ex. melghannamtc3" className={FIELD_CLS} value={form.loginTos || ""} onChange={e => setForm(f => Object.assign({}, f, { loginTos: e.target.value }))} />
@@ -172,9 +172,9 @@ function TeamNameEditor({ team, editable }) {
     return (
       <div className="flex items-center gap-1.5 mb-1">
         <input autoFocus value={value} onChange={e => setValue(e.target.value)}
-          className="bg-surface border border-border rounded px-2 py-1 text-xs text-white w-32" />
+          className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs text-slate-900 w-32" />
         <button onClick={() => { if (value.trim()) RTGStore.updateTeam(team.id, { nom: value.trim() }); setEditing(false); }} className="text-emerald-400 hover:text-emerald-300"><i className="fas fa-check"></i></button>
-        <button onClick={() => { setValue(team.nom); setEditing(false); }} className="text-slate-500 hover:text-white"><i className="fas fa-times"></i></button>
+        <button onClick={() => { setValue(team.nom); setEditing(false); }} className="text-slate-500 hover:text-slate-900"><i className="fas fa-times"></i></button>
       </div>
     );
   }
@@ -247,13 +247,13 @@ function TeamShiftEditor({ team, state, editable }) {
   };
   return (
     <span className="flex items-center gap-1.5 mb-1">
-      <select className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white" value={value} onChange={e => setValue(e.target.value)}>
+      <select className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900" value={value} onChange={e => setValue(e.target.value)}>
         <option value="S1">Shift 1 cette semaine</option>
         <option value="S2">Shift 2 cette semaine</option>
         <option value="S3">Shift 3 cette semaine</option>
       </select>
       <button disabled={saving} onClick={save} className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50"><i className="fas fa-check"></i></button>
-      <button disabled={saving} onClick={() => setEditing(false)} className="text-slate-500 hover:text-white"><i className="fas fa-times"></i></button>
+      <button disabled={saving} onClick={() => setEditing(false)} className="text-slate-500 hover:text-slate-900"><i className="fas fa-times"></i></button>
     </span>
   );
 }
@@ -296,7 +296,7 @@ function TeamForm({ state, typeEngin, onCancel, onSaved }) {
         <label className={LABEL_CLS}>Nom de l'équipe</label>
         <input autoFocus className={FIELD_CLS} placeholder={"ex. GR " + typeEngin + " 1"} value={nom} onChange={e => setNom(e.target.value)} />
       </div>
-      <label className="flex items-center gap-2 text-xs text-slate-300">
+      <label className="flex items-center gap-2 text-xs text-slate-600">
         <input type="checkbox" checked={noRotation} onChange={e => setNoRotation(e.target.checked)} />
         Pas de rotation fixe (ex. équipe stagiaires — shift saisi manuellement chaque jour)
       </label>
@@ -377,35 +377,35 @@ function ImportConducteursModal({ team, state, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={step === "creating" ? undefined : onClose}>
-      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white border border-slate-200 rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold text-sm">Importer les conducteurs depuis Excel</h3>
-          {step !== "creating" && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
+          <h3 className="text-slate-900 font-semibold text-sm">Importer les conducteurs depuis Excel</h3>
+          {step !== "creating" && <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><i className="fas fa-xmark"></i></button>}
         </div>
-        <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-white font-medium">{team.nom}</span></p>
+        <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-slate-900 font-medium">{team.nom}</span></p>
 
         {step === "pick" && (
           <div>
             <p className="text-xs text-slate-400 mb-3">
               Sélectionnez le fichier Excel (.xlsx) du planning mensuel de cette équipe (feuille "SHIFT {team.nom}") : les conducteurs des colonnes matricule/nom/prénom seront créés dans cette équipe, sauf ceux déjà existants (matricule déjà présent dans l'application).
             </p>
-            <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-300" />
+            <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-600" />
           </div>
         )}
 
-        {step === "parsing" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Analyse du fichier…</p>}
+        {step === "parsing" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Analyse du fichier…</p>}
 
         {step === "error" && (
           <div>
             <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
-            <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Réessayer</button>
+            <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Réessayer</button>
           </div>
         )}
 
         {step === "preview" && parsed && (
-          <div className="space-y-3 text-xs text-slate-300">
-            <p>Feuille utilisée : <span className="text-white">{parsed.sheetName}</span></p>
-            <p><span className="text-white font-semibold">{parsed.toCreate.length}</span> conducteur(s) à créer{parsed.toCreate.length > 0 ? " : " + parsed.toCreate.map(r => r.matricule + " " + r.nom).join(", ") : ""}.</p>
+          <div className="space-y-3 text-xs text-slate-600">
+            <p>Feuille utilisée : <span className="text-slate-900">{parsed.sheetName}</span></p>
+            <p><span className="text-slate-900 font-semibold">{parsed.toCreate.length}</span> conducteur(s) à créer{parsed.toCreate.length > 0 ? " : " + parsed.toCreate.map(r => r.matricule + " " + r.nom).join(", ") : ""}.</p>
             {parsed.alreadyExisting.length > 0 && (
               <p className="text-slate-500">{parsed.alreadyExisting.length} déjà existant(s), ignoré(s) : {parsed.alreadyExisting.map(r => r.matricule).join(", ")}</p>
             )}
@@ -419,7 +419,7 @@ function ImportConducteursModal({ team, state, onClose }) {
           </div>
         )}
 
-        {step === "creating" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Création en cours… {progress.done}/{progress.total}</p>}
+        {step === "creating" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Création en cours… {progress.done}/{progress.total}</p>}
 
         {step === "done" && result && (
           <div className="space-y-2 text-xs">
@@ -485,12 +485,12 @@ function DriversPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Conducteurs{!shiftRestricted ? " — " + state.currentFleet : ""}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Conducteurs{!shiftRestricted ? " — " + state.currentFleet : ""}</h1>
           <p className="text-slate-400 text-sm mt-0.5">{drivers.filter(d => d.actif !== false).length} conducteurs actifs{shiftRestricted ? " — " + visibleTeams[0].nom : " sur " + state.drivers.filter(d => fleetTeamIds.has(d.teamId)).length}</p>
         </div>
         <div className="flex gap-2">
           {!shiftRestricted && (
-            <button onClick={() => { setShowTeamForm(true); setShowForm(false); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-white hover:bg-marine-700 border border-border">
+            <button onClick={() => { setShowTeamForm(true); setShowForm(false); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-white hover:bg-marine-700 border border-slate-200">
               <i className="fas fa-users-rectangle mr-1.5"></i>Nouvelle équipe
             </button>
           )}
@@ -505,10 +505,10 @@ function DriversPage() {
           const effectif = state.drivers.filter(d => d.actif !== false && d.teamId === t.id).length;
           const shift = ShiftRotationEngine.getTeamShiftForDate(t, todayDate, state.config);
           return (
-            <div key={t.id} className="bg-card rounded-xl border border-border p-4">
+            <div key={t.id} className="bg-white rounded-xl border border-slate-200 p-4">
               <TeamNameEditor team={t} editable={!shiftRestricted} />
               <div className="text-xs text-slate-500 -mt-0.5 mb-1">{shift} aujourd'hui</div>
-              <div className="text-2xl font-bold text-white mb-1">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
+              <div className="text-2xl font-bold text-slate-900 mb-1">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <TeamShiftEditor team={t} state={state} editable={!shiftRestricted} />
                 {!shiftRestricted && (
@@ -543,7 +543,7 @@ function DriversPage() {
         </Panel>
       )}
 
-      <div className="flex flex-wrap gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div className="flex-1 min-w-[200px]">
           <label className={LABEL_CLS}>Rechercher</label>
           <input className={FIELD_CLS} placeholder="Matricule, nom, prénom..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
@@ -568,9 +568,9 @@ function DriversPage() {
       </div>
 
       <p className="sm:hidden text-[11px] text-slate-500 -mt-2"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Mat</th><th className="px-3 py-2">Nom</th><th className="hidden sm:table-cell px-3 py-2">Prénom</th>
               <th className="px-3 py-2">Équipe</th><th className="hidden sm:table-cell px-3 py-2">Shift auj.</th><th className="hidden sm:table-cell px-3 py-2">Zone init.</th>
@@ -584,10 +584,10 @@ function DriversPage() {
               const shift = team ? ShiftRotationEngine.getTeamShiftForDate(team, todayDate, state.config) : "—";
               return (
                 <React.Fragment key={d.id}>
-                  <tr className="border-t border-border hover:bg-marine-600/10">
-                    <td className="px-3 py-2 text-slate-300">{d.matricule}</td>
-                    <td className="px-3 py-2 text-white font-medium">{d.nom}</td>
-                    <td className="hidden sm:table-cell px-3 py-2 text-slate-300">{d.prenom}</td>
+                  <tr className="border-t border-slate-200 hover:bg-marine-600/10">
+                    <td className="px-3 py-2 text-slate-600">{d.matricule}</td>
+                    <td className="px-3 py-2 text-slate-900 font-medium">{d.nom}</td>
+                    <td className="hidden sm:table-cell px-3 py-2 text-slate-600">{d.prenom}</td>
                     <td className="px-3 py-2 text-slate-400">{team ? team.nom : d.teamId}</td>
                     <td className="hidden sm:table-cell px-3 py-2 text-slate-400">{shift}</td>
                     <td className="hidden sm:table-cell px-3 py-2 text-center"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{d.initialZone}</span></td>
@@ -601,7 +601,7 @@ function DriversPage() {
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-300">Modifier</button>
-                        <button onClick={() => setHistoryFor(historyFor === d.id ? null : d.id)} className="text-marine-300 hover:text-white">Historique</button>
+                        <button onClick={() => setHistoryFor(historyFor === d.id ? null : d.id)} className="text-marine-300 hover:text-slate-900">Historique</button>
                         {d.actif !== false
                           ? <DepartButton onConfirm={motif => RTGStore.setDriverActive(d.id, false, motif)} />
                           : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, true)} className="text-emerald-400 hover:text-emerald-300 text-xs" />}
@@ -609,7 +609,7 @@ function DriversPage() {
                     </td>
                   </tr>
                   {historyFor === d.id && (
-                    <tr className="bg-surface/40">
+                    <tr className="bg-slate-50/40">
                       <td colSpan="10" className="px-4 py-3">
                         <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Historique — {d.nom} {d.prenom}</div>
                         {state.auditLog.filter(a => a.driverId === d.id).length === 0
@@ -618,7 +618,7 @@ function DriversPage() {
                             <ul className="space-y-1 text-xs">
                               {state.auditLog.filter(a => a.driverId === d.id).map(a => (
                                 <li key={a.id} className="text-slate-400">
-                                  <span className="text-slate-600">{new Date(a.date).toLocaleString("fr-FR")}</span> — <span className="text-white">{a.action}</span>{a.details ? " — " + (a.action === "Départ conducteur" ? (DEPART_MOTIF_LABELS[a.details] || a.details) : a.details) : ""}
+                                  <span className="text-slate-600">{new Date(a.date).toLocaleString("fr-FR")}</span> — <span className="text-slate-900">{a.action}</span>{a.details ? " — " + (a.action === "Départ conducteur" ? (DEPART_MOTIF_LABELS[a.details] || a.details) : a.details) : ""}
                                 </li>
                               ))}
                             </ul>
@@ -666,12 +666,12 @@ function DriverSelect({ state, value, onChange, onlyActive, teamId }) {
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
       {open && (
-        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-surface border border-border rounded-lg shadow-lg">
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg shadow-lg">
           {filtered.length === 0 && <div className="px-3 py-2 text-xs text-slate-500 italic">Aucun résultat.</div>}
           {filtered.map(d => (
             <button key={d.id} type="button"
               onMouseDown={() => { onChange(d.id); setQuery(""); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-xs hover:bg-marine-600/30 ${d.id === value ? "bg-marine-600/20 text-white" : "text-slate-300"}`}>
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-100 ${d.id === value ? "bg-orange-50 text-slate-900 font-medium" : "text-slate-600"}`}>
               {d.matricule} — {d.nom} {d.prenom}
             </button>
           ))}
@@ -692,13 +692,13 @@ function driverLabel(state, driverId) {
 // conducteur sélectionné.
 function DriverFilterBar({ state, value, onChange, teamId }) {
   return (
-    <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+    <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
       <div className="w-full sm:w-72">
         <label className={LABEL_CLS}>Filtrer par conducteur</label>
         <DriverSelect state={state} value={value} onChange={onChange} teamId={teamId} />
       </div>
       {value && (
-        <button onClick={() => onChange("")} className="text-xs text-slate-400 hover:text-white underline">
+        <button onClick={() => onChange("")} className="text-xs text-slate-400 hover:text-slate-900 underline">
           Réinitialiser le filtre
         </button>
       )}
@@ -766,7 +766,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">{title}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
           <p className="text-slate-400 text-sm mt-0.5">{records.length} enregistrement{records.length > 1 ? "s" : ""}</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
@@ -804,9 +804,9 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
       <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
               {showStatusCol && <th className="px-3 py-2">Statut</th>}
@@ -821,10 +821,10 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
             {records.map(r => {
               const temporalMeta = todayIso < r.dateDebut ? CONGE_TEMPORAL_META.FUTUR : todayIso > r.dateFin ? CONGE_TEMPORAL_META.ACHEVE : CONGE_TEMPORAL_META.EN_COURS;
               return (
-              <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
-                <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
-                <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
-                <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
+              <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
+                <td className="px-3 py-2 text-slate-600">{r.dateDebut}</td>
+                <td className="px-3 py-2 text-slate-600">{r.dateFin}</td>
                 {showStatusCol && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded border ${temporalMeta.className}`}>{temporalMeta.label}</span></td>}
                 {showTypeSelect && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${r.type === "FORMATION" ? "bg-blue-600/30 text-blue-300" : "bg-red-600/30 text-red-300"}`}>{r.type === "FORMATION" ? "Formation" : "Absence"}</span></td>}
                 <td className="px-3 py-2 text-slate-400">{r.type && !showTypeSelect ? r.type : r.commentaire}</td>
@@ -967,7 +967,7 @@ function CongesPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Congés</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Congés</h1>
           <p className="text-slate-400 text-sm mt-0.5">{records.length} enregistrement{records.length > 1 ? "s" : ""}{pendingCount > 0 ? " — " + pendingCount + " en attente de validation" : ""}</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
@@ -997,9 +997,9 @@ function CongesPage() {
       <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Équipe / Shift</th><th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th>
               <th className="px-3 py-2">Statut</th><th className="hidden sm:table-cell px-3 py-2">Solde</th><th className="px-3 py-2">Justificatif</th>
@@ -1020,11 +1020,11 @@ function CongesPage() {
               const rTeam = rDriver ? state.teams.find(t => t.id === rDriver.teamId) : null;
               const rShiftToday = rTeam ? ShiftRotationEngine.getTeamShiftForDate(rTeam, RTGDate.parseISO(todayIso), state.config) : null;
               return (
-                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
-                  <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
+                <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
                   <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{rTeam ? rTeam.nom : "—"}{rShiftToday ? " — " + rShiftToday + " (auj.)" : ""}</td>
-                  <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
-                  <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.dateDebut}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.dateFin}</td>
                   <td className="px-3 py-2">
                     <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>
                     {(r.statut === "REFUSE" || r.statut === "A_REFAIRE") && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
@@ -1038,15 +1038,15 @@ function CongesPage() {
                       {isPending && (
                         refusingId === r.id ? (
                           <span className="flex items-center gap-1">
-                            <input autoFocus placeholder="Motif (optionnel)" value={refusMotif} onChange={e => setRefusMotif(e.target.value)} className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white w-28" />
+                            <input autoFocus placeholder="Motif (optionnel)" value={refusMotif} onChange={e => setRefusMotif(e.target.value)} className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900 w-28" />
                             <button disabled={busyId === r.id} onClick={() => refuse(r.id)} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">OK</button>
-                            <button onClick={() => { setRefusingId(null); setRefusMotif(""); }} className="text-slate-500 hover:text-white text-xs">Annuler</button>
+                            <button onClick={() => { setRefusingId(null); setRefusMotif(""); }} className="text-slate-500 hover:text-slate-900 text-xs">Annuler</button>
                           </span>
                         ) : refaisantId === r.id ? (
                           <span className="flex items-center gap-1">
-                            <input autoFocus placeholder="Motif (ex. justificatif illisible)" value={refaireMotif} onChange={e => setRefaireMotif(e.target.value)} className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white w-36" />
+                            <input autoFocus placeholder="Motif (ex. justificatif illisible)" value={refaireMotif} onChange={e => setRefaireMotif(e.target.value)} className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900 w-36" />
                             <button disabled={busyId === r.id} onClick={() => refaire(r.id)} className="text-fuchsia-400 hover:text-fuchsia-300 text-xs disabled:opacity-50">OK</button>
-                            <button onClick={() => { setRefaisantId(null); setRefaireMotif(""); }} className="text-slate-500 hover:text-white text-xs">Annuler</button>
+                            <button onClick={() => { setRefaisantId(null); setRefaireMotif(""); }} className="text-slate-500 hover:text-slate-900 text-xs">Annuler</button>
                           </span>
                         ) : (
                           <React.Fragment>
@@ -1136,7 +1136,7 @@ function HeuresExceptionnellesPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Over Time</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Over Time</h1>
           <p className="text-slate-400 text-sm mt-0.5">Doublage, jour férié travaillé, 3ème shift dimanche (nécessité de service) — {records.length} enregistrement{records.length > 1 ? "s" : ""}</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
@@ -1174,22 +1174,22 @@ function HeuresExceptionnellesPage() {
         </Panel>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div className="w-full sm:w-72">
           <label className={LABEL_CLS}>Filtrer par conducteur</label>
           <DriverSelect state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
         </div>
         {filterDriverId && (
-          <button onClick={() => setFilterDriverId("")} className="text-xs text-slate-400 hover:text-white underline">
+          <button onClick={() => setFilterDriverId("")} className="text-xs text-slate-400 hover:text-slate-900 underline">
             Réinitialiser le filtre
           </button>
         )}
       </div>
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th>
               <th className="px-3 py-2">Heures</th><th className="px-3 py-2">Mouvements</th><th className="hidden sm:table-cell px-3 py-2">Commentaire</th><th className="hidden sm:table-cell px-3 py-2">Utilisateur</th><th className="px-3 py-2">Actions</th>
@@ -1200,14 +1200,14 @@ function HeuresExceptionnellesPage() {
               <tr><td colSpan="8" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
             {records.map(r => {
-              const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-300" };
+              const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-600" };
               return (
-                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
-                  <td className="px-3 py-2 text-white">{driverLabel(state, r.driverId)}</td>
-                  <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
+                <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.dateDebut}</td>
                   <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${meta.className}`}>{meta.label}</span></td>
-                  <td className="px-3 py-2 text-slate-300 text-center">{r.heures}h</td>
-                  <td className="px-3 py-2 text-slate-300 text-center">{r.mouvements != null ? r.mouvements : "—"}</td>
+                  <td className="px-3 py-2 text-slate-600 text-center">{r.heures}h</td>
+                  <td className="px-3 py-2 text-slate-600 text-center">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                   <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
                   <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-300 text-xs" /></td>
@@ -1264,11 +1264,11 @@ function RemplacementPage() {
   return (
     <div className="space-y-4 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">Remplacement</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Remplacement</h1>
         <p className="text-slate-400 text-sm mt-0.5">Trouver un conducteur disponible pour couvrir un conducteur absent</p>
       </div>
 
-      <div className="bg-card rounded-xl border border-border p-4 flex flex-wrap items-end gap-3">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-3">
         <div>
           <label className={LABEL_CLS}>Date</label>
           <input type="date" className={FIELD_CLS} value={dateStr} onChange={e => { setDateStr(e.target.value); setAbsentId(""); setChosenId(""); setApplied(null); }} />
@@ -1299,7 +1299,7 @@ function RemplacementPage() {
               <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="text-slate-400">
-                  <tr className="text-left border-b border-border">
+                  <tr className="text-left border-b border-slate-200">
                     <th className="py-1.5 pr-3">Mat</th><th className="py-1.5 pr-3">Nom</th><th className="hidden sm:table-cell py-1.5 pr-3">Prénom</th>
                     <th className="py-1.5 pr-3">Zone propre</th><th className="hidden sm:table-cell py-1.5 pr-3">Jours travaillés</th>
                     <th className="hidden sm:table-cell py-1.5 pr-3">Jours repos</th><th className="hidden sm:table-cell py-1.5 pr-3">Dernière affect.</th><th className="py-1.5 pr-3"></th>
@@ -1307,16 +1307,16 @@ function RemplacementPage() {
                 </thead>
                 <tbody>
                   {candidates.map(c => (
-                    <tr key={c.driver.id} className={`border-b border-border/50 ${chosenId === c.driver.id ? "bg-orange-500/10" : ""}`}>
-                      <td className="py-1.5 pr-3 text-slate-300">{c.driver.matricule}</td>
-                      <td className="py-1.5 pr-3 text-white font-medium">{c.driver.nom}</td>
-                      <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-300">{c.driver.prenom}</td>
+                    <tr key={c.driver.id} className={`border-b border-slate-200/50 ${chosenId === c.driver.id ? "bg-orange-500/10" : ""}`}>
+                      <td className="py-1.5 pr-3 text-slate-600">{c.driver.matricule}</td>
+                      <td className="py-1.5 pr-3 text-slate-900 font-medium">{c.driver.nom}</td>
+                      <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-600">{c.driver.prenom}</td>
                       <td className="py-1.5 pr-3"><span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{assignments.find(a => a.driverId === c.driver.id) ? assignments.find(a => a.driverId === c.driver.id).zone : "—"}</span></td>
                       <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.joursTravailles}</td>
                       <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.joursRepos}</td>
                       <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{c.derniereAffectation || "—"}</td>
                       <td className="py-1.5 pr-3">
-                        <button onClick={() => setChosenId(c.driver.id)} className="text-xs px-2.5 py-1 rounded-lg bg-marine-800 text-slate-300 hover:bg-orange-500 hover:text-white transition-all">Choisir</button>
+                        <button onClick={() => setChosenId(c.driver.id)} className="text-xs px-2.5 py-1 rounded-lg bg-marine-800 text-slate-600 hover:bg-orange-500 hover:text-white transition-all">Choisir</button>
                       </td>
                     </tr>
                   ))}
@@ -1330,10 +1330,10 @@ function RemplacementPage() {
 
       {chosen && preview && (
         <Panel title="Confirmation du remplacement" icon="fa-triangle-exclamation">
-          <p className="text-sm text-slate-300 mb-3">
-            <span className="text-white font-medium">{chosen.driver.nom} {chosen.driver.prenom}</span> reprendra la zone{" "}
+          <p className="text-sm text-slate-600 mb-3">
+            <span className="text-slate-900 font-medium">{chosen.driver.nom} {chosen.driver.prenom}</span> reprendra la zone{" "}
             <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">{preview.zone}</span> le {dateStr} à la place de{" "}
-            <span className="text-white font-medium">{absentDriver.nom} {absentDriver.prenom}</span> ({absentDriver && (assignments.find(a=>a.driverId===absentId)||{}).status}).
+            <span className="text-slate-900 font-medium">{absentDriver.nom} {absentDriver.prenom}</span> ({absentDriver && (assignments.find(a=>a.driverId===absentId)||{}).status}).
           </p>
           <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3">
             <i className="fas fa-triangle-exclamation mr-1.5"></i>Cette affectation est manuelle et ne suit plus la rotation automatique de zone pour {chosen.driver.nom}.
@@ -1545,7 +1545,7 @@ function RapportRHPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-white">Rapports</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Rapports</h1>
           <p className="text-slate-400 text-sm mt-0.5">Rapports mensuels à imprimer / envoyer au service RH</p>
         </div>
         <div className="flex gap-2">
@@ -1560,7 +1560,7 @@ function RapportRHPage() {
         <button onClick={() => setTab("mouvements")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "mouvements" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Mouvements {state.currentFleet}</button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4 print:hidden">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4 print:hidden">
         <div>
           <label className={LABEL_CLS}>Mois</label>
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
@@ -2035,18 +2035,18 @@ function ConducteurAccountsPanel({ state }) {
           {results.some(r => !r.email) && (
             <p className="text-xs text-amber-400 mb-2"><i className="fas fa-triangle-exclamation mr-1"></i>{results.filter(r => !r.email).length} conducteur(s) sans email personnel renseigné — identifiants à leur communiquer autrement.</p>
           )}
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-xs">
-              <thead className="bg-surface text-slate-400">
+              <thead className="bg-slate-50 text-slate-400">
                 <tr className="text-left"><th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Identifiant</th><th className="px-3 py-2">Mot de passe</th><th className="px-3 py-2">Email</th><th className="px-3 py-2">Envoi</th></tr>
               </thead>
               <tbody>
                 {results.map(r => (
-                  <tr key={r.matricule} className="border-t border-border">
-                    <td className="px-3 py-2 text-slate-300">{r.matricule}</td>
-                    <td className="px-3 py-2 text-white">{r.nom} {r.prenom}</td>
-                    <td className="px-3 py-2 text-slate-300">{r.username}</td>
-                    <td className="px-3 py-2 text-slate-300 font-mono">{r.password}</td>
+                  <tr key={r.matricule} className="border-t border-slate-200">
+                    <td className="px-3 py-2 text-slate-600">{r.matricule}</td>
+                    <td className="px-3 py-2 text-slate-900">{r.nom} {r.prenom}</td>
+                    <td className="px-3 py-2 text-slate-600">{r.username}</td>
+                    <td className="px-3 py-2 text-slate-600 font-mono">{r.password}</td>
                     <td className="px-3 py-2 text-slate-400">{r.email || "—"}</td>
                     <td className="px-3 py-2">
                       {!r.email ? (
@@ -2120,7 +2120,7 @@ function UsersPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Utilisateurs</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Utilisateurs</h1>
           <p className="text-slate-400 text-sm mt-0.5">{state.users.length} compte{state.users.length > 1 ? "s" : ""} — Admin, Responsable, Responsable de Shift, Conducteur</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
@@ -2160,9 +2160,9 @@ function UsersPage() {
         </Panel>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Nom</th><th className="px-3 py-2">Identifiant</th><th className="px-3 py-2">Rôle</th>
               <th className="px-3 py-2">Équipe / Conducteur</th><th className="px-3 py-2">Statut</th><th className="px-3 py-2">Actions</th>
@@ -2176,9 +2176,9 @@ function UsersPage() {
               const targetEmail = driver ? driver.email : u.email;
               const resendState = resendStatus[u.id];
               return (
-                <tr key={u.id} className="border-t border-border hover:bg-marine-600/10">
-                  <td className="px-3 py-2 text-white font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
-                  <td className="px-3 py-2 text-slate-300">{u.username}</td>
+                <tr key={u.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-900 font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
+                  <td className="px-3 py-2 text-slate-600">{u.username}</td>
                   <td className="px-3 py-2 text-slate-400">{ROLE_LABELS[u.role] || u.role}</td>
                   <td className="px-3 py-2 text-slate-400">{team ? team.nom : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
                   <td className="px-3 py-2">
@@ -2270,11 +2270,11 @@ function AssistantIntelligentPage() {
   return (
     <div className="space-y-4 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">Assistant intelligent</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Assistant intelligent</h1>
         <p className="text-slate-400 text-sm mt-0.5">Détection automatique d'anomalies et aide à la correction du planning — calcul 100% local, sans IA externe</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
           <label className={LABEL_CLS}>Mois</label>
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
@@ -2331,8 +2331,8 @@ function AssistantIntelligentPage() {
                   <div className="flex items-start gap-3">
                     <i className={`fas ${meta.icon} mt-0.5`}></i>
                     <div>
-                      <div className="font-semibold text-white">{insight.title}</div>
-                      <div className="text-slate-300 mt-0.5">{insight.detail}</div>
+                      <div className="font-semibold text-slate-900">{insight.title}</div>
+                      <div className="text-slate-600 mt-0.5">{insight.detail}</div>
                       {insight.suggestion && (
                         <div className="mt-1.5 text-xs text-slate-400 flex items-start gap-1.5">
                           <i className="fas fa-lightbulb mt-0.5"></i><span>{insight.suggestion}</span>
@@ -2390,11 +2390,11 @@ function MonPlanningPage() {
   return (
     <div className="space-y-4 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">Mon planning</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Mon planning</h1>
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}{team ? " — " + team.nom : ""}</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
           <label className={LABEL_CLS}>Mois</label>
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
@@ -2407,9 +2407,9 @@ function MonPlanningPage() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Date</th><th className="px-3 py-2">Statut</th>
               <th className="px-3 py-2">Shift</th><th className="px-3 py-2">Vacation</th><th className="px-3 py-2">Zone</th>
@@ -2421,12 +2421,12 @@ function MonPlanningPage() {
               const meta = a ? (RTG_STATUS_META[a.status] || {}) : {};
               const present = a && a.status === "PRESENT";
               return (
-                <tr key={r.iso} className="border-t border-border hover:bg-marine-600/10">
-                  <td className="px-3 py-2 text-slate-300 whitespace-nowrap">{RTGDate.formatFr(RTGDate.parseISO(r.iso))}</td>
+                <tr key={r.iso} className="border-t border-slate-200 hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{RTGDate.formatFr(RTGDate.parseISO(r.iso))}</td>
                   <td className="px-3 py-2">{a ? <span className={`px-1.5 py-0.5 rounded border ${meta.className || ""}`}>{meta.label || a.status}</span> : "—"}</td>
-                  <td className="px-3 py-2 text-slate-300">{present ? ((state.config.shifts.find(s => s.id === a.shift) || {}).label || a.shift) : "—"}</td>
-                  <td className="px-3 py-2 text-slate-300">{present ? (a.vacation || "—") : "—"}</td>
-                  <td className="px-3 py-2 text-slate-300">{present ? (a.zone || "—") : "—"}</td>
+                  <td className="px-3 py-2 text-slate-600">{present ? ((state.config.shifts.find(s => s.id === a.shift) || {}).label || a.shift) : "—"}</td>
+                  <td className="px-3 py-2 text-slate-600">{present ? (a.vacation || "—") : "—"}</td>
+                  <td className="px-3 py-2 text-slate-600">{present ? (a.zone || "—") : "—"}</td>
                 </tr>
               );
             })}
@@ -2760,7 +2760,7 @@ function MesCongesPage() {
   return (
     <div className="space-y-4 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">Mes congés</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Mes congés</h1>
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}</p>
       </div>
 
@@ -2781,10 +2781,10 @@ function MesCongesPage() {
       <Panel title="Solde de congé" icon="fa-calendar-check">
         {solde ? (
           <div className="flex items-center gap-4 flex-wrap text-sm">
-            <div><span className="text-2xl font-bold text-white">{solde.disponible}</span> <span className="text-slate-400">jour{solde.disponible > 1 ? "s" : ""} ouvrable{solde.disponible > 1 ? "s" : ""} disponible{solde.disponible > 1 ? "s" : ""}</span></div>
+            <div><span className="text-2xl font-bold text-slate-900">{solde.disponible}</span> <span className="text-slate-400">jour{solde.disponible > 1 ? "s" : ""} ouvrable{solde.disponible > 1 ? "s" : ""} disponible{solde.disponible > 1 ? "s" : ""}</span></div>
             <div className="text-[11px] text-slate-500">Droit {solde.annee} : {solde.droit}j + report : {solde.report}j − déjà pris {solde.annee} : {solde.pris}j</div>
             {joursDemandes > 0 && (
-              <div className={`text-xs px-2 py-1 rounded ${joursDemandes > solde.disponible ? "bg-red-500/20 text-red-300" : "bg-marine-700 text-slate-300"}`}>
+              <div className={`text-xs px-2 py-1 rounded ${joursDemandes > solde.disponible ? "bg-red-500/20 text-red-300" : "bg-marine-700 text-slate-600"}`}>
                 Cette demande décompterait {joursDemandes} jour{joursDemandes > 1 ? "s" : ""} ouvrable{joursDemandes > 1 ? "s" : ""}
                 {joursDemandes > solde.disponible ? " — dépasse le solde disponible" : ""}
               </div>
@@ -2824,9 +2824,9 @@ function MesCongesPage() {
         </div>
       </Panel>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Date début</th><th className="px-3 py-2">Date fin</th><th className="px-3 py-2">Statut</th>
               <th className="px-3 py-2">Justificatif</th><th className="px-3 py-2">Commentaire</th>
@@ -2839,9 +2839,9 @@ function MesCongesPage() {
             {myRequests.map(r => {
               const meta = congeDisplayMeta(r, todayIsoMesConges);
               return (
-                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
-                  <td className="px-3 py-2 text-slate-300">{r.dateDebut}</td>
-                  <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
+                <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-600">{r.dateDebut}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.dateFin}</td>
                   <td className="px-3 py-2">
                     <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>
                     {(r.statut === "REFUSE" || r.statut === "A_REFAIRE") && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
@@ -2911,11 +2911,11 @@ function MesMouvementsPage() {
   return (
     <div className="space-y-4 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">Mes mouvements</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Mes mouvements</h1>
         <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le TOS — {driver.matricule} — {driver.nom} {driver.prenom}</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
           <label className={LABEL_CLS}>Mois</label>
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
@@ -2931,9 +2931,9 @@ function MesMouvementsPage() {
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Date</th><th className="px-3 py-2">Shift</th><th className="px-3 py-2">Engin</th>
               {MOUVEMENTS_TOS_COLUMNS.map(c => <th key={c.key} className="px-3 py-2 text-center">{c.label}</th>)}
@@ -2946,20 +2946,20 @@ function MesMouvementsPage() {
               <tr><td colSpan={MOUVEMENTS_TOS_COLUMNS.length + 4} className="px-3 py-6 text-center text-slate-500 italic">Aucun mouvement enregistré pour cette période.</td></tr>
             )}
             {!loading && rows.map(r => (
-              <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
-                <td className="px-3 py-2 text-white">{r.dateTravail}</td>
-                <td className="px-3 py-2 text-slate-300">{r.shift}</td>
-                <td className="px-3 py-2 text-slate-300">{r.engin}</td>
-                {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-300">{r[c.key]}</td>)}
-                <td className="px-3 py-2 text-center text-white font-bold">{r.totalMvmt}</td>
+              <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                <td className="px-3 py-2 text-slate-900">{r.dateTravail}</td>
+                <td className="px-3 py-2 text-slate-600">{r.shift}</td>
+                <td className="px-3 py-2 text-slate-600">{r.engin}</td>
+                {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-600">{r[c.key]}</td>)}
+                <td className="px-3 py-2 text-center text-slate-900 font-bold">{r.totalMvmt}</td>
               </tr>
             ))}
           </tbody>
           {!loading && rows.length > 0 && (
             <tfoot>
-              <tr className="border-t-2 border-border font-bold">
-                <td className="px-3 py-2 text-white" colSpan={MOUVEMENTS_TOS_COLUMNS.length + 3}>Total période</td>
-                <td className="px-3 py-2 text-center text-white">{totalMvmt}</td>
+              <tr className="border-t-2 border-slate-200 font-bold">
+                <td className="px-3 py-2 text-slate-900" colSpan={MOUVEMENTS_TOS_COLUMNS.length + 3}>Total période</td>
+                <td className="px-3 py-2 text-center text-slate-900">{totalMvmt}</td>
               </tr>
             </tfoot>
           )}
@@ -2999,11 +2999,11 @@ function MesOverTimePage() {
   return (
     <div className="space-y-4 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">Mes Over Time</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Mes Over Time</h1>
         <p className="text-slate-400 text-sm mt-0.5">Doublage, jour férié travaillé, 3ème shift dimanche — {driver.matricule} — {driver.nom} {driver.prenom}</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
           <label className={LABEL_CLS}>Mois</label>
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
@@ -3016,9 +3016,9 @@ function MesOverTimePage() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th>
               <th className="px-3 py-2 text-center">Heures</th><th className="px-3 py-2 text-center">Mouvements</th><th className="px-3 py-2">Commentaire</th>
@@ -3029,13 +3029,13 @@ function MesOverTimePage() {
               <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500 italic">Aucun Over Time enregistré pour cette période.</td></tr>
             )}
             {rows.map(r => {
-              const t = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-300" };
+              const t = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-600" };
               return (
-                <tr key={r.id} className="border-t border-border hover:bg-marine-600/10">
-                  <td className="px-3 py-2 text-white">{r.dateDebut}{r.dateFin && r.dateFin !== r.dateDebut ? " → " + r.dateFin : ""}</td>
+                <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-900">{r.dateDebut}{r.dateFin && r.dateFin !== r.dateDebut ? " → " + r.dateFin : ""}</td>
                   <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-[11px] ${t.className}`}>{t.label}</span></td>
-                  <td className="px-3 py-2 text-center text-white font-bold">{r.heures}</td>
-                  <td className="px-3 py-2 text-center text-slate-300">{r.mouvements != null ? r.mouvements : "—"}</td>
+                  <td className="px-3 py-2 text-center text-slate-900 font-bold">{r.heures}</td>
+                  <td className="px-3 py-2 text-center text-slate-600">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire || "—"}</td>
                 </tr>
               );
@@ -3043,9 +3043,9 @@ function MesOverTimePage() {
           </tbody>
           {rows.length > 0 && (
             <tfoot>
-              <tr className="border-t-2 border-border font-bold">
-                <td className="px-3 py-2 text-white" colSpan={2}>Total période</td>
-                <td className="px-3 py-2 text-center text-white">{totalHeures}</td>
+              <tr className="border-t-2 border-slate-200 font-bold">
+                <td className="px-3 py-2 text-slate-900" colSpan={2}>Total période</td>
+                <td className="px-3 py-2 text-center text-slate-900">{totalHeures}</td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
@@ -3267,7 +3267,7 @@ function MouvementsRtgPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Mouvements {state.currentFleet}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Mouvements {state.currentFleet}</h1>
           <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS</p>
         </div>
         <button onClick={() => setShowManuelForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
@@ -3317,7 +3317,7 @@ function MouvementsRtgPage() {
 
       {tab === "detail" && (
       <>
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
           <label className={LABEL_CLS}>Mois</label>
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className={FIELD_CLS}>
@@ -3329,7 +3329,7 @@ function MouvementsRtgPage() {
           <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
         </div>
         {!loading && visibleRows.length > 0 && (
-          <div className="ml-auto text-xs text-slate-400">{visibleRows.length} ligne{visibleRows.length > 1 ? "s" : ""} — <span className="text-white font-bold">{grandTotal}</span> mouvements au total</div>
+          <div className="ml-auto text-xs text-slate-400">{visibleRows.length} ligne{visibleRows.length > 1 ? "s" : ""} — <span className="text-slate-900 font-bold">{grandTotal}</span> mouvements au total</div>
         )}
       </div>
 
@@ -3351,12 +3351,12 @@ function MouvementsRtgPage() {
       )}
 
       {!loading && byDay.map(day => (
-        <div key={day.dateIso} className="bg-card rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-2.5 bg-surface border-b border-border font-semibold text-white text-sm">
+        <div key={day.dateIso} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 font-semibold text-slate-900 text-sm">
             {RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}
           </div>
           {day.shifts.map(s => (
-            <div key={s.shift} className="border-b border-border last:border-b-0">
+            <div key={s.shift} className="border-b border-slate-200 last:border-b-0">
               <div className="px-4 py-1.5 text-[11px] uppercase tracking-wider text-slate-500 flex items-center justify-between">
                 <span>Shift {s.shift}</span>
                 <span className="text-slate-400">{s.total} mouvement{s.total > 1 ? "s" : ""}</span>
@@ -3376,12 +3376,12 @@ function MouvementsRtgPage() {
                       const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
                       const team = d ? state.teams.find(t => t.id === d.teamId) : null;
                       return (
-                        <tr key={r.id} className="border-t border-border/60 hover:bg-marine-600/10">
-                          <td className="px-4 py-1.5 text-white">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
-                          <td className="px-3 py-1.5 text-slate-300">{team ? team.nom : "—"}</td>
-                          <td className="px-3 py-1.5 text-slate-300">{r.source === "MANUEL" ? <span className="text-sky-400">{r.engin}</span> : r.engin}</td>
-                          {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-300">{r[c.key]}</td>)}
-                          <td className="px-3 py-1.5 text-center text-white font-bold">{r.totalMvmt}</td>
+                        <tr key={r.id} className="border-t border-slate-200/60 hover:bg-marine-600/10">
+                          <td className="px-4 py-1.5 text-slate-900">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{team ? team.nom : "—"}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{r.source === "MANUEL" ? <span className="text-sky-400">{r.engin}</span> : r.engin}</td>
+                          {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-600">{r[c.key]}</td>)}
+                          <td className="px-3 py-1.5 text-center text-slate-900 font-bold">{r.totalMvmt}</td>
                           <td className="px-3 py-1.5">{r.source === "MANUEL" && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteManuel(r.id)} className="text-red-400 hover:text-red-300 text-[11px]" />}</td>
                         </tr>
                       );
@@ -3398,7 +3398,7 @@ function MouvementsRtgPage() {
 
       {tab === "total" && (
       <>
-      <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
           <label className={LABEL_CLS}>Date début</label>
           <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} className={FIELD_CLS} />
@@ -3411,7 +3411,7 @@ function MouvementsRtgPage() {
           <i className="fas fa-file-excel mr-1.5"></i>Excel
         </button>
         {!totalLoading && totalRows.length > 0 && (
-          <div className="ml-auto text-xs text-slate-400">{totalByDriver.length} conducteur{totalByDriver.length > 1 ? "s" : ""} — <span className="text-white font-bold">{totalGrandTotal}</span> mouvements au total</div>
+          <div className="ml-auto text-xs text-slate-400">{totalByDriver.length} conducteur{totalByDriver.length > 1 ? "s" : ""} — <span className="text-slate-900 font-bold">{totalGrandTotal}</span> mouvements au total</div>
         )}
       </div>
 
@@ -3427,9 +3427,9 @@ function MouvementsRtgPage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
-          <thead className="bg-surface text-slate-400">
+          <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
               <th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Nom</th><th className="px-3 py-2">Prénom</th><th className="px-3 py-2">Équipe</th>
               {MOUVEMENTS_TOS_COLUMNS.map(c => <th key={c.key} className="px-3 py-2 text-center">{c.label}</th>)}
@@ -3445,13 +3445,13 @@ function MouvementsRtgPage() {
               const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
               const team = d ? state.teams.find(t => t.id === d.teamId) : null;
               return (
-                <tr key={g.driverId || g.loginTos} className="border-t border-border hover:bg-marine-600/10">
-                  <td className="px-3 py-2 text-white">{d ? d.matricule : <span className="text-amber-400">{g.loginTos}</span>}</td>
-                  <td className="px-3 py-2 text-white">{d ? d.nom : "(non rattaché)"}</td>
-                  <td className="px-3 py-2 text-slate-300">{d ? d.prenom : ""}</td>
-                  <td className="px-3 py-2 text-slate-300">{team ? team.nom : "—"}</td>
-                  {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-300">{g[c.key]}</td>)}
-                  <td className="px-3 py-2 text-center text-white font-bold">{g.totalMvmt}</td>
+                <tr key={g.driverId || g.loginTos} className="border-t border-slate-200 hover:bg-marine-600/10">
+                  <td className="px-3 py-2 text-slate-900">{d ? d.matricule : <span className="text-amber-400">{g.loginTos}</span>}</td>
+                  <td className="px-3 py-2 text-slate-900">{d ? d.nom : "(non rattaché)"}</td>
+                  <td className="px-3 py-2 text-slate-600">{d ? d.prenom : ""}</td>
+                  <td className="px-3 py-2 text-slate-600">{team ? team.nom : "—"}</td>
+                  {MOUVEMENTS_TOS_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-600">{g[c.key]}</td>)}
+                  <td className="px-3 py-2 text-center text-slate-900 font-bold">{g.totalMvmt}</td>
                 </tr>
               );
             })}
