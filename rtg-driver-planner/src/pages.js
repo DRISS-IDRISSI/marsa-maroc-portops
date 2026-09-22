@@ -1206,8 +1206,8 @@ function ValidationBanner({ validation }) {
   );
 }
 
-function Cell({ assignment, detailLevel, onEdit, weekStart }) {
-  const weekStartCls = weekStart ? "border-l-4 border-l-orange-600" : "";
+function Cell({ assignment, detailLevel, onEdit, frameCls }) {
+  const weekStartCls = frameCls || "";
   if (!assignment) return <td className={`border border-slate-200/60 bg-slate-50/40 ${weekStartCls}`}></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
   // Jour de travail (PRESENT) : case vierge, comme sur le rapport imprimable —
@@ -1379,6 +1379,31 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
     });
     return runs;
   }, [planning, config, team]);
+  // Premier/dernier jour de chaque "semaine" (segment) — shiftRuns quand
+  // l'équipe est connue (une semaine = une rotation de shift), sinon un
+  // découpage lundi-dimanche générique — pour ENCADRER chaque semaine
+  // (bordures gauche/droite marquées) au lieu du simple trait de séparation
+  // d'origine, sur le modèle des blocs Vacation de l'Affectation du jour.
+  const weekBounds = useMemo(() => {
+    const starts = new Set(), ends = new Set();
+    if (team && shiftRuns) {
+      let idx = 0;
+      shiftRuns.forEach(run => {
+        starts.add(idx);
+        ends.add(idx + run.count - 1);
+        idx += run.count;
+      });
+      return { starts, ends };
+    }
+    planning.days.forEach((day, i) => {
+      if (i === 0 || RTGDate.isMonday(RTGDate.parseISO(day.iso))) starts.add(i);
+      const isLast = i === planning.days.length - 1;
+      const nextIsMonday = !isLast && RTGDate.isMonday(RTGDate.parseISO(planning.days[i + 1].iso));
+      if (isLast || nextIsMonday) ends.add(i);
+    });
+    return { starts, ends };
+  }, [team, shiftRuns, planning.days]);
+  const weekFrameCls = i => `${weekBounds.starts.has(i) ? "border-l-2 border-l-slate-400" : ""} ${weekBounds.ends.has(i) ? "border-r-2 border-r-slate-400" : ""}`;
   return (
     <div className="mb-4 last:mb-0">
       <div className="text-[11px] font-bold text-orange-400 uppercase tracking-wider mb-1.5 px-0.5">{label} <span className="text-slate-500 font-normal normal-case">({drivers.length} conducteur{drivers.length > 1 ? "s" : ""})</span></div>
@@ -1394,7 +1419,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   <th className="sticky left-14 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10 min-w-[90px] sm:min-w-[110px]" rowSpan="2">Nom</th>
                   <th className="hidden sm:table-cell border border-slate-200/60 px-2 py-2 text-left text-slate-600 min-w-[90px]" rowSpan="2">Prénom</th>
                   {shiftRuns.map((run, i) => (
-                    <th key={i} colSpan={run.count} className={`border border-slate-200/60 px-1 py-1.5 text-center text-slate-400 text-[10px] font-semibold uppercase ${i > 0 ? "border-l-4 border-l-orange-600" : ""}`}>{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
+                    <th key={i} colSpan={run.count} className="border-2 border-slate-400 bg-slate-50 px-1 py-1.5 text-center text-slate-400 text-[10px] font-semibold uppercase">{(config.shifts.find(s => s.id === run.shiftId) || {}).label || run.shiftId}</th>
                   ))}
                 </tr>
               )}
@@ -1402,11 +1427,10 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                 {!shiftRuns && <th className="sticky left-0 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10">Mat</th>}
                 {!shiftRuns && <th className="sticky left-14 bg-slate-50 border border-slate-200/60 px-2 py-2 text-left text-slate-600 z-10 min-w-[90px] sm:min-w-[110px]">Nom</th>}
                 {!shiftRuns && <th className="hidden sm:table-cell border border-slate-200/60 px-2 py-2 text-left text-slate-600 min-w-[90px]">Prénom</th>}
-                {planning.days.map(day => {
+                {planning.days.map((day, i) => {
                   const holiday = HolidayEngine.getEffectiveHoliday(RTGDate.parseISO(day.iso), team, config);
-                  const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
                   return (
-                    <th key={day.iso} className={`border border-slate-200/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-700" : "text-slate-400"} ${weekStart ? "border-l-4 border-l-orange-600" : ""}`} title={holiday ? holiday.label : undefined}>
+                    <th key={day.iso} className={`border border-slate-200/60 px-1 sm:px-1.5 py-2 min-w-[26px] sm:min-w-[34px] ${holiday ? "bg-indigo-500/20 text-indigo-700" : "text-slate-400"} ${weekFrameCls(i)}`} title={holiday ? holiday.label : undefined}>
                       {String(day.day).padStart(2, "0")}
                     </th>
                   );
@@ -1419,10 +1443,9 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   <td className="sticky left-0 bg-white border border-slate-200/60 px-2 py-1.5 text-slate-600 z-10">{driver.matricule}</td>
                   <td className="sticky left-14 bg-white border border-slate-200/60 px-2 py-1.5 text-slate-900 font-medium z-10"><button onClick={() => goToDriver(driver.matricule)} className="hover:underline text-left" title="Voir la fiche et l'historique de ce conducteur">{driver.nom}</button></td>
                   <td className="hidden sm:table-cell border border-slate-200/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
-                  {planning.days.map(day => {
+                  {planning.days.map((day, i) => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
-                    const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
-                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} weekStart={weekStart} />;
+                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} frameCls={weekFrameCls(i)} />;
                   })}
                 </tr>
               ))}
@@ -1430,13 +1453,12 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                 <td className="sticky left-0 bg-slate-50/70 border border-slate-200/60 px-2 py-1.5 text-slate-600 z-10" colSpan="1">—</td>
                 <td className="sticky left-14 bg-slate-50/70 border border-slate-200/60 px-2 py-1.5 text-slate-900 z-10" colSpan="1">Nombre de présent</td>
                 <td className="hidden sm:table-cell border border-slate-200/60 px-2 py-1.5"></td>
-                {planning.days.map(day => {
+                {planning.days.map((day, i) => {
                   const count = drivers.reduce((n, driver) => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
                     return n + (a && a.status === "PRESENT" ? 1 : 0);
                   }, 0);
-                  const weekStart = day.day !== 1 && RTGDate.isMonday(RTGDate.parseISO(day.iso));
-                  return <td key={day.iso} className={`border border-slate-200/60 text-center text-[11px] text-slate-900 px-1 py-1.5 ${weekStart ? "border-l-4 border-l-orange-600" : ""}`}>{count}</td>;
+                  return <td key={day.iso} className={`border border-slate-200/60 text-center text-[11px] text-slate-900 px-1 py-1.5 ${weekFrameCls(i)}`}>{count}</td>;
                 })}
               </tr>
             </tbody>
