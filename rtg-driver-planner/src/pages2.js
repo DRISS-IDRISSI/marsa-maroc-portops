@@ -601,7 +601,7 @@ function DriversPage() {
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-700">Modifier</button>
-                        <button onClick={() => setHistoryFor(historyFor === d.id ? null : d.id)} className="text-marine-300 hover:text-slate-900">Historique</button>
+                        <button onClick={() => setHistoryFor(historyFor === d.id ? null : d.id)} className="text-marine-700 hover:text-slate-900">Historique</button>
                         {d.actif !== false
                           ? <DepartButton onConfirm={motif => RTGStore.setDriverActive(d.id, false, motif)} />
                           : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, true)} className="text-emerald-400 hover:text-emerald-700 text-xs" />}
@@ -845,7 +845,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
 // libre-service envoyée par un conducteur passe par EN_ATTENTE.
 const CONGE_STATUT_META = {
   EN_ATTENTE: { label: "En attente", className: "bg-amber-500/20 text-amber-700 border-amber-500/30" },
-  VALIDE: { label: "Validé", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+  VALIDE: { label: "Validé", className: "bg-emerald-500/20 text-emerald-700 border-emerald-500/30" },
   REFUSE: { label: "Refusé", className: "bg-red-500/20 text-red-700 border-red-500/30" },
   A_REFAIRE: { label: "À refaire", className: "bg-fuchsia-500/20 text-fuchsia-700 border-fuchsia-500/30" }
 };
@@ -858,7 +858,7 @@ const CONGE_STATUT_META = {
 // couleur habituelle (CONGE_STATUT_META), sans rapport avec la date.
 const CONGE_TEMPORAL_META = {
   EN_COURS: { label: "En cours", className: "bg-sky-500/20 text-sky-700 border-sky-500/30" },
-  ACHEVE: { label: "Terminé", className: "bg-slate-700/40 text-slate-400 border-slate-600/40" },
+  ACHEVE: { label: "Terminé", className: "bg-slate-200 text-slate-600 border-slate-300" },
   FUTUR: { label: "À venir", className: "bg-violet-500/20 text-violet-700 border-violet-500/30" }
 };
 function congeDisplayMeta(r, todayIso) {
@@ -1200,7 +1200,7 @@ function HeuresExceptionnellesPage() {
               <tr><td colSpan="8" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
             {records.map(r => {
-              const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-600" };
+              const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-200 text-slate-600" };
               return (
                 <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
@@ -3029,7 +3029,7 @@ function MesOverTimePage() {
               <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500 italic">Aucun Over Time enregistré pour cette période.</td></tr>
             )}
             {rows.map(r => {
-              const t = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-700 text-slate-600" };
+              const t = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-200 text-slate-600" };
               return (
                 <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-slate-900">{r.dateDebut}{r.dateFin && r.dateFin !== r.dateDebut ? " → " + r.dateFin : ""}</td>

@@ -1527,7 +1527,7 @@ function ShiftBlock({ title, icon, rows }) {
                   </td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-600">{a.prenom}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
-                  <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-700 font-bold" : "bg-marine-600/20 text-marine-300"}`}>{a.vacation}</span> : "—"}</td>
+                  <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-700 font-bold" : "bg-marine-600/20 text-marine-700"}`}>{a.vacation}</span> : "—"}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime ? `${a.startTime}–${a.endTime}` : "—"}</td>
                   <td className="py-1.5 pr-3"><ZoneOrStatutBadge a={a} /></td>
                 </tr>
