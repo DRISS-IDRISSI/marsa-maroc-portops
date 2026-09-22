@@ -3461,7 +3461,8 @@ function MouvementsRtgPage() {
               </thead>
               <tbody>
                 {byDay.map((day, dayIdx) => {
-                  const dataRows = day.rows.map((r, rowIdx) => {
+                  const dataRows = [];
+                  day.rows.forEach((r, rowIdx) => {
                     const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
                     const team = d ? state.teams.find(t => t.id === d.teamId) : null;
                     const disp = withMouvementsDisplay(r);
@@ -3479,6 +3480,11 @@ function MouvementsRtgPage() {
                     // même jour, cassant l'effet de cadre continu).
                     const isFirst = rowIdx === 0;
                     const isLast = rowIdx === day.rows.length - 1;
+                    // Sous-encadrement par shift : un petit espace interne
+                    // (même technique que l'espaceur entre journées) sépare
+                    // visuellement S1 de S2 à l'intérieur du cadre du jour,
+                    // sans casser sa bordure gauche/droite continue.
+                    const isLastOfShift = rowIdx === day.rows.length - 1 || day.rows[rowIdx + 1].dominantShift !== r.dominantShift;
                     const bg = dayIdx % 2 === 0 ? "bg-white" : "bg-slate-50/70";
                     const frameColor = "border-slate-300";
                     const topEdge = isFirst ? `border-t-2 ${frameColor}` : "";
@@ -3486,7 +3492,7 @@ function MouvementsRtgPage() {
                     const midCellCls = `${bg} ${topEdge} ${botEdge}`;
                     const firstCellCls = `${bg} border-l-2 ${frameColor} ${topEdge} ${botEdge} ${isFirst ? "rounded-tl-lg" : ""} ${isLast ? "rounded-bl-lg" : ""}`;
                     const lastCellCls = `${bg} border-r-2 ${frameColor} ${topEdge} ${botEdge} ${isFirst ? "rounded-tr-lg" : ""} ${isLast ? "rounded-br-lg" : ""}`;
-                    return (
+                    dataRows.push(
                       <tr key={day.dateIso + "_" + r.id} className="hover:bg-marine-600/10">
                         <td className={`px-4 py-1.5 text-slate-900 ${firstCellCls}`}>{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
                         <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{team ? team.nom : "—"}</td>
@@ -3502,6 +3508,15 @@ function MouvementsRtgPage() {
                         </td>
                       </tr>
                     );
+                    if (isLastOfShift && !isLast) {
+                      dataRows.push(
+                        <tr key={day.dateIso + "_" + r.dominantShift + "_shiftgap"} aria-hidden="true">
+                          <td className={`p-0 h-1.5 border-l-2 ${frameColor} ${bg}`}></td>
+                          <td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 5} className={`p-0 h-1.5 ${bg}`}></td>
+                          <td className={`p-0 h-1.5 border-r-2 ${frameColor} ${bg}`}></td>
+                        </tr>
+                      );
+                    }
                   });
                   if (dayIdx < byDay.length - 1) {
                     dataRows.push(
