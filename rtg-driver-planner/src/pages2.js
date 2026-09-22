@@ -3437,13 +3437,19 @@ function MouvementsRtgPage() {
                 </tr>
               </thead>
               <tbody>
-                {byDay.map(day => day.rows.map(r => {
+                {byDay.map((day, dayIdx) => day.rows.map((r, rowIdx) => {
                   const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
                   const team = d ? state.teams.find(t => t.id === d.teamId) : null;
                   const disp = withMouvementsDisplay(r);
                   const manuelRows = r.sourceRows.filter(sr => sr.source === "MANUEL");
+                  // Encadrement par journée : bordure épaisse au changement de
+                  // date + léger fond alterné, pour séparer visuellement les
+                  // journées dans ce tableau désormais à plat (une seule date
+                  // par groupe de lignes, plutôt qu'un bloc séparé par jour).
+                  const dayStartCls = rowIdx === 0 ? "border-t-2 border-t-slate-400" : "border-t border-slate-200/60";
+                  const dayBgCls = dayIdx % 2 === 0 ? "bg-white" : "bg-slate-50/70";
                   return (
-                    <tr key={day.dateIso + "_" + r.id} className="border-t border-slate-200/60 hover:bg-marine-600/10">
+                    <tr key={day.dateIso + "_" + r.id} className={`${dayStartCls} ${dayBgCls} hover:bg-marine-600/10`}>
                       <td className="px-4 py-1.5 text-slate-900">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
                       <td className="px-3 py-1.5 text-slate-600">{team ? team.nom : "—"}</td>
                       <td className="px-3 py-1.5 text-slate-900">{RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}</td>
