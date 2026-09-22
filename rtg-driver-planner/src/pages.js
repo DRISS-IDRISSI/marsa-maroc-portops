@@ -59,24 +59,71 @@ function normalizeForMatch(s) {
   return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
-function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
-  const XLSX = window.XLSX;
-  // Un fichier peut couvrir une seule équipe (une seule feuille "SHIFT ...")
-  // ou les 3 shifts à la fois (une feuille "SHIFT <équipe>" par équipe) :
-  // dans ce second cas, on sélectionne précisément celle de l'équipe en
-  // cours d'import — jamais juste "la première feuille SHIFT trouvée".
+// Un fichier peut couvrir une seule équipe (une seule feuille "SHIFT ...")
+// ou les 3 shifts à la fois (une feuille "SHIFT <équipe>" par équipe) :
+// dans ce second cas, on sélectionne précisément celle de l'équipe en cours
+// d'import — jamais juste "la première feuille SHIFT trouvée". Partagé par
+// parseRepoCongeExcel (repos/congés) et parseConducteursFromShiftExcel
+// (création en masse des conducteurs, § module Chariots Cavalier) : même
+// fichier, même feuille, deux lectures différentes.
+function selectShiftSheet(workbook, teamNom) {
   const shiftSheets = workbook.SheetNames.filter(n => /^shift/i.test(n.trim()));
   const teamKey = normalizeForMatch(teamNom);
-  let sheetName;
-  if (shiftSheets.length <= 1) {
-    sheetName = shiftSheets[0] || workbook.SheetNames[0];
-  } else {
-    const matches = shiftSheets.filter(n => teamKey && normalizeForMatch(n).indexOf(teamKey) !== -1);
-    if (matches.length !== 1) {
-      throw new Error("Ce fichier contient plusieurs feuilles \"SHIFT ...\" (" + shiftSheets.join(", ") + ") et aucune ne correspond clairement à l'équipe « " + teamNom + " ». Vérifiez le nom de l'équipe ou le fichier.");
-    }
-    sheetName = matches[0];
+  if (shiftSheets.length <= 1) return shiftSheets[0] || workbook.SheetNames[0];
+  const matches = shiftSheets.filter(n => teamKey && normalizeForMatch(n).indexOf(teamKey) !== -1);
+  if (matches.length !== 1) {
+    throw new Error("Ce fichier contient plusieurs feuilles \"SHIFT ...\" (" + shiftSheets.join(", ") + ") et aucune ne correspond clairement à l'équipe « " + teamNom + " ». Vérifiez le nom de l'équipe ou le fichier.");
   }
+  return matches[0];
+}
+
+// Matricule reconnu par motif (lettres puis chiffres, ex. C07231, TC0036,
+// J05034, D07005) — utilisé par parseConducteursFromShiftExcel pour repérer
+// une ligne de conducteur sans dépendre des colonnes de dates (inutiles
+// pour cette lecture-là, voir plus bas).
+const MATRICULE_PATTERN = /^[A-Za-z]{1,3}\d{3,7}$/;
+
+// Lit la même feuille "SHIFT <équipe>" (colonne A = matricule, B = nom,
+// C = prénom) que parseRepoCongeExcel, mais pour CRÉER les conducteurs de
+// l'équipe plutôt que pour importer repos/congés — évite de redemander à
+// l'exploitant un fichier séparé rien que pour la liste des matricules
+// (§ module Chariots Cavalier, équipes créées avec 0 conducteur tant que
+// personne n'a été ajouté manuellement).
+function parseConducteursFromShiftExcel(workbook, teamNom, existingDrivers) {
+  const XLSX = window.XLSX;
+  const sheetName = selectShiftSheet(workbook, teamNom);
+  const ws = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+
+  const existingByMatricule = {};
+  existingDrivers.forEach(d => { existingByMatricule[String(d.matricule).trim().toUpperCase()] = d; });
+
+  const toCreate = [], alreadyExisting = [], invalid = [];
+  const seen = new Set();
+  rows.forEach(row => {
+    const matCell = row[0], nomCell = row[1], prenomCell = row[2];
+    if (matCell === null || matCell === undefined) return;
+    const mat = String(matCell).trim();
+    if (!MATRICULE_PATTERN.test(mat)) return;
+    const key = mat.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (existingByMatricule[key]) {
+      alreadyExisting.push({ matricule: mat, nom: existingByMatricule[key].nom, prenom: existingByMatricule[key].prenom });
+      return;
+    }
+    const nom = String(nomCell || "").trim();
+    const prenom = String(prenomCell || "").trim();
+    if (!nom) { invalid.push({ matricule: mat, reason: "nom manquant" }); return; }
+    toCreate.push({ matricule: mat, nom: nom, prenom: prenom });
+  });
+
+  return { sheetName: sheetName, toCreate: toCreate, alreadyExisting: alreadyExisting, invalid: invalid };
+}
+
+function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
+  const XLSX = window.XLSX;
+  const sheetName = selectShiftSheet(workbook, teamNom);
   const ws = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
 

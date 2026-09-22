@@ -303,6 +303,120 @@ function TeamForm({ state, typeEngin, onCancel, onSaved }) {
   );
 }
 
+// Import en masse des conducteurs d'une équipe depuis le même fichier Excel
+// "PLANNING_MENSUEL_..._SHIFT_<équipe>" déjà utilisé par ImportPlanningModal
+// (feuille "SHIFT <équipe>", colonnes A=matricule/B=nom/C=prénom) — évite de
+// créer un par un chaque conducteur (ex. ~25 par équipe CC) alors que le
+// fichier avec matricules/noms/prénoms existe déjà.
+function ImportConducteursModal({ team, state, onClose }) {
+  const [step, setStep] = useState("pick");
+  const [error, setError] = useState("");
+  const [parsed, setParsed] = useState(null);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [result, setResult] = useState(null);
+
+  const handleFile = async file => {
+    setStep("parsing");
+    setError("");
+    try {
+      await loadXlsxLib();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      setParsed(parseConducteursFromShiftExcel(wb, team.nom, state.drivers));
+      setStep("preview");
+    } catch (e) {
+      setError(e.message || String(e));
+      setStep("error");
+    }
+  };
+
+  const apply = async () => {
+    if (!parsed) return;
+    setStep("creating");
+    const total = parsed.toCreate.length;
+    setProgress({ done: 0, total: total });
+    // Répartit dès la création les blocs de vacation (V1/V2) et les zones de
+    // départ pour éviter que tout le monde parte du même bloc/zone (initial*
+    // sert de point de départ à la rotation individuelle — ZoneRotationEngine/
+    // VacationRotationEngine — jamais recalculé après coup).
+    const zoneList = zonesForFleet(state.config, team.typeEngin || "RTG") || ["A"];
+    let done = 0, errors = 0;
+    const errorDetails = [];
+    for (let i = 0; i < parsed.toCreate.length; i++) {
+      const row = parsed.toCreate[i];
+      try {
+        await RTGStore.addDriver({
+          matricule: row.matricule, nom: row.nom, prenom: row.prenom, teamId: team.id,
+          initialVacation: i % 2 === 0 ? "V1" : "V2",
+          initialZone: zoneList[i % zoneList.length]
+        });
+      } catch (e) {
+        console.error(e); errors++; errorDetails.push(row.matricule + " : " + (e && e.message ? e.message : "erreur"));
+      }
+      done++; setProgress({ done: done, total: total });
+    }
+    setResult({ created: total - errors, errors: errors, errorDetails: errorDetails });
+    setStep("done");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={step === "creating" ? undefined : onClose}>
+      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-white font-semibold text-sm">Importer les conducteurs depuis Excel</h3>
+          {step !== "creating" && <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fas fa-xmark"></i></button>}
+        </div>
+        <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-white font-medium">{team.nom}</span></p>
+
+        {step === "pick" && (
+          <div>
+            <p className="text-xs text-slate-400 mb-3">
+              Sélectionnez le fichier Excel (.xlsx) du planning mensuel de cette équipe (feuille "SHIFT {team.nom}") : les conducteurs des colonnes matricule/nom/prénom seront créés dans cette équipe, sauf ceux déjà existants (matricule déjà présent dans l'application).
+            </p>
+            <input type="file" accept=".xlsx" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="block w-full text-xs text-slate-300" />
+          </div>
+        )}
+
+        {step === "parsing" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Analyse du fichier…</p>}
+
+        {step === "error" && (
+          <div>
+            <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
+            <button onClick={() => setStep("pick")} className="mt-3 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-300 hover:text-white">Réessayer</button>
+          </div>
+        )}
+
+        {step === "preview" && parsed && (
+          <div className="space-y-3 text-xs text-slate-300">
+            <p>Feuille utilisée : <span className="text-white">{parsed.sheetName}</span></p>
+            <p><span className="text-white font-semibold">{parsed.toCreate.length}</span> conducteur(s) à créer{parsed.toCreate.length > 0 ? " : " + parsed.toCreate.map(r => r.matricule + " " + r.nom).join(", ") : ""}.</p>
+            {parsed.alreadyExisting.length > 0 && (
+              <p className="text-slate-500">{parsed.alreadyExisting.length} déjà existant(s), ignoré(s) : {parsed.alreadyExisting.map(r => r.matricule).join(", ")}</p>
+            )}
+            {parsed.invalid.length > 0 && (
+              <p className="text-amber-400">{parsed.invalid.length} ligne(s) ignorée(s) (nom manquant) : {parsed.invalid.map(r => r.matricule).join(", ")}</p>
+            )}
+            <div className="flex gap-2 pt-2">
+              <button onClick={apply} disabled={parsed.toCreate.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Créer {parsed.toCreate.length} conducteur(s)</button>
+              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        )}
+
+        {step === "creating" && <p className="text-sm text-slate-300"><i className="fas fa-spinner fa-spin mr-2"></i>Création en cours… {progress.done}/{progress.total}</p>}
+
+        {step === "done" && result && (
+          <div className="space-y-2 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{result.created} conducteur(s) créé(s).</p>
+            {result.errors > 0 && <p className="text-red-300">{result.errors} erreur(s) : {result.errorDetails.join(", ")}</p>}
+            <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Fermer</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DriversPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
@@ -334,6 +448,7 @@ function DriversPage() {
   ), [state.teams, state.currentFleet]);
   const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams.filter(t => fleetTeamIds.has(t.id));
   const [showTeamForm, setShowTeamForm] = useState(false);
+  const [importTeam, setImportTeam] = useState(null);
 
   const drivers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -378,7 +493,15 @@ function DriversPage() {
               <TeamNameEditor team={t} editable={!shiftRestricted} />
               <div className="text-xs text-slate-500 -mt-0.5 mb-1">{shift} aujourd'hui</div>
               <div className="text-2xl font-bold text-white mb-1">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
-              <TeamShiftEditor team={t} state={state} editable={!shiftRestricted} />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <TeamShiftEditor team={t} state={state} editable={!shiftRestricted} />
+                {!shiftRestricted && (
+                  <button onClick={() => setImportTeam(t)} title="Créer en masse les conducteurs de cette équipe depuis le fichier Excel du planning"
+                    className="flex items-center gap-1 text-[10px] font-medium text-emerald-400/80 hover:text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/60 rounded px-1.5 py-0.5">
+                    <i className="fas fa-file-import text-[9px]"></i>Importer conducteurs
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -387,6 +510,8 @@ function DriversPage() {
         )}
       </div>
       {!shiftRestricted && <p className="text-xs text-slate-500 -mt-2">Modifiez l'équipe d'un conducteur (bouton « Modifier ») pour rééquilibrer les effectifs entre shifts.</p>}
+
+      {importTeam && <ImportConducteursModal team={importTeam} state={state} onClose={() => setImportTeam(null)} />}
 
       {showTeamForm && (
         <Panel title={"Nouvelle équipe " + state.currentFleet} icon="fa-users-rectangle">
