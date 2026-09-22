@@ -1557,7 +1557,7 @@ function RapportRHPage() {
       <div className="flex gap-2 print:hidden">
         <button onClick={() => setTab("rh")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "rh" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Rapport RH</button>
         <button onClick={() => setTab("feries")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "feries" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Jours fériés &amp; 3ème shift dimanche</button>
-        <button onClick={() => setTab("mouvements")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "mouvements" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Mouvements RTG</button>
+        <button onClick={() => setTab("mouvements")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "mouvements" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Mouvements {state.currentFleet}</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4 print:hidden">
@@ -1737,7 +1737,7 @@ function RapportRHPage() {
             <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
-              <div className="text-xs sm:text-sm text-slate-600">Mouvements RTG (import TOS) — {dayIso ? RTGDate.formatFr(RTGDate.parseISO(dayIso)) : RAPPORT_MOIS_LABELS[month - 1] + " " + year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+              <div className="text-xs sm:text-sm text-slate-600">Mouvements {state.currentFleet} (import TOS) — {dayIso ? RTGDate.formatFr(RTGDate.parseISO(dayIso)) : RAPPORT_MOIS_LABELS[month - 1] + " " + year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
@@ -2912,7 +2912,7 @@ function MesMouvementsPage() {
     <div className="space-y-4 fade-in">
       <div>
         <h1 className="text-2xl font-bold text-white">Mes mouvements</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Mouvements RTG réalisés, importés automatiquement depuis le TOS — {driver.matricule} — {driver.nom} {driver.prenom}</p>
+        <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le TOS — {driver.matricule} — {driver.nom} {driver.prenom}</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 bg-card rounded-xl border border-border p-4">
@@ -3254,7 +3254,7 @@ function MouvementsRtgPage() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-white">Mouvements RTG</h1>
+          <h1 className="text-2xl font-bold text-white">Mouvements {state.currentFleet}</h1>
           <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS</p>
         </div>
         <button onClick={() => setShowManuelForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
