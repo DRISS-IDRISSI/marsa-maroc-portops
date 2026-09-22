@@ -37,16 +37,20 @@ const CORS_HEADERS = {
 };
 
 function buildMessage({ driverName, dateDebut, dateFin, decision, motifRefus }) {
-  const estValide = decision === "VALIDE";
-  const subject = estValide ? "Votre demande de congé a été validée" : "Votre demande de congé a été refusée";
-  const lignes = [
-    `Bonjour ${driverName || ""},`,
-    "",
-    estValide
-      ? `Votre demande de congé du ${dateDebut} au ${dateFin} a été VALIDÉE par votre responsable.`
-      : `Votre demande de congé du ${dateDebut} au ${dateFin} a été REFUSÉE par votre responsable.`
-  ];
-  if (!estValide && motifRefus) lignes.push("", `Motif : ${motifRefus}`);
+  const subject = decision === "VALIDE" ? "Votre demande de congé a été validée"
+    : decision === "REFUSE" ? "Votre demande de congé a été refusée"
+    : "Votre demande de congé est à refaire";
+  const lignes = [`Bonjour ${driverName || ""},`, ""];
+  if (decision === "VALIDE") {
+    lignes.push(`Votre demande de congé du ${dateDebut} au ${dateFin} a été VALIDÉE par votre responsable.`);
+  } else if (decision === "REFUSE") {
+    lignes.push(`Votre demande de congé du ${dateDebut} au ${dateFin} a été REFUSÉE par votre responsable.`);
+    if (motifRefus) lignes.push("", `Motif : ${motifRefus}`);
+  } else {
+    lignes.push(`Votre responsable vous demande de REFAIRE votre demande de congé du ${dateDebut} au ${dateFin} (ex. justificatif illisible).`);
+    if (motifRefus) lignes.push("", `Motif : ${motifRefus}`);
+    lignes.push("", "Merci de renvoyer une nouvelle demande depuis l'application, rubrique \"Mes congés\".");
+  }
   lignes.push("", "Ceci est un message automatique — merci de ne pas y répondre.", "", "RTG Driver Planner — Marsa Maroc TC3PC");
   return { subject, content: lignes.join("\n") };
 }
@@ -60,7 +64,7 @@ Deno.serve(async req => {
     }
     const body = await req.json();
     const { to, driverName, dateDebut, dateFin, decision, motifRefus } = body || {};
-    if (!to || !dateDebut || !dateFin || (decision !== "VALIDE" && decision !== "REFUSE")) {
+    if (!to || !dateDebut || !dateFin || (decision !== "VALIDE" && decision !== "REFUSE" && decision !== "A_REFAIRE")) {
       return new Response(JSON.stringify({ error: "Champs requis manquants ou invalides." }),
         { status: 400, headers: Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" }) });
     }

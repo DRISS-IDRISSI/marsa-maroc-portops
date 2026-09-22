@@ -413,12 +413,15 @@ const RTGStore = (function () {
     return record;
   }
 
-  // decision: "VALIDE" ou "REFUSE". Réservé à Admin/Responsable/Responsable
-  // de Shift (RLS conges_write) — un CONDUCTEUR ne peut pas s'auto-valider.
+  // decision: "VALIDE", "REFUSE" ou "A_REFAIRE" (§ bouton "Refaire", migration_016
+  // — demande au conducteur de renvoyer sa demande, ex. justificatif illisible,
+  // sans passer par un Refus + suppression manuelle). Réservé à
+  // Admin/Responsable/Responsable de Shift (RLS conges_write) — un CONDUCTEUR
+  // ne peut pas s'auto-valider.
   async function validateCongeRequest(id, decision, motifRefus) {
     const dbPatch = {
       statut: decision,
-      motif_refus: decision === "REFUSE" ? (motifRefus || "") : null,
+      motif_refus: (decision === "REFUSE" || decision === "A_REFAIRE") ? (motifRefus || "") : null,
       validated_by: state.currentUserId,
       validated_at: new Date().toISOString()
     };
@@ -427,7 +430,8 @@ const RTGStore = (function () {
     const updated = mapCongeRow(data);
     set(s => Object.assign({}, s, { conges: s.conges.map(r => r.id === id ? updated : r) }));
     const d = state.drivers.find(dr => dr.id === updated.driverId);
-    addAuditEntry({ driverId: updated.driverId, matricule: d ? d.matricule : "", action: decision === "VALIDE" ? "Validation demande de congé" : "Refus demande de congé", details: motifRefus || "" });
+    const auditAction = decision === "VALIDE" ? "Validation demande de congé" : decision === "REFUSE" ? "Refus demande de congé" : "Demande de congé à refaire";
+    addAuditEntry({ driverId: updated.driverId, matricule: d ? d.matricule : "", action: auditAction, details: motifRefus || "" });
     // Email de confirmation (Edge Function "send-conge-email", voir son
     // en-tête pour le déploiement) — best-effort : un échec d'envoi (email
     // absent, secrets Gmail pas encore configurés, fonction pas encore

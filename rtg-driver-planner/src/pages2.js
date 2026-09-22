@@ -657,7 +657,8 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
 const CONGE_STATUT_META = {
   EN_ATTENTE: { label: "En attente", className: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
   VALIDE: { label: "Validé", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
-  REFUSE: { label: "Refusé", className: "bg-red-500/20 text-red-300 border-red-500/30" }
+  REFUSE: { label: "Refusé", className: "bg-red-500/20 text-red-300 border-red-500/30" },
+  A_REFAIRE: { label: "À refaire", className: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30" }
 };
 
 // Distinction visuelle demandée par l'exploitant, UNIQUEMENT pour les
@@ -672,7 +673,7 @@ const CONGE_TEMPORAL_META = {
   FUTUR: { label: "À venir", className: "bg-violet-500/20 text-violet-300 border-violet-500/30" }
 };
 function congeDisplayMeta(r, todayIso) {
-  if (r.statut === "EN_ATTENTE" || r.statut === "REFUSE") return CONGE_STATUT_META[r.statut];
+  if (r.statut === "EN_ATTENTE" || r.statut === "REFUSE" || r.statut === "A_REFAIRE") return CONGE_STATUT_META[r.statut];
   if (todayIso < r.dateDebut) return CONGE_TEMPORAL_META.FUTUR;
   if (todayIso > r.dateFin) return CONGE_TEMPORAL_META.ACHEVE;
   return CONGE_TEMPORAL_META.EN_COURS;
@@ -713,6 +714,8 @@ function CongesPage() {
   const [busyId, setBusyId] = useState(null);
   const [refusingId, setRefusingId] = useState(null);
   const [refusMotif, setRefusMotif] = useState("");
+  const [refaisantId, setRefaisantId] = useState(null);
+  const [refaireMotif, setRefaireMotif] = useState("");
   const [filterDriverId, setFilterDriverId] = useState("");
 
   // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
@@ -755,6 +758,18 @@ function CongesPage() {
   const refuse = async id => {
     setBusyId(id);
     try { await RTGStore.validateCongeRequest(id, "REFUSE", refusMotif); setRefusingId(null); setRefusMotif(""); }
+    catch (e) { alert("Erreur : " + (e && e.message ? e.message : "réessayez.")); }
+    setBusyId(null);
+  };
+
+  // "Refaire" (§ bouton dédié, migration_016) : demande au conducteur de
+  // renvoyer sa demande (ex. justificatif illisible/déformé) sans passer par
+  // le contournement manuel Refuser + Supprimer + lui redemander
+  // verbalement — le conducteur voit le motif sur "Mes congés" et peut
+  // renvoyer une nouvelle demande normalement.
+  const refaire = async id => {
+    setBusyId(id);
+    try { await RTGStore.validateCongeRequest(id, "A_REFAIRE", refaireMotif); setRefaisantId(null); setRefaireMotif(""); }
     catch (e) { alert("Erreur : " + (e && e.message ? e.message : "réessayez.")); }
     setBusyId(null);
   };
@@ -820,7 +835,7 @@ function CongesPage() {
                   <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
                   <td className="px-3 py-2">
                     <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>
-                    {r.statut === "REFUSE" && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
+                    {(r.statut === "REFUSE" || r.statut === "A_REFAIRE") && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
                   </td>
                   <td className="hidden sm:table-cell px-3 py-2"><CongeSoldeBadge driver={rDriver} state={state} /></td>
                   <td className="px-3 py-2"><CongeJustificatifLink path={r.justificatifPath} /></td>
@@ -835,10 +850,17 @@ function CongesPage() {
                             <button disabled={busyId === r.id} onClick={() => refuse(r.id)} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">OK</button>
                             <button onClick={() => { setRefusingId(null); setRefusMotif(""); }} className="text-slate-500 hover:text-white text-xs">Annuler</button>
                           </span>
+                        ) : refaisantId === r.id ? (
+                          <span className="flex items-center gap-1">
+                            <input autoFocus placeholder="Motif (ex. justificatif illisible)" value={refaireMotif} onChange={e => setRefaireMotif(e.target.value)} className="bg-surface border border-border rounded px-1.5 py-1 text-[11px] text-white w-36" />
+                            <button disabled={busyId === r.id} onClick={() => refaire(r.id)} className="text-fuchsia-400 hover:text-fuchsia-300 text-xs disabled:opacity-50">OK</button>
+                            <button onClick={() => { setRefaisantId(null); setRefaireMotif(""); }} className="text-slate-500 hover:text-white text-xs">Annuler</button>
+                          </span>
                         ) : (
                           <React.Fragment>
                             <button disabled={busyId === r.id} onClick={() => validate(r.id)} className="text-emerald-400 hover:text-emerald-300 text-xs disabled:opacity-50">Valider</button>
                             <button disabled={busyId === r.id} onClick={() => setRefusingId(r.id)} className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50">Refuser</button>
+                            <button disabled={busyId === r.id} onClick={() => setRefaisantId(r.id)} className="text-fuchsia-400 hover:text-fuchsia-300 text-xs disabled:opacity-50">Refaire</button>
                           </React.Fragment>
                         )
                       )}
@@ -2442,6 +2464,12 @@ function MesCongesPage() {
   const myRequests = driver ? state.conges.filter(c => c.driverId === driver.id).slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut)) : [];
   const todayIsoMesConges = RTGDate.toISO(new Date());
 
+  // Alerte "à refaire" (§ bouton Refaire, migration_016) : notifie le
+  // conducteur dans l'appli qu'une de ses demandes doit être renvoyée (ex.
+  // justificatif illisible) — reste visible tant que le Responsable n'a pas
+  // supprimé l'ancienne ligne (comme pour un refus, sans suppression auto).
+  const aRefaireRequests = myRequests.filter(c => c.statut === "A_REFAIRE");
+
   // "Dernier congé pris" (comme sur le formulaire papier, format MM/AAAA) :
   // le congé VALIDE le plus récent déjà terminé — calculé automatiquement,
   // pas besoin que le conducteur s'en souvienne.
@@ -2544,6 +2572,20 @@ function MesCongesPage() {
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}</p>
       </div>
 
+      {aRefaireRequests.length > 0 && (
+        <div className="bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-300 rounded-xl px-4 py-3 text-sm space-y-1">
+          <div className="font-medium flex items-center gap-2"><i className="fas fa-triangle-exclamation"></i>
+            Votre responsable vous demande de refaire {aRefaireRequests.length > 1 ? "ces demandes" : "cette demande"} de congé
+          </div>
+          {aRefaireRequests.map(c => (
+            <div key={c.id} className="text-xs text-fuchsia-300/80">
+              {c.dateDebut} → {c.dateFin}{c.motifRefus ? " — " + c.motifRefus : ""}
+            </div>
+          ))}
+          <p className="text-[11px] text-fuchsia-300/70">Remplissez et envoyez une nouvelle demande ci-dessous.</p>
+        </div>
+      )}
+
       <Panel title="Solde de congé" icon="fa-calendar-check">
         {solde ? (
           <div className="flex items-center gap-4 flex-wrap text-sm">
@@ -2610,7 +2652,7 @@ function MesCongesPage() {
                   <td className="px-3 py-2 text-slate-300">{r.dateFin}</td>
                   <td className="px-3 py-2">
                     <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>
-                    {r.statut === "REFUSE" && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
+                    {(r.statut === "REFUSE" || r.statut === "A_REFAIRE") && r.motifRefus ? <div className="text-[10px] text-slate-500 mt-0.5">{r.motifRefus}</div> : null}
                   </td>
                   <td className="px-3 py-2"><CongeJustificatifLink path={r.justificatifPath} /></td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
