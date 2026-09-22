@@ -2869,7 +2869,7 @@ function MesCongesPage() {
 const MOUVEMENTS_TOS_COLUMNS = [
   { key: "nombreIn", label: "IN" },
   { key: "nombreOut", label: "OUT" },
-  { key: "nombreMove", label: "Déplacements" },
+  { key: "nombreMove", label: "MOVE" },
   { key: "nombreShifting", label: "Shifting" },
   { key: "nombreDisch", label: "Déchargement" },
   { key: "nombreLoad", label: "Chargement" },
@@ -2884,7 +2884,7 @@ const MOUVEMENTS_TOS_COLUMNS = [
 const MOUVEMENTS_DISPLAY_COLUMNS = [
   { key: "inDisplay", label: "IN" },
   { key: "outDisplay", label: "OUT" },
-  { key: "nombreMove", label: "Déplacements" },
+  { key: "nombreMove", label: "MOVE" },
   { key: "nombreShifting", label: "Shifting" },
   { key: "nombreAutre", label: "Autre" }
 ];
