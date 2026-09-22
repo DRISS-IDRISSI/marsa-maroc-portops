@@ -1222,9 +1222,12 @@ function Cell({ assignment, detailLevel, onEdit, weekStart }) {
   }
   const isManual = assignment.source === "MANUAL";
   const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
+  // Repos et Congé mis en avant (gras) — les deux statuts qu'un responsable
+  // cherche à repérer en priorité en balayant la grille du regard.
+  const emphasized = assignment.status === "REPOS" || assignment.status === "CONGE";
   return (
     <td
-      className={`border border-slate-200/60 text-center text-[11px] font-semibold px-1 py-1.5 ${meta.className} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
+      className={`border border-slate-200/60 text-center text-[11px] ${emphasized ? "font-bold" : "font-semibold"} px-1 py-1.5 ${meta.className} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
       title={title}
       onClick={onEdit}
     >
