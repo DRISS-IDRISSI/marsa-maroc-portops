@@ -261,6 +261,13 @@ function TeamShiftEditor({ team, state, editable }) {
 function TeamForm({ state, typeEngin, onCancel, onSaved }) {
   const [nom, setNom] = useState("");
   const [currentShift, setCurrentShift] = useState("S1");
+  // Certaines équipes n'ont pas de rotation d'équipe fixe (ex. "GR STAGIAIRES" :
+  // le shift de chaque stagiaire varie jour par jour, saisi manuellement par
+  // un responsable — voir AssignmentEditModal — jamais calculé par
+  // ShiftRotationEngine). Dans ce cas shiftCycle reste null : l'engine retombe
+  // alors sur config.shiftRotationCycleDefault pour un affichage "shift du
+  // jour" purement informatif, sans aucune incidence sur ces conducteurs.
+  const [noRotation, setNoRotation] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -270,7 +277,10 @@ function TeamForm({ state, typeEngin, onCancel, onSaved }) {
     if (!id || id === typeEngin + "_") { setError("Nom invalide."); return; }
     setSaving(true);
     try {
-      const shiftCycle = shiftCycleForThisWeek(currentShift, state.config);
+      // shift_cycle est NOT NULL en base (text[]) : un tableau vide (jamais
+      // null) désactive la rotation — ShiftRotationEngine et addDriver
+      // ci-dessous savent tous deux retomber sur un défaut dans ce cas.
+      const shiftCycle = noRotation ? [] : shiftCycleForThisWeek(currentShift, state.config);
       await RTGStore.addTeam({ id, nom: nom.trim(), shiftCycle, typeEngin });
       onSaved();
     } catch (err) {
@@ -286,15 +296,21 @@ function TeamForm({ state, typeEngin, onCancel, onSaved }) {
         <label className={LABEL_CLS}>Nom de l'équipe</label>
         <input autoFocus className={FIELD_CLS} placeholder={"ex. GR " + typeEngin + " 1"} value={nom} onChange={e => setNom(e.target.value)} />
       </div>
-      <div>
-        <label className={LABEL_CLS}>Shift de cette équipe cette semaine</label>
-        <select className={FIELD_CLS} value={currentShift} onChange={e => setCurrentShift(e.target.value)}>
-          <option value="S1">Shift 1</option>
-          <option value="S2">Shift 2</option>
-          <option value="S3">Shift 3</option>
-        </select>
-        <p className="text-[11px] text-slate-500 mt-1">Détermine le point de départ de la rotation hebdomadaire (S1 → S3 → S2 → S1...) pour cette équipe.</p>
-      </div>
+      <label className="flex items-center gap-2 text-xs text-slate-300">
+        <input type="checkbox" checked={noRotation} onChange={e => setNoRotation(e.target.checked)} />
+        Pas de rotation fixe (ex. équipe stagiaires — shift saisi manuellement chaque jour)
+      </label>
+      {!noRotation && (
+        <div>
+          <label className={LABEL_CLS}>Shift de cette équipe cette semaine</label>
+          <select className={FIELD_CLS} value={currentShift} onChange={e => setCurrentShift(e.target.value)}>
+            <option value="S1">Shift 1</option>
+            <option value="S2">Shift 2</option>
+            <option value="S3">Shift 3</option>
+          </select>
+          <p className="text-[11px] text-slate-500 mt-1">Détermine le point de départ de la rotation hebdomadaire (S1 → S3 → S2 → S1...) pour cette équipe.</p>
+        </div>
+      )}
       <div className="flex gap-2">
         <button onClick={submit} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Enregistrement..." : "Créer l'équipe"}</button>
         <button onClick={onCancel} disabled={saving} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>

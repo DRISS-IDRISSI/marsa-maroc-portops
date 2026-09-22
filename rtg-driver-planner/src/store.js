@@ -281,7 +281,7 @@ const RTGStore = (function () {
     const row = {
       id: input.teamId + "_" + input.matricule,
       matricule: input.matricule, nom: input.nom, prenom: input.prenom, email: input.email || null, team_id: input.teamId,
-      initial_shift: team ? team.shiftCycle[0] : null,
+      initial_shift: (team && team.shiftCycle && team.shiftCycle.length) ? team.shiftCycle[0] : null,
       initial_zone: input.initialZone || zonesForFleet(state.config, (team && team.typeEngin) || "RTG")[0],
       initial_vacation: input.initialVacation || "V1",
       statut: "PRESENT", date_entree: input.dateEntree || RTGDate.toISO(new Date()),
