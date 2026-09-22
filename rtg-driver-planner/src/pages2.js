@@ -2995,7 +2995,7 @@ function MesMouvementsPage() {
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
-              <th className="px-3 py-2">Date</th><th className="px-3 py-2">Shift</th><th className="px-3 py-2">Engin(s)</th>
+              <th className="px-3 py-2">Date</th><th className="px-3 py-2">Shift</th><th className="px-3 py-2">Engin</th>
               {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <th key={c.key} className="px-3 py-2 text-center">{c.label}</th>)}
               <th className="px-3 py-2 text-center font-bold">Total</th>
             </tr>
@@ -3409,33 +3409,30 @@ function MouvementsRtgPage() {
         <div className="text-xs text-slate-500 italic px-1">Aucun mouvement importé pour cette période.</div>
       )}
 
-      {!loading && byDay.map(day => (
-        <div key={day.dateIso} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 font-semibold text-slate-900 text-sm flex items-center justify-between">
-            <span>{RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}</span>
-            <span className="text-slate-400 text-xs font-normal">{day.total} mouvement{day.total > 1 ? "s" : ""}</span>
-          </div>
+      {!loading && byDay.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-slate-500">
                 <tr className="text-left">
                   <th className="px-4 py-1">Conducteur</th><th className="px-3 py-1">Équipe</th>
-                  <th className="px-3 py-1">Shift</th><th className="px-3 py-1">Engin(s)</th>
+                  <th className="px-3 py-1">Date</th><th className="px-3 py-1">Shift</th><th className="px-3 py-1">Engin</th>
                   {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <th key={c.key} className="px-3 py-1 text-center">{c.label}</th>)}
                   <th className="px-3 py-1 text-center font-bold">Total</th>
                   <th className="px-3 py-1"></th>
                 </tr>
               </thead>
               <tbody>
-                {day.rows.map(r => {
+                {byDay.map(day => day.rows.map(r => {
                   const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
                   const team = d ? state.teams.find(t => t.id === d.teamId) : null;
                   const disp = withMouvementsDisplay(r);
                   const manuelRows = r.sourceRows.filter(sr => sr.source === "MANUEL");
                   return (
-                    <tr key={r.id} className="border-t border-slate-200/60 hover:bg-marine-600/10">
+                    <tr key={day.dateIso + "_" + r.id} className="border-t border-slate-200/60 hover:bg-marine-600/10">
                       <td className="px-4 py-1.5 text-slate-900">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
                       <td className="px-3 py-1.5 text-slate-600">{team ? team.nom : "—"}</td>
+                      <td className="px-3 py-1.5 text-slate-900">{RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}</td>
                       <td className="px-3 py-1.5 text-slate-600">{r.dominantShift}</td>
                       <td className="px-3 py-1.5 text-slate-600">{manuelRows.length > 0 && manuelRows.length === r.sourceRows.length ? <span className="text-sky-400">{r.engins.join(", ")}</span> : r.engins.join(", ")}</td>
                       {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className="px-3 py-1.5 text-center text-slate-600">{disp[c.key]}</td>)}
@@ -3447,12 +3444,12 @@ function MouvementsRtgPage() {
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>
         </div>
-      ))}
+      )}
       </>
       )}
 
