@@ -1403,6 +1403,9 @@ function RendementLeaderboard({ rawState, fleet }) {
       .slice(0, 10);
   }, [rows, rawState.drivers, rawState.teams, fleet]);
 
+  const champion = ranking[0];
+  const rest = ranking.slice(1);
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <div className="mb-3">
@@ -1414,21 +1417,39 @@ function RendementLeaderboard({ rawState, fleet }) {
       ) : ranking.length === 0 ? (
         <div className="text-xs text-slate-400 italic">Aucun mouvement enregistré ce mois-ci pour l'instant.</div>
       ) : (
-        <div className="space-y-1.5">
-          {ranking.map((e, idx) => {
-            const medal = RENDEMENT_MEDALS[idx];
-            return (
-              <div key={e.driverId} className={`flex items-center gap-3 rounded-lg px-3 py-2 ${idx === 0 ? "bg-gradient-to-r from-amber-50 to-white border border-amber-200" : "bg-slate-50"}`}>
-                <div className="w-7 text-center shrink-0">
-                  {medal ? <i className={`fas ${medal.icon} ${medal.cls} text-lg`}></i> : <span className="text-slate-400 font-semibold text-sm">{idx + 1}</span>}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-medium truncate ${idx === 0 ? "text-amber-700" : "text-slate-900"}`}>{e.driver.matricule} — {e.driver.nom} {e.driver.prenom}</div>
-                </div>
-                <div className={`text-sm font-bold shrink-0 ${idx === 0 ? "text-amber-600" : "text-slate-700"}`}>{e.total}</div>
-              </div>
-            );
-          })}
+        <div className="space-y-4">
+          {/* Champion du mois — mis en grand, séparé du reste du classement. */}
+          <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-amber-50 to-white px-6 py-5 shadow-sm">
+            <i className="fas fa-trophy text-amber-400 text-5xl drop-shadow-sm"></i>
+            <div className="flex-1 text-center sm:text-left min-w-0">
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-500">Champion du mois</div>
+              <div className="text-2xl font-extrabold text-amber-800 truncate">{champion.driver.matricule} — {champion.driver.nom} {champion.driver.prenom}</div>
+            </div>
+            <div className="text-center sm:text-right shrink-0">
+              <div className="text-4xl font-extrabold text-amber-600 leading-none">{champion.total}</div>
+              <div className="text-xs text-amber-500 uppercase tracking-wider mt-1">mouvements</div>
+            </div>
+          </div>
+
+          {rest.length > 0 && (
+            <div className="space-y-1.5">
+              {rest.map((e, i) => {
+                const idx = i + 1;
+                const medal = RENDEMENT_MEDALS[idx];
+                return (
+                  <div key={e.driverId} className="flex items-center gap-3 rounded-lg px-3 py-2 bg-slate-50">
+                    <div className="w-7 text-center shrink-0">
+                      {medal ? <i className={`fas ${medal.icon} ${medal.cls} text-lg`}></i> : <span className="text-slate-400 font-semibold text-sm">{idx + 1}</span>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate text-slate-900">{e.driver.matricule} — {e.driver.nom} {e.driver.prenom}</div>
+                    </div>
+                    <div className="text-sm font-bold shrink-0 text-slate-700">{e.total}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
