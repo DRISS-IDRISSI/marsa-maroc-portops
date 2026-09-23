@@ -2265,6 +2265,15 @@ function AffectationDuJour() {
   const dateLocked = isDriverRestricted(currentUser);
   const todayIso = RTGDate.toISO(new Date());
   const tomorrowIso = RTGDate.toISO(RTGDate.addDays(new Date(), 1));
+  // Pré-remplissage depuis l'Assistant intelligent (lien "Voir l'affectation"
+  // sur une alerte datée — ?date=YYYY-MM-DD) : sinon, aujourd'hui par défaut.
+  // Ignoré pour un CONDUCTEUR (qui n'accède de toute façon pas à l'Assistant
+  // intelligent) si la date tombe hors de la plage autorisée.
+  const [searchParams] = useSearchParams();
+  const dateParam = searchParams.get("date");
+  const initialDate = dateParam && (!dateLocked || dateParam === todayIso || dateParam === tomorrowIso) ? dateParam : todayIso;
+  const [dateStr, setDateStr] = useState(initialDate);
+  const [shiftFilter, setShiftFilter] = useState("all");
   // Flotte affichée (même calcul que Home()/PlanningMensuel) — sert à
   // détecter la flotte CC pour l'avertissement "prévisionnel" ci-dessous.
   const displayedFleet = shiftRestricted && rawState.teams.find(t => t.id === ownTeamId)
@@ -2277,15 +2286,6 @@ function AffectationDuJour() {
   // une affectation acquise tant que l'affectation réelle de demain n'est pas
   // connue (demande explicite de l'exploitant, §"ON PEUT PAS DIVINER l'AFFECTATION J+2").
   const isCcProjection = displayedFleet === "CC" && dateStr > tomorrowIso;
-  // Pré-remplissage depuis l'Assistant intelligent (lien "Voir l'affectation"
-  // sur une alerte datée — ?date=YYYY-MM-DD) : sinon, aujourd'hui par défaut.
-  // Ignoré pour un CONDUCTEUR (qui n'accède de toute façon pas à l'Assistant
-  // intelligent) si la date tombe hors de la plage autorisée.
-  const [searchParams] = useSearchParams();
-  const dateParam = searchParams.get("date");
-  const initialDate = dateParam && (!dateLocked || dateParam === todayIso || dateParam === tomorrowIso) ? dateParam : todayIso;
-  const [dateStr, setDateStr] = useState(initialDate);
-  const [shiftFilter, setShiftFilter] = useState("all");
 
   const assignments = useMemo(() => {
     try {
