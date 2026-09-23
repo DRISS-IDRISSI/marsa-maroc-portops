@@ -1356,34 +1356,75 @@ const RAPPORT_MOIS_LABELS = ["Janvier","Février","Mars","Avril","Mai","Juin","J
 // ==========================================
 // Challenge Rendement — classement Top 10 par flotte, mois en cours (§ demande
 // exploitant) — basé sur le total des mouvements (TOTAL_MVMT, import TOS +
-// saisies manuelles), visible sur le tableau de bord (Accueil admin/
-// responsable ET "Mon planning" conducteur), un classement séparé par flotte
-// (RTG/CC), remis à zéro chaque mois. Un onglet "Global" (tous shifts
-// confondus) et un onglet par shift (S1/S2/S3 — comparer un rendement S1 à un
-// S2 ne serait pas équitable, l'activité diffère). Calculé côté serveur
-// (RTGStore.fetchRendementLeaderboard → fonction Postgres SECURITY DEFINER,
-// migration_017) plutôt que par agrégation client de fetchMouvementsTos : un
-// compte CONDUCTEUR ne voit (RLS) que les mouvements de SA PROPRE équipe, ce
-// qui donnerait un classement faux et différent d'un conducteur à l'autre.
-// Composant partagé entre Home() (pages.js) et MonPlanningPage() ci-dessous.
+// saisies manuelles), un classement séparé par flotte (RTG/CC), remis à zéro
+// chaque mois. Calculé côté serveur (RTGStore.fetchRendementLeaderboard →
+// fonction Postgres SECURITY DEFINER, migration_017) plutôt que par
+// agrégation client de fetchMouvementsTos : un compte CONDUCTEUR ne voit
+// (RLS) que les mouvements de SA PROPRE équipe, ce qui donnerait un
+// classement faux et différent d'un conducteur à l'autre.
+//
+// Le classement complet (Top 10, gros trophée pour le 1er) porte sur la
+// flotte ENTIÈRE (toutes équipes confondues) — visible par tout le monde, un
+// seul appel serveur, pas de navigation par onglet. En plus de ça, une rangée
+// de mini-cartes "champion de l'équipe" toujours visible (pas de clic) :
+// - "Mon planning" conducteur (pages2.js) passe `teams={[son équipe]}` — il
+//   ne voit que le champion de SA propre équipe.
+// - Accueil admin/responsable (pages.js) passe `teams={toutes les équipes de
+//   la flotte}` — ils voient le champion de CHAQUE équipe d'un coup d'œil.
 // ==========================================
 const RENDEMENT_MEDALS = [
   { icon: "fa-trophy", cls: "text-amber-400" },
   { icon: "fa-medal", cls: "text-slate-400" },
   { icon: "fa-medal", cls: "text-orange-700" }
 ];
-const RENDEMENT_TABS = [
-  { id: "global", label: "Global", shift: null },
-  { id: "S1", label: "Shift 1", shift: "S1" },
-  { id: "S2", label: "Shift 2", shift: "S2" },
-  { id: "S3", label: "Shift 3", shift: "S3" }
-];
 
-function RendementLeaderboard({ fleet }) {
+function ChampionCard({ label, champion }) {
+  if (!champion) {
+    return (
+      <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 px-6 py-5 text-center text-xs text-slate-400 italic">
+        {label} — aucun mouvement enregistré ce mois-ci pour l'instant.
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-amber-50 to-white px-6 py-5 shadow-sm">
+      <i className="fas fa-trophy text-amber-400 text-5xl drop-shadow-sm"></i>
+      <div className="flex-1 text-center sm:text-left min-w-0">
+        <div className="text-xs font-bold uppercase tracking-widest text-amber-500">{label}</div>
+        <div className="text-2xl font-extrabold text-amber-800 truncate">{champion.matricule} — {champion.nom} {champion.prenom}</div>
+        <div className="text-xs text-amber-500 mt-0.5">{champion.teamNom}</div>
+      </div>
+      <div className="text-center sm:text-right shrink-0">
+        <div className="text-4xl font-extrabold text-amber-600 leading-none">{champion.total}</div>
+        <div className="text-xs text-amber-500 uppercase tracking-wider mt-1">mouvements</div>
+      </div>
+    </div>
+  );
+}
+
+function MiniChampionCard({ label, champion }) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-600 mb-1">
+        <i className="fas fa-trophy text-amber-400"></i>{label}
+      </div>
+      {champion ? (
+        <>
+          <div className="text-sm font-bold text-slate-900 truncate">{champion.matricule} — {champion.nom} {champion.prenom}</div>
+          <div className="text-xs text-slate-500 mt-0.5">{champion.total} mouvements</div>
+        </>
+      ) : (
+        <div className="text-xs text-slate-400 italic">Aucun mouvement ce mois-ci.</div>
+      )}
+    </div>
+  );
+}
+
+function RendementLeaderboard({ fleet, teams }) {
   const now = new Date();
   const month = now.getUTCMonth() + 1, year = now.getUTCFullYear();
-  const [tab, setTab] = useState("global");
   const [ranking, setRanking] = useState([]);
+  const [teamChampions, setTeamChampions] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1392,30 +1433,28 @@ function RendementLeaderboard({ fleet }) {
     const dim = RTGDate.daysInMonth(month, year);
     const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
     const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
-    const shift = (RENDEMENT_TABS.find(t => t.id === tab) || {}).shift;
-    RTGStore.fetchRendementLeaderboard({ fleet, dateFrom, dateTo, shift })
-      .then(r => { if (!cancelled) setRanking(r); })
-      .catch(() => { if (!cancelled) setRanking([]); })
+    Promise.all([
+      RTGStore.fetchRendementLeaderboard({ fleet, dateFrom, dateTo }),
+      ...(teams || []).map(t => RTGStore.fetchRendementLeaderboard({ fleet, dateFrom, dateTo, teamId: t.id }))
+    ]).then(([global, ...perTeam]) => {
+      if (cancelled) return;
+      setRanking(global);
+      const map = {};
+      (teams || []).forEach((t, i) => { map[t.id] = (perTeam[i] || [])[0] || null; });
+      setTeamChampions(map);
+    }).catch(() => { if (!cancelled) { setRanking([]); setTeamChampions({}); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [fleet, month, year, tab]);
+  }, [fleet, teams, month, year]);
 
   const champion = ranking[0];
   const rest = ranking.slice(1);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div>
-          <div className="text-slate-900 font-semibold text-sm"><i className="fas fa-trophy text-amber-400 mr-1.5"></i>Challenge Rendement — {fleet} — {RAPPORT_MOIS_LABELS[month - 1]}</div>
-          <div className="text-xs text-slate-500 mt-0.5">Top 10 conducteurs par total de mouvements ce mois-ci</div>
-        </div>
-        <div className="flex gap-1">
-          {RENDEMENT_TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === t.id ? "bg-orange-500 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-900"}`}>{t.label}</button>
-          ))}
-        </div>
+      <div className="mb-3">
+        <div className="text-slate-900 font-semibold text-sm"><i className="fas fa-trophy text-amber-400 mr-1.5"></i>Challenge Rendement — {fleet} — {RAPPORT_MOIS_LABELS[month - 1]}</div>
+        <div className="text-xs text-slate-500 mt-0.5">Top 10 conducteurs (toute la flotte) par total de mouvements ce mois-ci</div>
       </div>
       {loading ? (
         <div className="text-xs text-slate-400 italic">Chargement du classement...</div>
@@ -1423,19 +1462,7 @@ function RendementLeaderboard({ fleet }) {
         <div className="text-xs text-slate-400 italic">Aucun mouvement enregistré ce mois-ci pour l'instant.</div>
       ) : (
         <div className="space-y-4">
-          {/* Champion du mois — mis en grand, séparé du reste du classement. */}
-          <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-amber-50 to-white px-6 py-5 shadow-sm">
-            <i className="fas fa-trophy text-amber-400 text-5xl drop-shadow-sm"></i>
-            <div className="flex-1 text-center sm:text-left min-w-0">
-              <div className="text-xs font-bold uppercase tracking-widest text-amber-500">Champion du mois</div>
-              <div className="text-2xl font-extrabold text-amber-800 truncate">{champion.matricule} — {champion.nom} {champion.prenom}</div>
-              <div className="text-xs text-amber-500 mt-0.5">{champion.teamNom}</div>
-            </div>
-            <div className="text-center sm:text-right shrink-0">
-              <div className="text-4xl font-extrabold text-amber-600 leading-none">{champion.total}</div>
-              <div className="text-xs text-amber-500 uppercase tracking-wider mt-1">mouvements</div>
-            </div>
-          </div>
+          <ChampionCard label="Champion du mois — toute la flotte" champion={champion} />
 
           {rest.length > 0 && (
             <div className="space-y-1.5">
@@ -1456,6 +1483,17 @@ function RendementLeaderboard({ fleet }) {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {teams && teams.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            {teams.length > 1 ? "Champion de chaque équipe" : "Champion de votre équipe"}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teams.map(t => <MiniChampionCard key={t.id} label={t.nom} champion={teamChampions[t.id]} />)}
+          </div>
         </div>
       )}
     </div>
@@ -2528,7 +2566,7 @@ function MonPlanningPage() {
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}{team ? " — " + team.nom : ""}</p>
       </div>
 
-      <RendementLeaderboard fleet={team ? (team.typeEngin || "RTG") : "RTG"} />
+      <RendementLeaderboard fleet={team ? (team.typeEngin || "RTG") : "RTG"} teams={team ? [team] : []} />
 
       <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>

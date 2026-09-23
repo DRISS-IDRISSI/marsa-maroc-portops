@@ -685,14 +685,14 @@ const RTGStore = (function () {
   }
 
   // Classement "Challenge Rendement" (Top 10 par flotte, mois en cours, global
-  // ou par shift) — appelle la fonction Postgres rendement_leaderboard
+  // ou par équipe) — appelle la fonction Postgres rendement_leaderboard
   // (SECURITY DEFINER, migration_017) plutôt que d'agréger côté client via
   // fetchMouvementsTos : un compte CONDUCTEUR ne voit (RLS) que les
   // mouvements de SA PROPRE équipe, ce qui donnerait un classement faux et
   // différent d'un conducteur à l'autre si on agrégeait ici.
-  async function fetchRendementLeaderboard({ fleet, dateFrom, dateTo, shift } = {}) {
+  async function fetchRendementLeaderboard({ fleet, dateFrom, dateTo, teamId } = {}) {
     const { data, error } = await sb.rpc("rendement_leaderboard", {
-      p_fleet: fleet, p_date_from: dateFrom, p_date_to: dateTo, p_shift: shift || null
+      p_fleet: fleet, p_date_from: dateFrom, p_date_to: dateTo, p_team_id: teamId || null
     });
     if (error) { console.error(error); throw error; }
     return (data || []).map(r => ({

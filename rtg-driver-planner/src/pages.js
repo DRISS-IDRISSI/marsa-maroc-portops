@@ -1636,6 +1636,15 @@ function Home() {
     teams: fTeams,
     drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
   }), [rawState, fTeams]);
+  // Challenge Rendement (§ demande exploitant) : un Responsable (de Shift ou
+  // non) voit le champion de CHAQUE équipe de la flotte, pas seulement la
+  // sienne — contrairement à la restriction habituelle de cette page pour un
+  // compte restreint, volontaire ici. Filtré sur la flotte RÉELLEMENT
+  // affichée dans le widget (celle de sa propre équipe s'il est restreint,
+  // PAS forcément rawState.currentFleet — sinon décalage possible si la
+  // bascule globale ne correspond pas à sa flotte).
+  const rendementFleet = shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet;
+  const allFleetTeams = useMemo(() => rawState.teams.filter(t => (t.typeEngin || "RTG") === rendementFleet), [rawState.teams, rendementFleet]);
 
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
   const todayIso = RTGDate.toISO(RTGDate.makeDate(year, month, Math.min(today.getUTCDate(), planning.days.length)));
@@ -1682,7 +1691,7 @@ function Home() {
 
       <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />
 
-      <RendementLeaderboard fleet={shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet} />
+      <RendementLeaderboard fleet={rendementFleet} teams={allFleetTeams} />
 
       {pendingConges.length > 0 && (
         <button onClick={() => nav("/conges")} className="w-full text-left flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-700 rounded-xl px-4 py-3 text-sm hover:bg-amber-500/15 transition-all">
