@@ -17,6 +17,12 @@
 -- confondues) ; un id d'équipe = classement restreint à cette équipe
 -- uniquement ("shift" au sens terrain = équipe, ex. "GR HADDAZI", pas S1/S2/S3).
 
+-- Postgres refuse de renommer un paramètre via CREATE OR REPLACE (même
+-- signature de types) — nécessaire seulement si une version antérieure de
+-- cette fonction (avec "p_shift" au lieu de "p_team_id") a déjà été exécutée ;
+-- sans effet sinon.
+drop function if exists rendement_leaderboard(text, date, date, text);
+
 create or replace function rendement_leaderboard(p_fleet text, p_date_from date, p_date_to date, p_team_id text default null)
 returns table(driver_id text, matricule text, nom text, prenom text, team_nom text, total bigint)
 language sql stable security definer set search_path = public as $$
