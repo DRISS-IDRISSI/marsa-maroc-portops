@@ -27,6 +27,12 @@
 //   - REPOS : jamais 2 jours consécutifs pour un même conducteur — déjà
 //     garanti par RestDayEngine (génération du planning mensuel, même
 //     principe que RTG), rien à refaire ici.
+//   - STAGIAIRES (ex. GR STAGIAIRES — équipe sans rotation fixe,
+//     team.shiftCycle vide) : EXCLUS de cette file d'attente. Ils travaillent
+//     V1+V2 (journée complète), affectés manuellement chaque jour au shift
+//     d'une équipe titulaire à renforcer — jamais de poste QUAI/PARC calculé
+//     pour eux, jamais comptés dans le plafond des 7 postes (voir
+//     _ccDrivers ci-dessous).
 //
 // Comme pour ZoneRotationEngine (RTG), la file d'attente ne peut être connue
 // qu'en rejouant jour par jour depuis rotationReferenceDate (cascade), car
@@ -64,11 +70,20 @@ const CcPosteRotationEngine = {
     this._cursorIso = null;
   },
 
+  // Conducteurs CC concernés par la file d'attente QUAI/PARC — exclut les
+  // équipes "stagiaires" (pas de rotation fixe, ex. GR STAGIAIRES —
+  // team.shiftCycle vide, voir TeamForm/ShiftRotationEngine) : un stagiaire
+  // cavalier travaille V1+V2 (journée complète), saisi manuellement chaque
+  // jour sur le shift d'une équipe titulaire qu'il vient renforcer, et ne
+  // suit jamais la rotation des titulaires ni ne compte pour les 7 postes
+  // QUAI (confirmé par l'exploitant).
   _ccDrivers(state, teams) {
     return state.drivers.filter(d => {
       if (d.actif === false) return false;
       const team = teams.find(t => t.id === d.teamId);
-      return team && team.typeEngin === "CC";
+      if (!team || team.typeEngin !== "CC") return false;
+      if (!team.shiftCycle || team.shiftCycle.length === 0) return false;
+      return true;
     });
   },
 

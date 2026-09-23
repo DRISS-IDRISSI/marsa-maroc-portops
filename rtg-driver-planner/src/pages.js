@@ -2232,6 +2232,15 @@ function ReposCongesPrintable({ rows, showTeamColumn = true }) {
 // ==========================================
 // 3. Affectation du jour
 // ==========================================
+// Le groupe "V1+V2" (journée complète) est réservé aux stagiaires (jamais de
+// rotation automatique pour eux, cf. AssignmentEditModal/ccPosteRotationEngine)
+// — affiché "Stagiaires" plutôt que le nom technique "V1+V2", pour
+// correspondre à la colonne "STAGIAIRES" du modèle terrain (exploitant CC).
+function vacationGroupTitle(vacation) {
+  if (vacation.id === "V1+V2") return `Stagiaires · ${vacation.start} → ${vacation.end}`;
+  return `Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`;
+}
+
 function AffectationDuJour() {
   const rawState = useRtgState();
   const currentUser = useCurrentUser();
@@ -2472,7 +2481,7 @@ function AffectationDuJour() {
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {grouped[s.id].map(({ vacation, rows }) => (
-                <ShiftBlock key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} icon="fa-clock" rows={rows} />
+                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} />
               ))}
             </div>
           </div>
@@ -2515,7 +2524,7 @@ function AffectationDuJour() {
               />
               <div>
                 {grouped[s.id].map(({ vacation, rows }) => (
-                  <ShiftBlockPrintable key={vacation.id} title={`Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`} rows={rows} showTeamColumn={false} />
+                  <ShiftBlockPrintable key={vacation.id} title={vacationGroupTitle(vacation)} rows={rows} showTeamColumn={false} />
                 ))}
                 {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
               </div>
