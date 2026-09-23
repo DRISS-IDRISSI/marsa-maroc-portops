@@ -70,19 +70,23 @@ const CcPosteRotationEngine = {
     this._cursorIso = null;
   },
 
-  // Conducteurs CC concernés par la file d'attente QUAI/PARC — exclut les
-  // équipes "stagiaires" (pas de rotation fixe, ex. GR STAGIAIRES —
-  // team.shiftCycle vide, voir TeamForm/ShiftRotationEngine) : un stagiaire
-  // cavalier travaille V1+V2 (journée complète), saisi manuellement chaque
-  // jour sur le shift d'une équipe titulaire qu'il vient renforcer, et ne
-  // suit jamais la rotation des titulaires ni ne compte pour les 7 postes
-  // QUAI (confirmé par l'exploitant).
+  // Conducteurs CC concernés par la file d'attente QUAI/PARC — exclut
+  // l'équipe "stagiaires" (ex. "GR STAGIAIRE") : un stagiaire cavalier
+  // travaille V1+V2 (journée complète), saisi manuellement chaque jour sur
+  // le shift d'une équipe titulaire qu'il vient renforcer, et ne suit jamais
+  // la rotation des titulaires ni ne compte pour les 7 postes QUAI (confirmé
+  // par l'exploitant). Détection sur deux critères — soit suffit — car on ne
+  // peut pas garantir que la case "pas de rotation fixe" ait été cochée à la
+  // création de l'équipe (team.shiftCycle vide, voir TeamForm) : le NOM de
+  // l'équipe contenant "stagiaire" (celui réellement utilisé sur le terrain)
+  // sert de filet de sécurité.
   _ccDrivers(state, teams) {
     return state.drivers.filter(d => {
       if (d.actif === false) return false;
       const team = teams.find(t => t.id === d.teamId);
       if (!team || team.typeEngin !== "CC") return false;
       if (!team.shiftCycle || team.shiftCycle.length === 0) return false;
+      if (/stagiaire/i.test(team.nom || "")) return false;
       return true;
     });
   },
