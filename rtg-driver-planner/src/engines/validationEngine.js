@@ -22,6 +22,27 @@ const ValidationEngine = {
     const hasManualRepos = {};
     state.drivers.forEach(d => { reposCount[d.id] = 0; correctedReposCount[d.id] = 0; });
 
+    // Équipe "stagiaires" (ex. GR STAGIAIRE) : shift/vacation/zone n'y sont
+    // JAMAIS calculés automatiquement (chaque stagiaire est affecté
+    // manuellement, au jour le jour, au shift d'une équipe titulaire à
+    // renforcer — cf. ccPosteRotationEngine.js, même détection à double
+    // critère) — une affectation sans zone y est donc normale, pas une
+    // anomalie à signaler tant qu'aucune saisie manuelle n'a été faite.
+    const noRotationDriverIds = new Set();
+    // Libellé de zone attendu, spécifique à la flotte du conducteur (les
+    // zones RTG sont des lettres A-H, les postes CC sont P71/P72.../DTV/PARC
+    // — voir zonesForFleet, data.js) : jamais "Zone A-H" pour un conducteur CC.
+    const zoneLabelByDriverId = {};
+    state.drivers.forEach(d => {
+      const team = state.teams.find(t => t.id === d.teamId);
+      if (team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""))) {
+        noRotationDriverIds.add(d.id);
+      }
+      const fleet = (team && team.typeEngin) || "RTG";
+      const zones = zonesForFleet(state.config, fleet);
+      zoneLabelByDriverId[d.id] = fleet === "RTG" ? `Zone ${zones[0]}-${zones[zones.length - 1]}` : "Poste QUAI ou PARC";
+    });
+
     days.forEach(day => {
       day.assignments.forEach(a => {
         if (a.status === "REPOS") {
@@ -30,10 +51,10 @@ const ValidationEngine = {
           if (a.source === "MANUAL") hasManualRepos[a.driverId] = true;
         }
 
-        if (a.status === "PRESENT") {
+        if (a.status === "PRESENT" && !noRotationDriverIds.has(a.driverId)) {
           if (!a.shift) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans shift", attendu: "Shift défini", trouve: "—" });
           if (!a.vacation) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans vacation", attendu: "V1 ou V2", trouve: "—" });
-          if (!a.zone) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: "Zone A-H", trouve: "—" });
+          if (!a.zone) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: zoneLabelByDriverId[a.driverId] || "Zone définie", trouve: "—" });
         }
 
         if (a.status === "OFF" && (a.shift || a.vacation || a.zone)) {

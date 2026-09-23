@@ -1981,7 +1981,7 @@ function PlanningMensuel() {
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Planning mensuel RTG</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Planning mensuel {shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet}</h1>
           <p className="text-slate-400 text-sm mt-0.5">Généré automatiquement par le moteur de planification (shift / zone / vacation / repos)</p>
         </div>
         <div className="flex gap-2">
