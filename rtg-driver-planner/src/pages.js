@@ -1523,7 +1523,7 @@ function ZoneOrStatutBadge({ a }) {
   return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>;
 }
 
-function ShiftBlock({ title, icon, rows }) {
+function ShiftBlock({ title, icon, rows, onEditRow }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   // Bordure plus marquée + ombre (au lieu du simple border-slate-200 des
@@ -1562,7 +1562,11 @@ function ShiftBlock({ title, icon, rows }) {
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
                   <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-700 font-bold" : "bg-marine-600/20 text-marine-700"}`}>{a.vacation}</span> : "—"}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime ? `${a.startTime}–${a.endTime}` : "—"}</td>
-                  <td className="py-1.5 pr-3"><ZoneOrStatutBadge a={a} /></td>
+                  <td className={`py-1.5 pr-3 ${onEditRow ? "cursor-pointer hover:brightness-125" : ""}`}
+                    onClick={onEditRow ? () => onEditRow(a) : undefined}
+                    title={onEditRow ? "Cliquer pour modifier l'affectation de ce conducteur" : undefined}>
+                    <ZoneOrStatutBadge a={a} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2362,6 +2366,21 @@ function AffectationDuJour() {
   };
   const rowSort = displayedFleet === "CC" ? byCcRank : byOrdreAffichage;
 
+  // Donner la main au responsable pour renseigner/corriger l'affectation du
+  // jour même (poste QUAI/PARC pour un conducteur CC, zone pour un RTG) —
+  // même modale et même permission que l'édition case par case du Planning
+  // Mensuel (§32) : ADMIN/RESPONSABLE/RESPONSABLE_SHIFT seulement, jamais le
+  // CONDUCTEUR (lecture seule). Demande explicite de l'exploitant : la
+  // rotation automatique n'est qu'une PROPOSITION de priorité (cf. bandeau
+  // "prévisionnel" ci-dessus) — c'est la saisie du jour même par le
+  // responsable qui fait foi.
+  const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"].indexOf(currentUser.role) !== -1;
+  const [editing, setEditing] = useState(null);
+  const onEditRow = canEditPlanning ? (a) => {
+    const driver = driverById[a.driverId];
+    if (driver) setEditing({ driver: driver, iso: dateStr, assignment: a });
+  } : undefined;
+
   const grouped = {};
   state.config.shifts.forEach(s => {
     const vacDefs = state.config.vacations[s.id] || [];
@@ -2524,16 +2543,20 @@ function AffectationDuJour() {
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {grouped[s.id].map(({ vacation, rows }) => (
-                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} />
+                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} />
               ))}
             </div>
           </div>
         ))}
 
         {offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3") && (
-          <ShiftBlock title="OFF — Shift 3 dimanche" icon="fa-power-off" rows={offRows} />
+          <ShiftBlock title="OFF — Shift 3 dimanche" icon="fa-power-off" rows={offRows} onEditRow={onEditRow} />
         )}
       </div>
+
+      {editing && (
+        <AssignmentEditModal driver={editing.driver} iso={editing.iso} assignment={editing.assignment} config={state.config} teams={state.teams} onClose={() => setEditing(null)} />
+      )}
 
       {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de
           l'appli. Jour férié : un seul bloc/page. Sinon : UN BLOC PAR SHIFT

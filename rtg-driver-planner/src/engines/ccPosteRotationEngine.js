@@ -18,7 +18,12 @@
 //     file (parmi les conducteurs PRESENT ce jour-là) reçoivent un poste QUAI
 //     (dans l'ordre de ccQuaiPosts), le reste va au PARC. Le Responsable de
 //     Shift peut toujours corriger à la main (mêmes overrides manuels que
-//     RTG) si moins de postes sont réellement nécessaires ce jour-là.
+//     RTG, via Affectation du jour → AssignmentEditModal) si moins de postes
+//     sont réellement nécessaires ce jour-là — CETTE correction devient alors
+//     le "poste d'hier" pour le calcul du LENDEMAIN (voir la partition
+//     ci-dessous) : la simulation automatique n'est qu'une proposition de
+//     priorité tant qu'aucune saisie réelle n'existe pour ce jour-là, jamais
+//     une prédiction qui prime sur le terrain une fois celui-ci renseigné.
 //   - CONGÉ (et MALADIE/ABSENCE/FORMATION, mêmes statuts figés que
 //     PlanningEngine) : le conducteur est GELÉ hors de la file pendant toute
 //     la durée de son absence (ne remonte pas comme au parc). À son 1er jour
@@ -175,12 +180,20 @@ const CcPosteRotationEngine = {
 
         // Partition stable : qui N'ÉTAIT PAS au QUAI hier (repos/parc/autorise)
         // passe devant ; qui ÉTAIT au QUAI hier passe derrière — ordre relatif
-        // conservé dans chaque groupe.
+        // conservé dans chaque groupe. Le "poste d'hier" retenu est la
+        // RÉALITÉ saisie par le responsable (Affectation du jour →
+        // AssignmentEditModal, override manuel) quand elle existe, PAS le
+        // résultat de la simulation : c'est exactement le "jour de départ"
+        // demandé par l'exploitant — dès que le responsable a renseigné
+        // l'affectation réelle d'un jour, la file du lendemain en tient
+        // compte, au lieu de rejouer indéfiniment une simulation théorique
+        // qui ne peut pas deviner les corrections de terrain.
         const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
         const yesterdayZone = this._dayZone[yesterdayIso] || {};
         const front = [], back = [];
         order.forEach(id => {
-          const z = yesterdayZone[id];
+          const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
+          const z = manualYesterday ? manualYesterday.zone : yesterdayZone[id];
           if (z && quaiPosts.indexOf(z) !== -1) back.push(id); else front.push(id);
         });
         order = front.concat(back).concat(toAppend);
