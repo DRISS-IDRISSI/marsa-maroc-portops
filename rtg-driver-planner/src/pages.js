@@ -2265,6 +2265,18 @@ function AffectationDuJour() {
   const dateLocked = isDriverRestricted(currentUser);
   const todayIso = RTGDate.toISO(new Date());
   const tomorrowIso = RTGDate.toISO(RTGDate.addDays(new Date(), 1));
+  // Flotte affichée (même calcul que Home()/PlanningMensuel) — sert à
+  // détecter la flotte CC pour l'avertissement "prévisionnel" ci-dessous.
+  const displayedFleet = shiftRestricted && rawState.teams.find(t => t.id === ownTeamId)
+    ? (rawState.teams.find(t => t.id === ownTeamId).typeEngin || "RTG")
+    : rawState.currentFleet;
+  // Rotation QUAI/PARC CC (file d'attente, §ccPosteRotationEngine) : contrairement
+  // à la rotation RTG (simple pointeur individuel par conducteur), une seule
+  // absence non encore saisie pour demain peut rebattre l'ORDRE DE TOUTE
+  // L'ÉQUIPE au-delà — on ne peut donc pas présenter un jour > demain comme
+  // une affectation acquise tant que l'affectation réelle de demain n'est pas
+  // connue (demande explicite de l'exploitant, §"ON PEUT PAS DIVINER l'AFFECTATION J+2").
+  const isCcProjection = displayedFleet === "CC" && dateStr > tomorrowIso;
   // Pré-remplissage depuis l'Assistant intelligent (lien "Voir l'affectation"
   // sur une alerte datée — ?date=YYYY-MM-DD) : sinon, aujourd'hui par défaut.
   // Ignoré pour un CONDUCTEUR (qui n'accède de toute façon pas à l'Assistant
@@ -2466,6 +2478,21 @@ function AffectationDuJour() {
       {holiday && (
         <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-700 rounded-xl px-4 py-3 text-sm print:hidden">
           <i className="fas fa-star-and-crescent"></i> Jour férié — {holiday.label} — journée chômée, aucune affectation générée
+        </div>
+      )}
+
+      {isCcProjection && (
+        <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-800 rounded-xl px-4 py-3 text-sm print:hidden">
+          <i className="fas fa-triangle-exclamation mt-0.5"></i>
+          <div>
+            <p className="font-semibold">Affectation prévisionnelle — au-delà de demain</p>
+            <p className="mt-0.5 text-amber-700">
+              Tant que le responsable n'a pas saisi l'affectation réelle de demain ({RTGDate.formatFr(RTGDate.parseISO(tomorrowIso))}),
+              la rotation QUAI/PARC affichée ici pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))} n'est qu'une simulation qui
+              suppose qu'aucun imprévu (congé, maladie, absence) ne survient d'ici là. Un seul imprévu non encore saisi peut rebattre
+              l'ordre de toute l'équipe : ce tableau se recalculera automatiquement au fur et à mesure des saisies réelles, jour après jour.
+            </p>
+          </div>
         </div>
       )}
 
