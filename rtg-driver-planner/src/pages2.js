@@ -1353,6 +1353,88 @@ function RemplacementPage() {
 // ==========================================
 const RAPPORT_MOIS_LABELS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
+// ==========================================
+// Challenge Rendement — classement Top 10 par flotte, mois en cours (§ demande
+// exploitant) — basé sur le total des mouvements (TOTAL_MVMT, import TOS +
+// saisies manuelles), visible sur le tableau de bord (Accueil admin/
+// responsable ET "Mon planning" conducteur), un classement séparé par flotte
+// (RTG/CC), remis à zéro chaque mois. Composant partagé entre Home() (pages.js)
+// et MonPlanningPage() ci-dessous.
+// ==========================================
+const RENDEMENT_MEDALS = [
+  { icon: "fa-trophy", cls: "text-amber-400" },
+  { icon: "fa-medal", cls: "text-slate-400" },
+  { icon: "fa-medal", cls: "text-orange-700" }
+];
+
+function RendementLeaderboard({ rawState, fleet }) {
+  const now = new Date();
+  const month = now.getUTCMonth() + 1, year = now.getUTCFullYear();
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const dim = RTGDate.daysInMonth(month, year);
+    const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
+    const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
+    RTGStore.fetchMouvementsTos({ dateFrom, dateTo })
+      .then(r => { if (!cancelled) setRows(r); })
+      .catch(() => { if (!cancelled) setRows([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [fleet, month, year]);
+
+  const ranking = useMemo(() => {
+    const totals = {};
+    rows.forEach(r => {
+      if (!r.driverId) return;
+      const d = rawState.drivers.find(dr => dr.id === r.driverId);
+      if (!d) return;
+      const team = rawState.teams.find(t => t.id === d.teamId);
+      if (((team && team.typeEngin) || "RTG") !== fleet) return;
+      totals[r.driverId] = (totals[r.driverId] || 0) + (r.totalMvmt || 0);
+    });
+    return Object.keys(totals)
+      .map(driverId => ({ driverId: driverId, driver: rawState.drivers.find(d => d.id === driverId), total: totals[driverId] }))
+      .filter(e => e.driver)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [rows, rawState.drivers, rawState.teams, fleet]);
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="mb-3">
+        <div className="text-slate-900 font-semibold text-sm"><i className="fas fa-trophy text-amber-400 mr-1.5"></i>Challenge Rendement — {fleet} — {RAPPORT_MOIS_LABELS[month - 1]}</div>
+        <div className="text-xs text-slate-500 mt-0.5">Top 10 conducteurs par total de mouvements ce mois-ci</div>
+      </div>
+      {loading ? (
+        <div className="text-xs text-slate-400 italic">Chargement du classement...</div>
+      ) : ranking.length === 0 ? (
+        <div className="text-xs text-slate-400 italic">Aucun mouvement enregistré ce mois-ci pour l'instant.</div>
+      ) : (
+        <div className="space-y-1.5">
+          {ranking.map((e, idx) => {
+            const medal = RENDEMENT_MEDALS[idx];
+            return (
+              <div key={e.driverId} className={`flex items-center gap-3 rounded-lg px-3 py-2 ${idx === 0 ? "bg-gradient-to-r from-amber-50 to-white border border-amber-200" : "bg-slate-50"}`}>
+                <div className="w-7 text-center shrink-0">
+                  {medal ? <i className={`fas ${medal.icon} ${medal.cls} text-lg`}></i> : <span className="text-slate-400 font-semibold text-sm">{idx + 1}</span>}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-medium truncate ${idx === 0 ? "text-amber-700" : "text-slate-900"}`}>{e.driver.matricule} — {e.driver.nom} {e.driver.prenom}</div>
+                </div>
+                <div className={`text-sm font-bold shrink-0 ${idx === 0 ? "text-amber-600" : "text-slate-700"}`}>{e.total}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function buildRapportRH(state, month, year, teamId) {
   const planning = PlanningEngine.generateMonthlyPlanning(month, year, state);
   const firstIso = planning.days[0].iso;
@@ -2418,6 +2500,8 @@ function MonPlanningPage() {
         <h1 className="text-2xl font-bold text-slate-900">Mon planning</h1>
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}{team ? " — " + team.nom : ""}</p>
       </div>
+
+      <RendementLeaderboard rawState={state} fleet={team ? (team.typeEngin || "RTG") : "RTG"} />
 
       <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
