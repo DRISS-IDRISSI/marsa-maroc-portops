@@ -1358,19 +1358,32 @@ const RAPPORT_MOIS_LABELS = ["Janvier","Février","Mars","Avril","Mai","Juin","J
 // exploitant) — basé sur le total des mouvements (TOTAL_MVMT, import TOS +
 // saisies manuelles), visible sur le tableau de bord (Accueil admin/
 // responsable ET "Mon planning" conducteur), un classement séparé par flotte
-// (RTG/CC), remis à zéro chaque mois. Composant partagé entre Home() (pages.js)
-// et MonPlanningPage() ci-dessous.
+// (RTG/CC), remis à zéro chaque mois. Un onglet "Global" (tous shifts
+// confondus) et un onglet par shift (S1/S2/S3 — comparer un rendement S1 à un
+// S2 ne serait pas équitable, l'activité diffère). Calculé côté serveur
+// (RTGStore.fetchRendementLeaderboard → fonction Postgres SECURITY DEFINER,
+// migration_017) plutôt que par agrégation client de fetchMouvementsTos : un
+// compte CONDUCTEUR ne voit (RLS) que les mouvements de SA PROPRE équipe, ce
+// qui donnerait un classement faux et différent d'un conducteur à l'autre.
+// Composant partagé entre Home() (pages.js) et MonPlanningPage() ci-dessous.
 // ==========================================
 const RENDEMENT_MEDALS = [
   { icon: "fa-trophy", cls: "text-amber-400" },
   { icon: "fa-medal", cls: "text-slate-400" },
   { icon: "fa-medal", cls: "text-orange-700" }
 ];
+const RENDEMENT_TABS = [
+  { id: "global", label: "Global", shift: null },
+  { id: "S1", label: "Shift 1", shift: "S1" },
+  { id: "S2", label: "Shift 2", shift: "S2" },
+  { id: "S3", label: "Shift 3", shift: "S3" }
+];
 
-function RendementLeaderboard({ rawState, fleet }) {
+function RendementLeaderboard({ fleet }) {
   const now = new Date();
   const month = now.getUTCMonth() + 1, year = now.getUTCFullYear();
-  const [rows, setRows] = useState([]);
+  const [tab, setTab] = useState("global");
+  const [ranking, setRanking] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1379,38 +1392,30 @@ function RendementLeaderboard({ rawState, fleet }) {
     const dim = RTGDate.daysInMonth(month, year);
     const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
     const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
-    RTGStore.fetchMouvementsTos({ dateFrom, dateTo })
-      .then(r => { if (!cancelled) setRows(r); })
-      .catch(() => { if (!cancelled) setRows([]); })
+    const shift = (RENDEMENT_TABS.find(t => t.id === tab) || {}).shift;
+    RTGStore.fetchRendementLeaderboard({ fleet, dateFrom, dateTo, shift })
+      .then(r => { if (!cancelled) setRanking(r); })
+      .catch(() => { if (!cancelled) setRanking([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [fleet, month, year]);
-
-  const ranking = useMemo(() => {
-    const totals = {};
-    rows.forEach(r => {
-      if (!r.driverId) return;
-      const d = rawState.drivers.find(dr => dr.id === r.driverId);
-      if (!d) return;
-      const team = rawState.teams.find(t => t.id === d.teamId);
-      if (((team && team.typeEngin) || "RTG") !== fleet) return;
-      totals[r.driverId] = (totals[r.driverId] || 0) + (r.totalMvmt || 0);
-    });
-    return Object.keys(totals)
-      .map(driverId => ({ driverId: driverId, driver: rawState.drivers.find(d => d.id === driverId), total: totals[driverId] }))
-      .filter(e => e.driver)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [rows, rawState.drivers, rawState.teams, fleet]);
+  }, [fleet, month, year, tab]);
 
   const champion = ranking[0];
   const rest = ranking.slice(1);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-      <div className="mb-3">
-        <div className="text-slate-900 font-semibold text-sm"><i className="fas fa-trophy text-amber-400 mr-1.5"></i>Challenge Rendement — {fleet} — {RAPPORT_MOIS_LABELS[month - 1]}</div>
-        <div className="text-xs text-slate-500 mt-0.5">Top 10 conducteurs par total de mouvements ce mois-ci</div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div>
+          <div className="text-slate-900 font-semibold text-sm"><i className="fas fa-trophy text-amber-400 mr-1.5"></i>Challenge Rendement — {fleet} — {RAPPORT_MOIS_LABELS[month - 1]}</div>
+          <div className="text-xs text-slate-500 mt-0.5">Top 10 conducteurs par total de mouvements ce mois-ci</div>
+        </div>
+        <div className="flex gap-1">
+          {RENDEMENT_TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === t.id ? "bg-orange-500 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-900"}`}>{t.label}</button>
+          ))}
+        </div>
       </div>
       {loading ? (
         <div className="text-xs text-slate-400 italic">Chargement du classement...</div>
@@ -1423,7 +1428,8 @@ function RendementLeaderboard({ rawState, fleet }) {
             <i className="fas fa-trophy text-amber-400 text-5xl drop-shadow-sm"></i>
             <div className="flex-1 text-center sm:text-left min-w-0">
               <div className="text-xs font-bold uppercase tracking-widest text-amber-500">Champion du mois</div>
-              <div className="text-2xl font-extrabold text-amber-800 truncate">{champion.driver.matricule} — {champion.driver.nom} {champion.driver.prenom}</div>
+              <div className="text-2xl font-extrabold text-amber-800 truncate">{champion.matricule} — {champion.nom} {champion.prenom}</div>
+              <div className="text-xs text-amber-500 mt-0.5">{champion.teamNom}</div>
             </div>
             <div className="text-center sm:text-right shrink-0">
               <div className="text-4xl font-extrabold text-amber-600 leading-none">{champion.total}</div>
@@ -1442,7 +1448,7 @@ function RendementLeaderboard({ rawState, fleet }) {
                       {medal ? <i className={`fas ${medal.icon} ${medal.cls} text-lg`}></i> : <span className="text-slate-400 font-semibold text-sm">{idx + 1}</span>}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate text-slate-900">{e.driver.matricule} — {e.driver.nom} {e.driver.prenom}</div>
+                      <div className="text-sm font-medium truncate text-slate-900">{e.matricule} — {e.nom} {e.prenom}</div>
                     </div>
                     <div className="text-sm font-bold shrink-0 text-slate-700">{e.total}</div>
                   </div>
@@ -2522,7 +2528,7 @@ function MonPlanningPage() {
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}{team ? " — " + team.nom : ""}</p>
       </div>
 
-      <RendementLeaderboard rawState={state} fleet={team ? (team.typeEngin || "RTG") : "RTG"} />
+      <RendementLeaderboard fleet={team ? (team.typeEngin || "RTG") : "RTG"} />
 
       <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>

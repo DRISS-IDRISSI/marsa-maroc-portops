@@ -1682,7 +1682,7 @@ function Home() {
 
       <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />
 
-      <RendementLeaderboard rawState={rawState} fleet={shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet} />
+      <RendementLeaderboard fleet={shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet} />
 
       {pendingConges.length > 0 && (
         <button onClick={() => nav("/conges")} className="w-full text-left flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-700 rounded-xl px-4 py-3 text-sm hover:bg-amber-500/15 transition-all">

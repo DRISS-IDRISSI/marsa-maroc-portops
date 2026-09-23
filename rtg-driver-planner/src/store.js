@@ -684,6 +684,23 @@ const RTGStore = (function () {
     return tosRows.map(mapMouvementTosRow).concat(manuelRows.map(mapMouvementManuelRow));
   }
 
+  // Classement "Challenge Rendement" (Top 10 par flotte, mois en cours, global
+  // ou par shift) — appelle la fonction Postgres rendement_leaderboard
+  // (SECURITY DEFINER, migration_017) plutôt que d'agréger côté client via
+  // fetchMouvementsTos : un compte CONDUCTEUR ne voit (RLS) que les
+  // mouvements de SA PROPRE équipe, ce qui donnerait un classement faux et
+  // différent d'un conducteur à l'autre si on agrégeait ici.
+  async function fetchRendementLeaderboard({ fleet, dateFrom, dateTo, shift } = {}) {
+    const { data, error } = await sb.rpc("rendement_leaderboard", {
+      p_fleet: fleet, p_date_from: dateFrom, p_date_to: dateTo, p_shift: shift || null
+    });
+    if (error) { console.error(error); throw error; }
+    return (data || []).map(r => ({
+      driverId: r.driver_id, matricule: r.matricule, nom: r.nom, prenom: r.prenom,
+      teamNom: r.team_nom, total: Number(r.total) || 0
+    }));
+  }
+
   // Ignorer durablement un login TOS non rattaché à un conducteur (ex.
   // conducteur tracteur ayant ponctuellement opéré un RTG) : le prochain
   // import ne le remontera plus jamais, et supprime au passage les lignes
@@ -904,6 +921,6 @@ const RTGStore = (function () {
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,
     addTeam, updateTeam, setCurrentFleet,
     getFerieMouvements, setFerieMouvements,
-    fetchMouvementsTos, addMouvementManuel, deleteMouvementManuel, ignoreTosLogin
+    fetchMouvementsTos, fetchRendementLeaderboard, addMouvementManuel, deleteMouvementManuel, ignoreTosLogin
   };
 })();
