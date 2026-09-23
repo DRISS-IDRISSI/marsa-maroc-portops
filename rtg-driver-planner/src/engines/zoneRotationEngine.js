@@ -10,9 +10,9 @@
 // La liste des zones dépend de la flotte de l'équipe du conducteur (RTG ou
 // CC — § module Chariots Cavalier, zonesForFleet dans data.js).
 //
-// Pour la flotte CC, la mécanique reste la formule individuelle indépendante
-// d'origine (chaque conducteur avance de 1 zone par jour PRESENT, sans lien
-// avec les autres conducteurs de son équipe).
+// Pour la flotte CC, la mécanique est entièrement différente (file d'attente
+// QUAI/PARC par bloc de vacation, voir ccPosteRotationEngine.js) — ce fichier
+// ne fait que déléguer à CcPosteRotationEngine pour cette flotte.
 //
 // Pour la flotte RTG, la règle a été étendue (règle métier confirmée) : la
 // zone de demain d'un conducteur dépend de la zone RÉELLEMENT reçue hier
@@ -36,12 +36,6 @@
 // jour pour TOUTE la flotte RTG à la fois, dans l'ordre chronologique depuis
 // rotationReferenceDate, et non conducteur par conducteur indépendamment.
 // ==========================================
-
-function zonesForDriver(driver, state, teams) {
-  const team = teams.find(t => t.id === driver.teamId);
-  const fleet = (team && team.typeEngin) || "RTG";
-  return zonesForFleet(state.config, fleet);
-}
 
 const ZoneRotationEngine = {
   _cache: {},
@@ -149,25 +143,6 @@ const ZoneRotationEngine = {
     }
   },
 
-  // Index de zone du conducteur à une date donnée, indépendamment de son statut ce
-  // jour-là (avance uniquement sur les jours PRESENT rencontrés avant cette date).
-  // Formule individuelle indépendante — utilisée telle quelle pour la flotte CC
-  // uniquement (la flotte RTG passe désormais par la cascade, voir en-tête).
-  getZoneIndexForDate(driver, date, state, teams) {
-    const zones = zonesForDriver(driver, state, teams);
-    const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
-    if (date.getTime() < refDate.getTime()) return null;
-
-    let zoneIdx = Math.max(0, zones.indexOf(driver.initialZone));
-    let cursor = refDate;
-    while (cursor.getTime() < date.getTime()) {
-      const status = PlanningEngine.getDailyStatus(driver, cursor, state, teams);
-      if (status === "PRESENT") zoneIdx = (zoneIdx + 1) % zones.length;
-      cursor = RTGDate.addDays(cursor, 1);
-    }
-    return zoneIdx;
-  },
-
   getZoneForDate(driver, date, state, teams) {
     const iso = RTGDate.toISO(date);
     const key = driver.id + "_" + iso;
@@ -186,10 +161,7 @@ const ZoneRotationEngine = {
         result = (dayResult && dayResult[driver.id] !== undefined) ? dayResult[driver.id] : null;
       }
     } else {
-      const zones = zonesForDriver(driver, state, teams);
-      const zoneIdx = this.getZoneIndexForDate(driver, date, state, teams);
-      const statusToday = PlanningEngine.getDailyStatus(driver, date, state, teams);
-      result = (zoneIdx !== null && statusToday === "PRESENT") ? zones[zoneIdx] : null;
+      result = CcPosteRotationEngine.getZoneForDate(driver, date, state, teams);
     }
     this._cache[key] = result;
     return result;
@@ -198,8 +170,8 @@ const ZoneRotationEngine = {
   // Zone qu'aurait eue le conducteur ce jour-là s'il avait travaillé — utile pour le
   // remplacement, où on doit connaître la zone laissée vacante par un conducteur absent.
   // Pour la flotte RTG, c'est la zone "naturelle" issue de la cascade (avant
-  // répartition du créneau) — comme pour l'ancienne formule indépendante, on ne
-  // simule jamais une répartition hypothétique avec le conducteur absent inclus.
+  // répartition du créneau) — on ne simule jamais une répartition hypothétique
+  // avec le conducteur absent inclus.
   getExpectedZoneForDate(driver, date, state, teams) {
     const team = teams.find(t => t.id === driver.teamId);
     const fleet = (team && team.typeEngin) || "RTG";
@@ -213,8 +185,6 @@ const ZoneRotationEngine = {
       const idx = (nat && nat[driver.id] !== undefined) ? nat[driver.id] : null;
       return idx !== null ? zones[idx] : null;
     }
-    const zones = zonesForDriver(driver, state, teams);
-    const zoneIdx = this.getZoneIndexForDate(driver, date, state, teams);
-    return zoneIdx !== null ? zones[zoneIdx] : null;
+    return CcPosteRotationEngine.getExpectedZoneForDate(driver, date, state, teams);
   }
 };

@@ -79,31 +79,7 @@ const PlanningEngine = {
       return { driver: driver, driverId: driver.id, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime, vacationBalanceAlert: vacationBalanceAlert, restCorrection: restCorrection };
     });
 
-    // Passe 2 : répartition équitable des zones par créneau (shift + vacation) —
-    // zone A non prioritaire (vide si <8 présents, jamais doublée avant les autres
-    // si 8 ou plus). Ne concerne que la flotte CC : pour la flotte RTG, la Passe 1
-    // (ZoneRotationEngine.getZoneForDate) a déjà fait cette répartition en interne,
-    // via la simulation en cascade jour par jour (§ voir zoneRotationEngine.js) —
-    // la refaire ici la fausserait (elle prendrait la zone déjà équilibrée comme
-    // "naturelle" et la redoublerait/redistribuerait une seconde fois).
-    const groups = {};
-    // Groupé aussi par flotte (RTG/CC — § module Chariots Cavalier) : deux
-    // équipes de flottes différentes peuvent partager le même shift/vacation
-    // (labels globaux), mais leurs conducteurs ne doivent jamais être
-    // mélangés dans la même répartition de zones (listes de zones distinctes).
-    base.forEach(b => {
-      if (b.status !== "PRESENT" || !b.shift || !b.vacation) return;
-      const fleet = (b.team && b.team.typeEngin) || "RTG";
-      if (fleet === "RTG") return;
-      const key = fleet + "_" + b.shift + "_" + b.vacation;
-      (groups[key] = groups[key] || []).push(b);
-    });
-    Object.keys(groups).forEach(key => {
-      const fleet = key.split("_")[0];
-      ZoneBalancingEngine.assignZonesForSlot(groups[key], zonesForFleet(state.config, fleet));
-    });
-
-    // Passe 3 : applique les affectations manuelles par-dessus le résultat auto —
+    // Passe 2 : applique les affectations manuelles par-dessus le résultat auto —
     // SAUF si le statut de base est un enregistrement figé (congé/maladie/
     // absence/formation, via AbsenceEngine). Une affectation manuelle laissée
     // par un import antérieur (ex. import Excel) ne doit jamais masquer un
@@ -152,6 +128,7 @@ const PlanningEngine = {
   generateMonthlyPlanning(month, year, state) {
     RestDayEngine.clearCache();
     ZoneRotationEngine.clearCache();
+    CcPosteRotationEngine.clearCache();
     VacationRotationEngine.clearCache();
 
     const dim = RTGDate.daysInMonth(month, year);

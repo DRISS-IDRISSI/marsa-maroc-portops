@@ -21,17 +21,23 @@ const RTG_CONFIG = {
     S3: [{ id: "V1", start: "23:00", end: "03:00" }, { id: "V2", start: "03:00", end: "07:00" }]
   },
   zones: ["A", "B", "C", "D", "E", "F", "G", "H"],
-  // Zones ("postes de travail") par flotte (§ module Chariots Cavalier — CC) :
-  // toutes les règles d'affectation (rotation, répartition équitable, repos,
-  // shifts, vacations...) sont IDENTIQUES entre RTG et CC, seule la liste des
-  // zones change. "RTG" reprend la liste ci-dessus (zones A-H) ; "CC" est la
-  // liste réelle des postes de travail cavalier confirmée par l'exploitant
-  // (voir zonesForFleet ci-dessous, utilisé partout où une zone est
-  // affectée/affichée).
+  // Zones ("postes de travail") par flotte (§ module Chariots Cavalier — CC).
+  // Pour RTG, rotation en cascade sur la liste ci-dessous (zones A-H, voir
+  // zoneRotationEngine.js). Pour CC, les règles sont différentes (voir
+  // ccPosteRotationEngine.js) : QUAI (ccQuaiPosts ci-dessous — postes fixes
+  // confirmés par l'exploitant, dont DTV) vs PARC (réserve) vs AUTORISE
+  // (statut particulier, traité comme PARC pour la file d'attente) — cette
+  // liste reste utilisée pour les sélecteurs manuels (fiche conducteur,
+  // affectation manuelle), qui doivent proposer toutes les valeurs possibles.
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["P71", "P72", "P74", "P80", "P82", "PARC", "P83"]
+    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "PARC", "AUTORISE"]
   },
+  // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
+  // zonesByFleet.CC, sans PARC ni AUTORISE) — le nombre de postes disponibles
+  // (7) plafonne le nombre de conducteurs affectés au QUAI un jour donné,
+  // voir ccPosteRotationEngine.js.
+  ccQuaiPosts: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV"],
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
   // Pour chaque tranche de 5 jours de CONGÉ dans le mois, le quota de repos du
