@@ -218,6 +218,21 @@ const CcPosteRotationEngine = {
     return (dayResult && dayResult[driver.id] !== undefined) ? dayResult[driver.id] : null;
   },
 
+  // Rang (0-based) du conducteur dans la file du jour, TOUS statuts confondus
+  // (présent ou repos — seul un gel congé/maladie/absence/formation l'exclut,
+  // rank alors null). Sert à AFFICHER l'affectation du jour dans l'ordre réel
+  // de la file — demande explicite de l'exploitant : le responsable doit
+  // pouvoir affecter les conducteurs QUAI/PARC de haut en bas de la liste
+  // affichée, sans recalculer la priorité lui-même.
+  getRankForDate(driver, date, state, teams) {
+    const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+    if (date.getTime() < refDate.getTime()) return null;
+    const iso = RTGDate.toISO(date);
+    this._ensureCascade(iso, state, teams);
+    const rank = this._dayRank[iso] ? this._dayRank[iso][driver.id] : undefined;
+    return rank === undefined ? null : rank;
+  },
+
   // Poste qu'aurait eu le conducteur ce jour-là s'il avait été PRESENT (utile
   // pour le remplacement — zone laissée vacante par un conducteur absent) :
   // son rang dans la file reclassée du jour, avant filtrage par présence.

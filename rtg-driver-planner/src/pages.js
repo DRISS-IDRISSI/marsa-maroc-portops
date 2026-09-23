@@ -2345,6 +2345,22 @@ function AffectationDuJour() {
     if (ob == null) return -1;
     return oa - ob;
   };
+  // Flotte CC uniquement (demande explicite de l'exploitant) : l'ordre affiché
+  // suit le rang réel dans la file QUAI/PARC du jour (CcPosteRotationEngine),
+  // pas l'ordre habituel de l'équipe — ceux qui étaient au QUAI la veille (donc
+  // repoussés en fin de file) apparaissent en bas, ceux qui remontent en tête
+  // (repos/PARC/AUTORISE la veille) en haut, pour que le responsable affecte
+  // les postes QUAI/PARC du jour simplement de haut en bas.
+  const byCcRank = (a, b) => {
+    const da = driverById[a.driverId], db = driverById[b.driverId];
+    const ra = da ? CcPosteRotationEngine.getRankForDate(da, dateObj, state, state.teams) : null;
+    const rb = db ? CcPosteRotationEngine.getRankForDate(db, dateObj, state, state.teams) : null;
+    if (ra == null && rb == null) return byOrdreAffichage(a, b);
+    if (ra == null) return 1;
+    if (rb == null) return -1;
+    return ra - rb;
+  };
+  const rowSort = displayedFleet === "CC" ? byCcRank : byOrdreAffichage;
 
   const grouped = {};
   state.config.shifts.forEach(s => {
@@ -2353,7 +2369,7 @@ function AffectationDuJour() {
       vacation: v,
       rows: assignments.filter(a => a.shift === s.id && a.vacation === v.id && a.status === "PRESENT")
         .concat(absentByShift[s.id].filter(a => vacationLabelToday[a.driverId] === v.id))
-        .sort(byOrdreAffichage)
+        .sort(rowSort)
     }));
     // "V1+V2" (journée complète, 8h — stagiaires cavaliers, cf. AssignmentEditModal) :
     // groupe à part, sinon ces affectations manuelles ne correspondent à aucune
