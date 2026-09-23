@@ -207,6 +207,17 @@ function buildShiftCycleForCurrentShift(currentShift, weekIndexMod3) {
   return cycle;
 }
 
+// Équipe "stagiaires" (ex. "GR STAGIAIRE") : pas de shift unique — chaque
+// membre est affecté manuellement, au jour le jour, au shift d'une équipe
+// titulaire différente qu'il vient renforcer (voir ccPosteRotationEngine.js,
+// même détection à double critère : shiftCycle vide OU nom contenant
+// "stagiaire", car on ne peut pas garantir que la case "pas de rotation
+// fixe" ait été cochée à la création). Afficher un "shift du jour" calculé
+// pour cette équipe serait donc trompeur — voir usage ci-dessous.
+function isNoRotationTeam(team) {
+  return (!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || "");
+}
+
 // Calcule le shiftCycle à appliquer pour que `team` soit sur `currentShift`
 // LA SEMAINE EN COURS (au moment du clic) — même calcul qu'à la création
 // (TeamForm ci-dessous), réutilisé pour corriger le point de départ d'une
@@ -503,14 +514,15 @@ function DriversPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {visibleTeams.map(t => {
           const effectif = state.drivers.filter(d => d.actif !== false && d.teamId === t.id).length;
+          const noRotation = isNoRotationTeam(t);
           const shift = ShiftRotationEngine.getTeamShiftForDate(t, todayDate, state.config);
           return (
             <div key={t.id} className="bg-white rounded-xl border border-slate-200 p-4">
               <TeamNameEditor team={t} editable={!shiftRestricted} />
-              <div className="text-xs text-slate-500 -mt-0.5 mb-1">{shift} aujourd'hui</div>
+              <div className="text-xs text-slate-500 -mt-0.5 mb-1">{noRotation ? "Shift variable — affecté par conducteur" : shift + " aujourd'hui"}</div>
               <div className="text-2xl font-bold text-slate-900 mb-1">{effectif} <span className="text-sm font-normal text-slate-500">conducteurs</span></div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <TeamShiftEditor team={t} state={state} editable={!shiftRestricted} />
+                {!noRotation && <TeamShiftEditor team={t} state={state} editable={!shiftRestricted} />}
                 {!shiftRestricted && (
                   <button onClick={() => setImportTeam(t)} title="Créer en masse les conducteurs de cette équipe depuis le fichier Excel du planning"
                     className="flex items-center gap-1 text-[10px] font-medium text-emerald-400/80 hover:text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/60 rounded px-1.5 py-0.5">
