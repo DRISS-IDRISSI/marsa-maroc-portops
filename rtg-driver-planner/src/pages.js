@@ -2765,6 +2765,27 @@ function AffectationDuJour() {
   });
   const offRows = assignments.filter(a => a.status === "OFF").sort(byOrdreAffichage);
 
+  // Affichage UNIQUEMENT (Affectation du jour — ni la Planning Mensuel, ni
+  // les données/labels V1/V2 réels ne changent) : demande explicite de
+  // l'exploitant, pour GR BAHOUS le groupe de vacation qui commence par
+  // ISSAKHAOUI (identité fixe du bloc "V2") doit apparaître EN PREMIER
+  // (colonne gauche à l'écran, 1er bloc à l'impression) — simple inversion
+  // de la position d'affichage des 2 groupes V1/V2, jamais du groupe
+  // "V1+V2" (stagiaires journée complète) qui reste en dernière position.
+  const DISPLAY_REVERSED_VACATION_TEAMS = [/bahous/i];
+  const vacationGroupsForDisplay = (shiftId) => {
+    const groups = grouped[shiftId] || [];
+    const shiftTeam = state.teams.find(t => teamShiftMap[t.id] === shiftId);
+    if (!shiftTeam || !DISPLAY_REVERSED_VACATION_TEAMS.some(re => re.test(shiftTeam.nom || ""))) return groups;
+    const v1Idx = groups.findIndex(g => g.vacation.id === "V1");
+    const v2Idx = groups.findIndex(g => g.vacation.id === "V2");
+    if (v1Idx === -1 || v2Idx === -1) return groups;
+    const swapped = groups.slice();
+    swapped[v1Idx] = groups[v2Idx];
+    swapped[v2Idx] = groups[v1Idx];
+    return swapped;
+  };
+
   const exportExcel = () => {
     const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
     if (holiday) {
@@ -2904,7 +2925,7 @@ function AffectationDuJour() {
           <div key={s.id} className="space-y-3 pb-4 border-b border-slate-200/60 last:border-0">
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {grouped[s.id].map(({ vacation, rows }) => (
+              {vacationGroupsForDisplay(s.id).map(({ vacation, rows }) => (
                 <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} />
               ))}
             </div>
@@ -2953,7 +2974,7 @@ function AffectationDuJour() {
                 count={shiftCount} countLabel="conducteur"
               />
               <div>
-                {grouped[s.id].map(({ vacation, rows }) => (
+                {vacationGroupsForDisplay(s.id).map(({ vacation, rows }) => (
                   <ShiftBlockPrintable key={vacation.id} title={vacationGroupTitle(vacation)} rows={rows} showTeamColumn={false} />
                 ))}
                 {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
