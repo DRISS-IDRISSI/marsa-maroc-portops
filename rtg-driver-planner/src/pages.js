@@ -1453,7 +1453,7 @@ function PrintHeader({ subtitle, count, countLabel }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
       <div className="flex items-center gap-3 min-w-0">
-        <img src="icons/tc3pc-logo.jpg" alt="TC3PC" className="h-9 w-auto shrink-0" />
+        <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
         {/* Sans whitespace-nowrap : sur une page plus étroite (export
             portrait, § AffectationDuJour), ce titre long se met à la ligne
             au lieu de déborder sur le bloc "Généré le..." à droite — bug
