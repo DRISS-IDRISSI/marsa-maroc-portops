@@ -1402,7 +1402,7 @@ function ChampionCard({ label, champion }) {
   return (
     <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-amber-50 to-white px-6 py-5 shadow-sm">
       <i className="fas fa-trophy text-amber-400 text-5xl drop-shadow-sm"></i>
-      <div className="flex-1 text-center sm:text-left min-w-0">
+      <div className="flex-1 text-center sm:text-left min-w-0 w-full sm:w-auto">
         <div className="text-xs font-bold uppercase tracking-widest text-amber-500">{label}</div>
         <div className="text-2xl font-extrabold text-amber-800 truncate">{champion.matricule} — {champion.nom} {champion.prenom}</div>
         <div className="text-xs text-amber-500 mt-0.5">{champion.teamNom}</div>
