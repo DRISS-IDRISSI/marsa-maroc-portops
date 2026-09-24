@@ -125,7 +125,7 @@ create table if not exists absences (
   driver_id text not null references drivers(id) on delete cascade,
   date_debut date not null,
   date_fin date not null,
-  type text check (type in ('ABSENCE', 'FORMATION')),
+  type text check (type in ('ABSENCE', 'FORMATION', 'DETACHEMENT')),
   commentaire text,
   utilisateur text,
   created_by uuid references auth.users(id),
