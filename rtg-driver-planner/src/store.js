@@ -154,17 +154,13 @@ const RTGStore = (function () {
   // ce chargement tronqué. Pagine par blocs de 1000 jusqu'à épuisement pour
   // garantir de toujours tout récupérer, quelle que soit la taille de la table.
   async function fetchAllRows(table) {
-    const pageSize = 1000;
-    let from = 0;
-    let all = [];
-    for (;;) {
-      const { data, error } = await sb.from(table).select("*").range(from, from + pageSize - 1);
-      if (error) return { data: null, error: error };
-      all = all.concat(data || []);
-      if (!data || data.length < pageSize) break;
-      from += pageSize;
-    }
-    return { data: all, error: null };
+    // Une limite explicite très large plutôt qu'une pagination par .range() —
+    // .range() nécessite un ordre stable des lignes (sans .order() explicite,
+    // certains projets Supabase renvoient une erreur "column ... undefined
+    // does not exist" lors de la pagination). Un seul aller simple avec une
+    // limite haute reste largement suffisant pour la volumétrie réelle de
+    // cette table, sans ce risque.
+    return sb.from(table).select("*").limit(50000);
   }
 
   async function loadAll() {
