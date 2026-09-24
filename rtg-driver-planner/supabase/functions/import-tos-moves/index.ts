@@ -42,7 +42,18 @@
 // une upsert avec contrainte anti-doublon (login_tos, date_travail, shift,
 // engin), retraiter plusieurs fois le même email ne crée aucun doublon —
 // c'est donc sans risque de le revoir à chaque exécution pendant sa fenêtre
-// de rétention.
+// de rétention. MAIS le RE-TRAITEMENT COMPLET (téléchargement + parsing
+// mailparser + XLSX de la pièce jointe) de TOUS les emails de la fenêtre à
+// CHAQUE exécution (toutes les 5 min) est coûteux en CPU ; avec 7 jours ×
+// 3 shifts d'accumulés, ce coût grossit et a fini par dépasser le budget CPU
+// de la fonction (erreurs "CPU Time exceeded" observées en pratique,
+// causant l'échec silencieux de TOUT l'import, y compris des shifts jamais
+// encore importés). Pour rester sans risque de perte (toujours rebalayer la
+// fenêtre par date, jamais par statut lu) SANS reparser ce qui est déjà en
+// base, chaque email est d'abord identifié par son Message-ID (fetch léger,
+// sans télécharger la pièce jointe) et comparé à mouvements_tos.source_message_id
+// déjà connus pour cette même fenêtre : seul un email VRAIMENT nouveau
+// déclenche le parsing complet.
 //
 // Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
 //   - TOS_GMAIL_USER : gestioneffectif@gmail.com
@@ -216,10 +227,20 @@ Deno.serve(async _req => {
   // 1000 lignes non rattachées en base ferait toujours revenir le MÊME
   // premier millier à chaque exécution — les logins situés au-delà ne
   // seraient alors JAMAIS réparés, peu importe le nombre de passages du cron.
+  // Plafond de pages (20 × 1000 = 20 000 lignes non rattachées scannées max
+  // par exécution) : une ligne dont le login ne correspondra JAMAIS à un
+  // conducteur (ex. login d'un ancien conducteur parti) resterait sinon
+  // scannée indéfiniment à CHAQUE exécution (toutes les 5 min), un coût qui
+  // grossit avec le temps sans jamais se résorber — contributeur probable,
+  // avec le re-parsing des emails déjà importés (voir plus haut), aux erreurs
+  // "CPU Time exceeded" observées en pratique. Un plafond n'empêche pas la
+  // réparation de progresser d'exécution en exécution (les lignes réparées
+  // sortent du filtre driver_id IS NULL), juste le pire des cas.
   let reconciledRows = 0;
   const reconcileTargets = new Map<string, { loginTos: string; fleet: "RTG" | "CC"; driverId: string }>();
   const PAGE_SIZE = 1000;
-  for (let offset = 0; ; offset += PAGE_SIZE) {
+  const MAX_RECONCILE_PAGES = 20;
+  for (let offset = 0, page_num = 0; page_num < MAX_RECONCILE_PAGES; offset += PAGE_SIZE, page_num++) {
     const { data: page } = await admin.from("mouvements_tos").select("login_tos, engin").is("driver_id", null)
       .range(offset, offset + PAGE_SIZE - 1);
     (page || []).forEach(row => {
@@ -238,6 +259,24 @@ Deno.serve(async _req => {
     if (!reconcileError) reconciledRows += (updated || []).length;
   }
 
+  // Fenêtre de recherche large (7 jours) : couvre les week-ends et les
+  // éventuels retards d'acheminement, sans dépendre du statut lu/non lu.
+  // Calculée une seule fois : sert à la fois à la recherche IMAP et au
+  // pré-filtrage par Message-ID ci-dessous (même fenêtre des deux côtés).
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - 7);
+
+  // Message-ID déjà importés sur cette fenêtre — un seul SELECT léger (une
+  // colonne, pas le contenu des rapports) pour éviter de re-télécharger et
+  // re-parser la pièce jointe de chaque email déjà traité à CHAQUE exécution
+  // (voir l'en-tête du fichier).
+  const { data: alreadyImportedRows } = await admin
+    .from("mouvements_tos")
+    .select("source_message_id")
+    .not("source_message_id", "is", null)
+    .gte("date_travail", since.toISOString().slice(0, 10));
+  const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
+
   const client = new ImapFlow({
     host: "imap.gmail.com",
     port: 993,
@@ -249,6 +288,7 @@ Deno.serve(async _req => {
   let processedEmails = 0;
   let importedRows = 0;
   let skippedNoAttachment = 0;
+  let skippedAlreadyImported = 0;
   const unmatchedLogins = new Set<string>();
   const errors: string[] = [];
 
@@ -268,15 +308,22 @@ Deno.serve(async _req => {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
     try {
-      // Fenêtre de recherche large (7 jours) : couvre les week-ends et les
-      // éventuels retards d'acheminement, sans dépendre du statut lu/non lu.
-      const since = new Date();
-      since.setUTCDate(since.getUTCDate() - 7);
       const uids: number[] = await client.search({ since, subject: SUBJECT_FILTER }, { uid: true });
 
       for (const uid of uids) {
         let markSeen = false;
         try {
+          // Pré-filtrage bon marché : identifie l'email par son Message-ID
+          // (fetch léger, sans le corps ni la pièce jointe) avant de décider
+          // si le traitement complet (coûteux en CPU) est nécessaire.
+          const envelopeOnly = await client.fetchOne(String(uid), { envelope: true }, { uid: true });
+          const messageId = envelopeOnly && envelopeOnly.envelope ? envelopeOnly.envelope.messageId : null;
+          if (messageId && alreadyImportedMessageIds.has(messageId)) {
+            skippedAlreadyImported++;
+            processedEmails++;
+            continue;
+          }
+
           const msg = await client.fetchOne(String(uid), { source: true, envelope: true }, { uid: true });
           if (!msg || !msg.source) { continue; }
 
@@ -386,6 +433,7 @@ Deno.serve(async _req => {
     ok: errors.length === 0,
     processedEmails,
     skippedNoAttachment,
+    skippedAlreadyImported,
     importedRows,
     reconciledRows,
     ignoredRowsDeleted,
