@@ -9,13 +9,34 @@
 // (changement de shift). driver.initialVacation fixe uniquement la vacation du
 // bloc du conducteur à rotationReferenceDate — pas sa vacation permanente.
 //
-// Exception CC (confirmée par l'exploitant, GR BAHOUS) : la bascule
-// dimanche→lundi ne gèle PAS systématiquement comme pour RTG — son gel dépend
-// du changement de shift réellement en jeu (cycle S1→S3→S2→S1...) :
-//   - S1→S3 : bascule normalement (change de vacation)
-//   - S3→S2 : bascule normalement (change de vacation)
-//   - S2→S1 : gèle (garde la même vacation)
+// Exception CC : la bascule dimanche→lundi ne gèle PAS systématiquement
+// comme pour RTG — son gel dépend du changement de shift réellement en jeu
+// (cycle S1→S3→S2→S1...), ET ce point de gel diffère d'une équipe CC à
+// l'autre (confirmé empiriquement par l'exploitant, pas déductible du seul
+// libellé de shift) :
+//   - GR BAHOUS  : gèle uniquement en sortant de S2 (S2→S1 garde la même
+//     vacation ; S1→S3 et S3→S2 basculent normalement)
+//   - GR HADDAZI : gèle en sortant de S3 OU de S2 (S3→S2 et S2→S1 gardent
+//     la même vacation ; seul S1→S3 bascule normalement)
+// Voir CC_VACATION_FREEZE_FROM_SHIFT ci-dessous. Une équipe CC non encore
+// confirmée (ex. GR HOUSSAM) garde par défaut le gel systématique RTG,
+// jusqu'à ce que sa règle réelle soit communiquée par l'exploitant.
 // ==========================================
+
+// Association équipe → shifts SORTANTS (semaine qui se termine le dimanche)
+// pour lesquels le bloc garde la même vacation le lundi suivant. Recherche
+// par nom d'équipe (comme la détection "stagiaire" de CcPosteRotationEngine)
+// car ces 3 équipes CC sont nommément identifiées par l'exploitant.
+const CC_VACATION_FREEZE_FROM_SHIFT = [
+  { pattern: /bahous/i, freezeFromShifts: ["S2"] },
+  { pattern: /haddazi/i, freezeFromShifts: ["S3", "S2"] }
+];
+
+function ccVacationFreezeFromShifts(team) {
+  if (!team) return null;
+  const entry = CC_VACATION_FREEZE_FROM_SHIFT.find(e => e.pattern.test(team.nom || ""));
+  return entry ? entry.freezeFromShifts : null;
+}
 
 const VacationRotationEngine = {
   _cache: {},
@@ -39,9 +60,12 @@ const VacationRotationEngine = {
       let freeze = false;
       if (state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next)) {
         if (team && team.typeEngin === "CC") {
-          // CC : gel uniquement au changement de shift S2→S1 — S1→S3 et
-          // S3→S2 basculent normalement (voir note d'en-tête).
-          freeze = ShiftRotationEngine.getTeamShiftForDate(team, cursor, state.config) === "S2";
+          const freezeFromShifts = ccVacationFreezeFromShifts(team);
+          if (freezeFromShifts) {
+            freeze = freezeFromShifts.indexOf(ShiftRotationEngine.getTeamShiftForDate(team, cursor, state.config)) !== -1;
+          } else {
+            freeze = true;
+          }
         } else {
           freeze = true;
         }
