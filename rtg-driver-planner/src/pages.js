@@ -2950,6 +2950,144 @@ const SHIFT_BLOCK_COL_W = {
   withTeam: { mat: "10%", nom: "20%", prenom: "18%", equipe: "17%", vacation: "12%", zone: "23%" },
   noTeam: { mat: "11%", nom: "24%", prenom: "21%", vacation: "14%", zone: "30%" }
 };
+
+// ==========================================
+// Rapport imprimable "État d'affectation des conducteurs" — flotte CC
+// uniquement. Calqué sur le document papier réel utilisé sur le terrain
+// (demande explicite de l'exploitant : "je veux que ça soit presque
+// identique à l'affectation du jour utilisée sur le terrain") : bandeau
+// "Chariots Cavaliers", tableau à 2 blocs Vacation A/B (poste de travail |
+// conducteur affecté | émargement) avec une colonne Stagiaires au centre,
+// postes fusionnés (rowSpan) quand plusieurs conducteurs partagent le même
+// poste physique (voir ccQuaiPosts/capacity, data.js).
+// ==========================================
+
+// Libellé "terrain" de chaque poste QUAI (distinct du code interne de
+// l'appli) — vocabulaire déjà utilisé par l'exploitant sur le document
+// papier plutôt que "P71"/"P74"/"DTV" tels quels.
+const CC_POSTE_TERRAIN_LABEL = { P71: "71/parc", P74: "74/parc", DTV: "Roro/parc" };
+
+// Regroupe les lignes (déjà triées dans l'ordre de la file, cf. byCcRank)
+// en segments : les conducteurs PRESENT consécutifs affectés au MÊME poste
+// QUAI physique (capacité > 1, ex. P71) partagent une seule case fusionnée
+// (rowSpan), exactement comme sur le document papier — repos/congé/PARC
+// restent des cases individuelles (jamais fusionnées, PARC n'est pas un
+// poste physique unique mais une réserve).
+function buildCcPosteSegments(rows, quaiPostIds) {
+  const segments = [];
+  let i = 0;
+  while (i < rows.length) {
+    const a = rows[i];
+    const isQuai = a.status === "PRESENT" && a.zone && quaiPostIds.has(a.zone);
+    let j = i + 1;
+    if (isQuai) {
+      while (j < rows.length && rows[j].status === "PRESENT" && rows[j].zone === a.zone) j++;
+    }
+    segments.push({ zone: isQuai ? a.zone : null, rows: rows.slice(i, j) });
+    i = j;
+  }
+  return segments;
+}
+
+function ccPosteCellLabel(a, isQuaiZone) {
+  if (a.status === "PRESENT") return isQuaiZone ? (CC_POSTE_TERRAIN_LABEL[a.zone] || a.zone) : "";
+  if (a.status === "REPOS") return "repos";
+  if (a.status === "REPOS_COMPENSATOIRE") return "repos comp.";
+  if (a.status === "CONGE") return "congé";
+  return (RTG_STATUS_META[a.status] || {}).label || a.status;
+}
+
+// "Aplatit" les segments en une ligne par conducteur, avec l'info de fusion
+// (isStart/span) nécessaire pour poser le rowSpan au bon endroit dans le
+// <table> (une seule ligne par groupe porte la case Poste).
+function flattenCcPosteRows(rows, quaiPostIds) {
+  const flat = [];
+  buildCcPosteSegments(rows, quaiPostIds).forEach(seg => {
+    const isQuaiZone = seg.zone !== null;
+    seg.rows.forEach((a, idx) => {
+      flat.push({ a: a, isStart: idx === 0, span: seg.rows.length, label: ccPosteCellLabel(a, isQuaiZone) });
+    });
+  });
+  return flat;
+}
+
+// Les 3 cellules (Poste / Conducteur affecté / Émargement) d'UN côté
+// (Vacation A ou B) pour la ligne rowIndex — la case Poste n'est rendue que
+// sur la première ligne d'un groupe fusionné (rowSpan couvre les suivantes).
+function CcPosteTableHalf({ flatRows, rowIndex }) {
+  const r = flatRows[rowIndex];
+  if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS}></td></React.Fragment>;
+  const bg = r.a.status !== "PRESENT" ? PRINT_STATUS_BG[r.a.status] : undefined;
+  return (
+    <React.Fragment>
+      {r.isStart && <td className={PRINT_TD_XS + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
+      <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.nom} {r.a.prenom}</td>
+      <td className={PRINT_TD_XS}></td>
+    </React.Fragment>
+  );
+}
+
+function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB, stagiaireRows, quaiPostIds }) {
+  const dateFmt = dateStr.split("-").reverse().join("/");
+  const flatA = flattenCcPosteRows(sideA.rows, quaiPostIds);
+  const flatB = flattenCcPosteRows(sideB.rows, quaiPostIds);
+  const maxRows = Math.max(flatA.length, flatB.length, stagiaireRows.length);
+  const rowIdxs = Array.from({ length: maxRows }, (_, i) => i);
+  return (
+    <div className="mb-3">
+      <div className="grid grid-cols-2 border border-slate-400 text-[11px]">
+        <div className="border-r border-slate-400 px-2 py-1.5 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
+        <div className="px-2 py-1.5">
+          <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
+          <div>DATE : {dateFmt}</div>
+        </div>
+      </div>
+      <div className="border border-t-0 border-slate-400 text-center font-bold text-[12px] py-1 uppercase">Chariots Cavaliers</div>
+      <table className="w-full text-[11px] border-collapse border border-slate-400" style={{ tableLayout: "fixed" }}>
+        <thead>
+          <tr>
+            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
+            <th className={PRINT_TH_XS + " text-center"}>Stagiaires</th>
+            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
+          </tr>
+          <tr>
+            <th className={PRINT_TH_XS} style={{ width: "12%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "19%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "11%" }}>Émargement</th>
+            <th className={PRINT_TH_XS} style={{ width: "18%" }}>Stagiaire</th>
+            <th className={PRINT_TH_XS} style={{ width: "12%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "17%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "11%" }}>Émargement</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rowIdxs.map(i => (
+            <tr key={i}>
+              <CcPosteTableHalf flatRows={flatA} rowIndex={i} />
+              <td className={PRINT_TD_XS}>{stagiaireRows[i] ? (stagiaireRows[i].nom + " " + stagiaireRows[i].prenom) : ""}</td>
+              <CcPosteTableHalf flatRows={flatB} rowIndex={i} />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CcAffectationHeader({ generatedAt }) {
+  return (
+    <div className="flex items-center justify-between gap-3 mb-2 pb-2 border-b-2 border-slate-800">
+      <div className="flex items-center gap-3">
+        <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-10 w-auto shrink-0" />
+        <div className="text-base font-bold uppercase">État d'affectation des conducteurs</div>
+      </div>
+      <div className="text-right text-[10px] text-slate-500 shrink-0">
+        <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+      </div>
+    </div>
+  );
+}
+
 function ShiftBlockPrintable({ title, rows, showTeamColumn = true, vacationLetter }) {
   const w = showTeamColumn ? SHIFT_BLOCK_COL_W.withTeam : SHIFT_BLOCK_COL_W.noTeam;
   return (
@@ -3120,6 +3258,11 @@ function AffectationDuJour() {
   // une affectation acquise tant que l'affectation réelle de demain n'est pas
   // connue (demande explicite de l'exploitant, §"ON PEUT PAS DIVINER l'AFFECTATION J+2").
   const isCcProjection = displayedFleet === "CC" && dateStr > tomorrowIso;
+  // Postes QUAI physiques (P71/P74/DTV...) pour le rapport imprimable
+  // "presque identique" au document terrain (CcAffectationTerrainPrintable
+  // ci-dessous) — distingue un poste QUAI réel (fusionnable, capacité > 1)
+  // d'un PARC/AUTORISE (jamais fusionné, case vide comme sur le papier).
+  const ccQuaiPostIds = useMemo(() => new Set((state.config.ccQuaiPosts || []).map(p => p.id)), [state.config.ccQuaiPosts]);
 
   const assignments = useMemo(() => {
     try {
@@ -3434,6 +3577,27 @@ function AffectationDuJour() {
           const shiftTeam = state.teams.find(t => teamShiftMap[t.id] === s.id);
           const includeOff = s.id === "S3" && offRows.length > 0;
           const shiftCount = grouped[s.id].reduce((n, g) => n + g.rows.length, 0) + (includeOff ? offRows.length : 0);
+          // Flotte CC : rapport calqué sur le document terrain réel (voir
+          // CcAffectationTerrainPrintable) plutôt que le tableau générique
+          // Mat/Nom/Prénom/Vacation/Zone utilisé pour RTG.
+          if (displayedFleet === "CC") {
+            const nonStagGroups = vacationGroupsForDisplay(s.id).filter(g => g.vacation.id !== "V1+V2");
+            const stagGroup = (grouped[s.id] || []).find(g => g.vacation.id === "V1+V2");
+            return (
+              <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl p-0">
+                <CcAffectationHeader generatedAt={new Date()} />
+                <CcAffectationTerrainPrintable
+                  team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
+                  dateStr={dateStr} sideA={nonStagGroups[0]} sideB={nonStagGroups[1]}
+                  stagiaireRows={stagGroup ? stagGroup.rows : []} quaiPostIds={ccQuaiPostIds}
+                />
+                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
+                <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+                  Document généré automatiquement par CES Driver Planner.
+                </div>
+              </div>
+            );
+          }
           return (
             <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl p-0">
               <PrintHeader
