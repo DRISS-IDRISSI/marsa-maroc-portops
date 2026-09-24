@@ -40,14 +40,49 @@
 //     _ccDrivers ci-dessous).
 //
 // Comme pour ZoneRotationEngine (RTG), la file d'attente ne peut être connue
-// qu'en rejouant jour par jour depuis rotationReferenceDate (cascade), car
+// qu'en rejouant jour par jour depuis ccRotationReferenceDate (cascade), car
 // l'ordre de demain dépend du résultat réel d'aujourd'hui.
+//
+// "Jour de départ" CC (demande explicite de l'exploitant, 24/09/2026) :
+// config.ccRotationReferenceDate est DISTINCTE de config.rotationReferenceDate
+// (RTG zone/vacation, jamais touchée) — seule la file QUAI/PARC CC repart de
+// cette date. Comme le calcul est une cascade jour après jour, "ignorer tout
+// avant cette date" revient à démarrer une nouvelle simulation à partir
+// d'elle : ccRotationReferenceDate EST ce nouveau point de départ.
+// À ce jour précis, l'ORDRE DE DÉPART de chaque bloc n'est plus déduit d'un
+// tri par matricule (fiction) mais de l'affectation RÉELLE relevée sur le
+// terrain, quand elle a été communiquée (CC_BOOTSTRAP_ORDER ci-dessous) — une
+// équipe pas encore communiquée démarre par défaut triée par matricule à
+// cette même date, en attendant sa vraie file de départ.
 // ==========================================
 
 const CC_FROZEN_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
 
 function ccBlockKey(driver) {
   return driver.teamId + "_" + (driver.initialVacation === "V2" ? "V2" : "V1");
+}
+
+function ccRefDate(state) {
+  return RTGDate.parseISO(state.config.ccRotationReferenceDate || state.config.rotationReferenceDate);
+}
+
+// File de départ RÉELLE (relevé papier "État d'affectation des conducteurs",
+// GR HADDAZI, 24/09/2026), par bloc de vacation — matricules dans l'ordre
+// exact du document, du plus prioritaire (haut de la liste) au moins
+// prioritaire (bas). Une équipe CC absente de cette table démarre par tri
+// matricule classique (comportement historique) à ccRotationReferenceDate.
+const CC_BOOTSTRAP_ORDER = [
+  {
+    pattern: /haddazi/i,
+    V1: ["C07482", "C07459", "C07537", "C07779", "C07401", "C07470", "C07521", "C07782", "C07784", "C07591", "C07393", "C07397"],
+    V2: ["C07785", "C07377", "C07579", "C07795", "D07348", "C07577", "C07462", "C07578", "C07394", "C07520", "C07603", "C07602", "C06982"]
+  }
+];
+
+function ccBootstrapOrderFor(team) {
+  if (!team) return null;
+  const entry = CC_BOOTSTRAP_ORDER.find(e => e.pattern.test(team.nom || ""));
+  return entry || null;
 }
 
 const CcPosteRotationEngine = {
@@ -97,7 +132,8 @@ const CcPosteRotationEngine = {
   },
 
   _bootstrapOrder(state, teams, refDate) {
-    const drivers = this._ccDrivers(state, teams).slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule)));
+    const drivers = this._ccDrivers(state, teams);
+    const byBlock = {};
     drivers.forEach(driver => {
       const status = PlanningEngine.getDailyStatus(driver, refDate, state, teams);
       if (CC_FROZEN_STATUSES.indexOf(status) !== -1) {
@@ -105,7 +141,32 @@ const CcPosteRotationEngine = {
         return;
       }
       const key = ccBlockKey(driver);
-      (this._order[key] = this._order[key] || []).push(driver.id);
+      (byBlock[key] = byBlock[key] || []).push(driver);
+    });
+
+    Object.keys(byBlock).forEach(key => {
+      const blockDrivers = byBlock[key];
+      const team = teams.find(t => t.id === blockDrivers[0].teamId);
+      const bootstrap = ccBootstrapOrderFor(team);
+      const vacPart = blockDrivers[0].initialVacation === "V2" ? "V2" : "V1";
+      const explicitOrder = bootstrap ? bootstrap[vacPart] : null;
+
+      let ordered;
+      if (explicitOrder) {
+        const byMatricule = {};
+        blockDrivers.forEach(d => { byMatricule[String(d.matricule).trim().toUpperCase()] = d; });
+        ordered = [];
+        explicitOrder.forEach(mat => {
+          const d = byMatricule[mat.toUpperCase()];
+          if (d) { ordered.push(d); delete byMatricule[mat.toUpperCase()]; }
+        });
+        // Conducteur du bloc absent de la liste communiquée (nouveau,
+        // matricule erroné...) : ajouté à la fin, trié par matricule.
+        Object.keys(byMatricule).sort().forEach(mat => ordered.push(byMatricule[mat]));
+      } else {
+        ordered = blockDrivers.slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule)));
+      }
+      this._order[key] = ordered.map(d => d.id);
     });
   },
 
@@ -114,7 +175,7 @@ const CcPosteRotationEngine = {
   _ensureCascade(targetIso, state, teams) {
     if (this._cursorIso !== null && this._cursorIso >= targetIso) return;
 
-    const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+    const refDate = ccRefDate(state);
     const targetDate = RTGDate.parseISO(targetIso);
     if (targetDate.getTime() < refDate.getTime()) return;
 
@@ -223,7 +284,7 @@ const CcPosteRotationEngine = {
   },
 
   getZoneForDate(driver, date, state, teams) {
-    const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+    const refDate = ccRefDate(state);
     if (date.getTime() < refDate.getTime()) return null;
     const iso = RTGDate.toISO(date);
     this._ensureCascade(iso, state, teams);
@@ -238,7 +299,7 @@ const CcPosteRotationEngine = {
   // pouvoir affecter les conducteurs QUAI/PARC de haut en bas de la liste
   // affichée, sans recalculer la priorité lui-même.
   getRankForDate(driver, date, state, teams) {
-    const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+    const refDate = ccRefDate(state);
     if (date.getTime() < refDate.getTime()) return null;
     const iso = RTGDate.toISO(date);
     this._ensureCascade(iso, state, teams);
@@ -250,7 +311,7 @@ const CcPosteRotationEngine = {
   // pour le remplacement — zone laissée vacante par un conducteur absent) :
   // son rang dans la file reclassée du jour, avant filtrage par présence.
   getExpectedZoneForDate(driver, date, state, teams) {
-    const refDate = RTGDate.parseISO(state.config.rotationReferenceDate);
+    const refDate = ccRefDate(state);
     if (date.getTime() < refDate.getTime()) return null;
     const iso = RTGDate.toISO(date);
     this._ensureCascade(iso, state, teams);

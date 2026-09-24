@@ -118,6 +118,13 @@ const RTG_CONFIG = {
   // Date à partir de laquelle les rotations de zone/vacation sont calculées ;
   // driver.initialZone / driver.initialVacation s'appliquent exactement à cette date.
   rotationReferenceDate: "2026-08-01",
+  // "Jour de départ" de la file QUAI/PARC CC (CcPosteRotationEngine) —
+  // demande explicite de l'exploitant : la simulation ignore tout avant
+  // cette date et repart de l'affectation RÉELLE relevée sur le terrain à
+  // cette date (voir CC_BOOTSTRAP_ORDER dans ccPosteRotationEngine.js).
+  // DISTINCTE de rotationReferenceDate ci-dessus (zone/vacation RTG et
+  // vacation CC V1/V2, jamais touchées par ce changement).
+  ccRotationReferenceDate: "2026-09-24",
   // Mois de DÉPART des repos mensuels — demande explicite de l'exploitant :
   // les contraintes calculées sur septembre 2026 (mois avant ce point de
   // départ, notamment le repos du dernier jour du mois qui bloquait par
