@@ -1884,7 +1884,7 @@ function ZoneOrStatutBadge({ a }) {
   return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>;
 }
 
-function ShiftBlock({ title, icon, rows, onEditRow }) {
+function ShiftBlock({ title, icon, rows, onEditRow, vacationLetter }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   // Bordure plus marquée + ombre (au lieu du simple border-slate-200 des
@@ -1921,7 +1921,7 @@ function ShiftBlock({ title, icon, rows, onEditRow }) {
                   </td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-600">{a.prenom}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.teamNom}</td>
-                  <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-700 font-bold" : "bg-marine-600/20 text-marine-700"}`}>{a.vacation}</span> : "—"}</td>
+                  <td className="py-1.5 pr-3">{a.vacation ? <span className={`px-1.5 py-0.5 rounded ${a.vacationBalanceAlert ? "bg-red-500/20 text-red-700 font-bold" : "bg-marine-600/20 text-marine-700"}`}>{vacationLetter || a.vacation}</span> : "—"}</td>
                   <td className="hidden sm:table-cell py-1.5 pr-3 text-slate-400">{a.startTime ? `${a.startTime}–${a.endTime}` : "—"}</td>
                   <td className={`py-1.5 pr-3 ${onEditRow ? "cursor-pointer hover:brightness-125" : ""}`}
                     onClick={onEditRow ? () => onEditRow(a) : undefined}
@@ -2488,7 +2488,7 @@ const SHIFT_BLOCK_COL_W = {
   withTeam: { mat: "10%", nom: "20%", prenom: "18%", equipe: "17%", vacation: "12%", zone: "23%" },
   noTeam: { mat: "11%", nom: "24%", prenom: "21%", vacation: "14%", zone: "30%" }
 };
-function ShiftBlockPrintable({ title, rows, showTeamColumn = true }) {
+function ShiftBlockPrintable({ title, rows, showTeamColumn = true, vacationLetter }) {
   const w = showTeamColumn ? SHIFT_BLOCK_COL_W.withTeam : SHIFT_BLOCK_COL_W.noTeam;
   return (
     <div className="mb-3">
@@ -2520,7 +2520,7 @@ function ShiftBlockPrintable({ title, rows, showTeamColumn = true }) {
                   <td className={PRINT_TD_WRAP + " font-medium"}>{a.nom}{a.vacationBalanceAlert ? " (*)" : ""}</td>
                   <td className={PRINT_TD_WRAP}>{a.prenom}</td>
                   {showTeamColumn && <td className={PRINT_TD_WRAP}>{a.teamNom}</td>}
-                  <td className={PRINT_TD_CENTER}>{a.vacation || "—"}</td>
+                  <td className={PRINT_TD_CENTER}>{a.vacation ? (vacationLetter || a.vacation) : "—"}</td>
                   <td className={PRINT_TD_CENTER}>{zoneOrStatut}</td>
                 </tr>
               );
@@ -2602,9 +2602,15 @@ function ReposCongesPrintable({ rows, showTeamColumn = true }) {
 // rotation automatique pour eux, cf. AssignmentEditModal/ccPosteRotationEngine)
 // — affiché "Stagiaires" plutôt que le nom technique "V1+V2", pour
 // correspondre à la colonne "STAGIAIRES" du modèle terrain (exploitant CC).
-function vacationGroupTitle(vacation) {
+// Demande explicite de l'exploitant : sur CETTE page, les 2 blocs de
+// vacation ne s'appellent plus "Vacation V1"/"Vacation V2" (id technique)
+// mais "Vacation A"/"Vacation B" — purement POSITIONNEL (A = bloc affiché à
+// gauche/en premier, B = à droite/en second), pas lié à l'id V1/V2 réel, qui
+// reste inchangé partout ailleurs (Planning mensuel, export CSV, etc.).
+function vacationGroupTitle(vacation, displayIndex) {
   if (vacation.id === "V1+V2") return `Stagiaires · ${vacation.start} → ${vacation.end}`;
-  return `Vacation ${vacation.id} · ${vacation.start} → ${vacation.end}`;
+  const label = displayIndex === 0 ? "A" : displayIndex === 1 ? "B" : vacation.id;
+  return `Vacation ${label} · ${vacation.start} → ${vacation.end}`;
 }
 
 function AffectationDuJour() {
@@ -2925,8 +2931,8 @@ function AffectationDuJour() {
           <div key={s.id} className="space-y-3 pb-4 border-b border-slate-200/60 last:border-0">
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {vacationGroupsForDisplay(s.id).map(({ vacation, rows }) => (
-                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} />
+              {vacationGroupsForDisplay(s.id).map(({ vacation, rows }, idx) => (
+                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation, idx)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} />
               ))}
             </div>
           </div>
@@ -2974,8 +2980,8 @@ function AffectationDuJour() {
                 count={shiftCount} countLabel="conducteur"
               />
               <div>
-                {vacationGroupsForDisplay(s.id).map(({ vacation, rows }) => (
-                  <ShiftBlockPrintable key={vacation.id} title={vacationGroupTitle(vacation)} rows={rows} showTeamColumn={false} />
+                {vacationGroupsForDisplay(s.id).map(({ vacation, rows }, idx) => (
+                  <ShiftBlockPrintable key={vacation.id} title={vacationGroupTitle(vacation, idx)} rows={rows} showTeamColumn={false} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} />
                 ))}
                 {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
               </div>
