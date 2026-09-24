@@ -19,12 +19,12 @@ const AbsenceEngine = {
     return (state.conges || []).filter(c => c.statut !== "EN_ATTENTE" && c.statut !== "REFUSE");
   },
 
-  // Retourne 'CONGE' | 'MALADIE' | 'ABSENCE' | 'FORMATION' | null
+  // Retourne 'CONGE' | 'MALADIE' | 'ABSENCE' | 'FORMATION' | 'DETACHEMENT' | null
   getFixedStatus(driver, isoDate, state) {
     if (this.findRecord(this.activeConges(state), driver.id, isoDate)) return "CONGE";
     if (this.findRecord(state.maladies, driver.id, isoDate)) return "MALADIE";
     const abs = this.findRecord(state.absences, driver.id, isoDate);
-    if (abs) return abs.type === "FORMATION" ? "FORMATION" : "ABSENCE";
+    if (abs) return abs.type === "FORMATION" ? "FORMATION" : abs.type === "DETACHEMENT" ? "DETACHEMENT" : "ABSENCE";
     return null;
   }
 };

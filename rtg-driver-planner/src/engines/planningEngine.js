@@ -4,7 +4,7 @@
 // génération du planning mensuel complet.
 // ==========================================
 
-const FIXED_ABSENCE_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION"];
+const FIXED_ABSENCE_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
 
 const PlanningEngine = {
   // Statut d'un conducteur à une date donnée, AVANT toute modification manuelle.

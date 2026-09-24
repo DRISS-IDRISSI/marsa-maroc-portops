@@ -800,6 +800,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
                   <select className={FIELD_CLS} value={form.type} onChange={e => setForm(f => Object.assign({}, f, { type: e.target.value }))}>
                     <option value="ABSENCE">Absence</option>
                     <option value="FORMATION">Formation</option>
+                    <option value="DETACHEMENT">Détachement</option>
                   </select>
                 </div>
               )}
@@ -838,7 +839,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
                 <td className="px-3 py-2 text-slate-600">{r.dateDebut}</td>
                 <td className="px-3 py-2 text-slate-600">{r.dateFin}</td>
                 {showStatusCol && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded border ${temporalMeta.className}`}>{temporalMeta.label}</span></td>}
-                {showTypeSelect && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${r.type === "FORMATION" ? "bg-blue-600/30 text-blue-700" : "bg-red-600/30 text-red-700"}`}>{r.type === "FORMATION" ? "Formation" : "Absence"}</span></td>}
+                {showTypeSelect && <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${r.type === "FORMATION" ? "bg-blue-600/30 text-blue-700" : r.type === "DETACHEMENT" ? "bg-teal-600/30 text-teal-700" : "bg-red-600/30 text-red-700"}`}>{r.type === "FORMATION" ? "Formation" : r.type === "DETACHEMENT" ? "Détachement" : "Absence"}</span></td>}
                 <td className="px-3 py-2 text-slate-400">{r.type && !showTypeSelect ? r.type : r.commentaire}</td>
                 <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
                 <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteFn(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></td>
@@ -1088,7 +1089,7 @@ function MaladiesPage() {
 }
 
 function AbsencesPage() {
-  return <RecordsPage title="Absences & Formations" icon="fa-user-slash" listKey="absences" kindLabel="absence/formation" showTypeSelect
+  return <RecordsPage title="Absences, Formations & Détachements" icon="fa-user-slash" listKey="absences" kindLabel="absence/formation/détachement" showTypeSelect
     addFn={f => RTGStore.addAbsence({ driverId: f.driverId, dateDebut: f.dateDebut, dateFin: f.dateFin, type: f.type, commentaire: f.commentaire })}
     deleteFn={id => RTGStore.deleteAbsence(id)} />;
 }
@@ -1256,7 +1257,7 @@ function RemplacementPage() {
   const date = RTGDate.parseISO(dateStr);
   const assignments = useMemo(() => PlanningEngine.generateDailyAssignments(dateStr, state), [state, dateStr]);
   const absentDrivers = assignments.filter(a =>
-    ["CONGE", "MALADIE", "ABSENCE", "FORMATION"].indexOf(a.status) !== -1 &&
+    ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"].indexOf(a.status) !== -1 &&
     (!shiftRestricted || a.teamId === currentUser.teamId)
   );
 

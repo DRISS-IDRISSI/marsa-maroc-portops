@@ -34,6 +34,7 @@ function loadXlsxLib() {
 const IMPORT_REPOS_CODES = ["R"];
 const IMPORT_CONGE_CODES = ["C", "CG", "CONGE", "CONGÉ"];
 const IMPORT_MALADIE_CODES = ["M", "MALADIE"];
+const IMPORT_DETACHEMENT_CODES = ["D", "DT", "DETACHEMENT", "DÉTACHEMENT"];
 
 // Fusionne une liste de jours du mois en plages de jours consécutifs —
 // ex. [1,2,3,7,8] -> [[1,3],[7,8]] — pour créer le minimum de périodes de
@@ -266,10 +267,11 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   const congeByDriver = {};
   const presentByDriver = {};
   const maladieByDriver = {};
+  const detachementByDriver = {};
   Object.keys(codesByDriverDay).forEach(driverId => {
     const driver = drivers.find(d => d.id === driverId);
     const codesByDay = codesByDriverDay[driverId];
-    const rawConge = [], rawMaladie = [];
+    const rawConge = [], rawMaladie = [], rawDetachement = [];
     Object.keys(codesByDay).forEach(dayStr => {
       const day = parseInt(dayStr, 10);
       const code = codesByDay[day];
@@ -286,12 +288,15 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
         rawConge.push(day);
       } else if (IMPORT_MALADIE_CODES.indexOf(code) !== -1) {
         rawMaladie.push(day);
+      } else if (IMPORT_DETACHEMENT_CODES.indexOf(code) !== -1) {
+        rawDetachement.push(day);
       } else {
         unknownCodes.push({ matricule: driver ? driver.matricule : driverId, day: day, code: code });
       }
     });
     if (rawConge.length) congeByDriver[driverId] = bridgeGaps(rawConge);
     if (rawMaladie.length) maladieByDriver[driverId] = bridgeGaps(rawMaladie);
+    if (rawDetachement.length) detachementByDriver[driverId] = bridgeGaps(rawDetachement);
   });
 
   const congeRanges = [];
@@ -309,6 +314,17 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   Object.keys(maladieByDriver).forEach(driverId => {
     mergeConsecutiveDays(maladieByDriver[driverId]).forEach(([start, end]) => {
       maladieRanges.push({
+        driverId: driverId,
+        dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)),
+        dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end))
+      });
+    });
+  });
+
+  const detachementRanges = [];
+  Object.keys(detachementByDriver).forEach(driverId => {
+    mergeConsecutiveDays(detachementByDriver[driverId]).forEach(([start, end]) => {
+      detachementRanges.push({
         driverId: driverId,
         dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)),
         dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end))
@@ -346,6 +362,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     fallbackMatches: fallbackMatches,
     congeRanges: congeRanges,
     maladieRanges: maladieRanges,
+    detachementRanges: detachementRanges,
     reposDays: reposDays,
     presentDays: presentDays,
     orderByDriver: orderByDriver,
@@ -538,6 +555,11 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     return parsed.maladieRanges.filter(r => !state.maladies.some(m => m.driverId === r.driverId && m.dateDebut === r.dateDebut && m.dateFin === r.dateFin));
   }, [parsed, state.maladies]);
 
+  const detachementsToApply = useMemo(() => {
+    if (!parsed) return [];
+    return parsed.detachementRanges.filter(r => !state.absences.some(a => a.driverId === r.driverId && a.dateDebut === r.dateDebut && a.dateFin === r.dateFin && a.type === "DETACHEMENT"));
+  }, [parsed, state.absences]);
+
   // Case vide dans le fichier réel = conducteur présent ce jour-là : si
   // l'appli a de son côté un repos ce même jour (auto OU déjà forcé
   // manuellement — ex. un essai laissé par une édition case-par-case
@@ -589,7 +611,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       // autres jours du mois forcés). Il faut donc le figer en MANUEL lui
       // aussi, même s'il est "déjà correct" à cet instant précis.
       if (a.status === "REPOS" && a.source === "MANUAL") return false;
-      if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "FERIE"].indexOf(a.status) !== -1) return false;
+      if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "FERIE"].indexOf(a.status) !== -1) return false;
       return true;
     });
 
@@ -733,9 +755,9 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   // les congés/maladies de cet import.
   const applyFixedAbsences = async () => {
     setStep("applyingConges");
-    const total = congesToApply.length + maladiesToApply.length;
+    const total = congesToApply.length + maladiesToApply.length + detachementsToApply.length;
     setProgress({ done: 0, total: total });
-    let done = 0, congeErrors = 0, maladieErrors = 0;
+    let done = 0, congeErrors = 0, maladieErrors = 0, detachementErrors = 0;
     for (const r of congesToApply) {
       try {
         await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: RTG_IMPORT_CONGE_COMMENT });
@@ -748,7 +770,17 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       } catch (e) { console.error(e); maladieErrors++; }
       done++; setProgress({ done: done, total: total });
     }
-    setCongeResult({ congesCreated: congesToApply.length - congeErrors, maladiesCreated: maladiesToApply.length - maladieErrors, congeErrors: congeErrors, maladieErrors: maladieErrors });
+    for (const r of detachementsToApply) {
+      try {
+        await RTGStore.addAbsence({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, type: "DETACHEMENT", commentaire: RTG_IMPORT_CONGE_COMMENT });
+      } catch (e) { console.error(e); detachementErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    setCongeResult({
+      congesCreated: congesToApply.length - congeErrors, maladiesCreated: maladiesToApply.length - maladieErrors,
+      detachementsCreated: detachementsToApply.length - detachementErrors,
+      congeErrors: congeErrors, maladieErrors: maladieErrors, detachementErrors: detachementErrors
+    });
     setStep("congesApplied");
   };
 
@@ -936,15 +968,16 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             )}
             <p><span className="text-slate-900 font-semibold">{congesToApply.length}</span> plage(s) de congé à créer{parsed.congeRanges.length !== congesToApply.length ? " (" + (parsed.congeRanges.length - congesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
             <p><span className="text-slate-900 font-semibold">{maladiesToApply.length}</span> plage(s) de maladie à créer{parsed.maladieRanges.length !== maladiesToApply.length ? " (" + (parsed.maladieRanges.length - maladiesToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
+            <p><span className="text-slate-900 font-semibold">{detachementsToApply.length}</span> plage(s) de détachement à créer{parsed.detachementRanges.length !== detachementsToApply.length ? " (" + (parsed.detachementRanges.length - detachementsToApply.length) + " déjà existante(s), ignorée(s))" : ""}.</p>
             {parsed.unknownCodes.length > 0 && (
               <p className="text-amber-400">Codes non reconnus ignorés : {parsed.unknownCodes.slice(0, 8).map(u => u.matricule + "/j" + u.day + "=" + u.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}</p>
             )}
             <p className="text-slate-500">
-              <i className="fas fa-circle-info mr-1.5"></i>Congés et maladies sont créés d'abord, séparément : le calcul des repos à forcer doit se baser sur le planning déjà à jour avec ces statuts figés (ils réduisent le quota de repos et libèrent des jours), sans quoi des repos peuvent être rejetés ou mal placés à tort.
+              <i className="fas fa-circle-info mr-1.5"></i>Congés, maladies et détachements sont créés d'abord, séparément : le calcul des repos à forcer doit se baser sur le planning déjà à jour avec ces statuts figés (ils réduisent le quota de repos et libèrent des jours), sans quoi des repos peuvent être rejetés ou mal placés à tort.
             </p>
             <div className="flex gap-2 pt-2">
-              {(congesToApply.length > 0 || maladiesToApply.length > 0) ? (
-                <button onClick={applyFixedAbsences} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Créer congés/maladies et continuer</button>
+              {(congesToApply.length > 0 || maladiesToApply.length > 0 || detachementsToApply.length > 0) ? (
+                <button onClick={applyFixedAbsences} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Créer congés/maladies/détachements et continuer</button>
               ) : (
                 <button onClick={() => setStep("previewRepos")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer</button>
               )}
@@ -957,8 +990,8 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "congesApplied" && congeResult && (
           <div className="space-y-3 text-xs">
-            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult.congesCreated} congé(s) et {congeResult.maladiesCreated} maladie(s) créé(s).</p>
-            {(congeResult.congeErrors > 0 || congeResult.maladieErrors > 0) && <p className="text-red-700">{congeResult.congeErrors + congeResult.maladieErrors} erreur(s) — voir la console.</p>}
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult.congesCreated} congé(s), {congeResult.maladiesCreated} maladie(s) et {congeResult.detachementsCreated} détachement(s) créé(s).</p>
+            {(congeResult.congeErrors > 0 || congeResult.maladieErrors > 0 || congeResult.detachementErrors > 0) && <p className="text-red-700">{congeResult.congeErrors + congeResult.maladieErrors + congeResult.detachementErrors} erreur(s) — voir la console.</p>}
             <button onClick={() => setStep("previewRepos")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les repos</button>
           </div>
         )}
@@ -1005,7 +1038,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "done" && applyResult && (
           <div className="space-y-2 text-xs">
-            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s) et " + congeResult.maladiesCreated + " maladie(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s), " + congeResult.maladiesCreated + " maladie(s) et " + congeResult.detachementsCreated + " détachement(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
             {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-700">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
             {vacationParsed ? (
               <button onClick={() => setStep("previewBlock")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les blocs et vacations (V1/V2)</button>
@@ -1160,6 +1193,7 @@ const RTG_STATUS_META = {
   MALADIE: { code: "M", label: "Maladie", className: "bg-purple-600/30 text-purple-700 border-purple-600/40" },
   ABSENCE: { code: "A", label: "Absence", className: "bg-red-600/30 text-red-700 border-red-600/40" },
   FORMATION: { code: "F", label: "Formation", className: "bg-blue-600/30 text-blue-700 border-blue-600/40" },
+  DETACHEMENT: { code: "D", label: "Détachement", className: "bg-teal-600/30 text-teal-700 border-teal-600/40" },
   OFF: { code: "OFF", label: "Off (Shift 3 dimanche)", className: "bg-slate-950 text-slate-500 border-slate-800" },
   FERIE: { code: "FÉR", label: "Jour férié (chômé)", className: "bg-indigo-500/25 text-indigo-700 border-indigo-500/40" }
 };
@@ -1174,6 +1208,7 @@ const PRINT_STATUS_BG = {
   MALADIE: "#e9d5ff",
   ABSENCE: "#fecaca",
   FORMATION: "#bfdbfe",
+  DETACHEMENT: "#99f6e4",
   OFF: "#e2e8f0",
   FERIE: "#c7d2fe"
 };
@@ -1565,7 +1600,7 @@ function Cell({ assignment, detailLevel, onEdit, frameCls }) {
 // à l'ADMIN / RESPONSABLE / RESPONSABLE_SHIFT de forcer le statut/vacation/zone
 // d'un conducteur pour un jour donné, notamment pour équilibrer à la main les
 // vacations V1/V2 quand l'algorithme automatique ne suffit pas.
-const EDITABLE_STATUSES = ["PRESENT", "REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "OFF"];
+const EDITABLE_STATUSES = ["PRESENT", "REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "OFF"];
 
 // Chaque zone de stockage RTG (A-H) est physiquement divisée en 2 blocs ; un
 // conducteur peut être affecté à toute la zone (seul, se déplaçant entre les
@@ -2648,7 +2683,7 @@ function AffectationDuJour() {
   // aujourd'hui apparaissait sous "Vacation V2" — son identité fixe — alors
   // que ses collègues PRÉSENTS du même bloc, eux, apparaissaient bien sous
   // "Vacation V1", le label du jour).
-  const ABSENT_STATUSES = ["REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION"];
+  const ABSENT_STATUSES = ["REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
   const driverById = {};
   state.drivers.forEach(d => { driverById[d.id] = d; });
   const teamShiftMap = {};

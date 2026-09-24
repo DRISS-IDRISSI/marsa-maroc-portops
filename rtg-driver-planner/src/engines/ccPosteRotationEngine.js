@@ -24,7 +24,7 @@
 //     ci-dessous) : la simulation automatique n'est qu'une proposition de
 //     priorité tant qu'aucune saisie réelle n'existe pour ce jour-là, jamais
 //     une prédiction qui prime sur le terrain une fois celui-ci renseigné.
-//   - CONGÉ (et MALADIE/ABSENCE/FORMATION, mêmes statuts figés que
+//   - CONGÉ (et MALADIE/ABSENCE/FORMATION/DÉTACHEMENT, mêmes statuts figés que
 //     PlanningEngine) : le conducteur est GELÉ hors de la file pendant toute
 //     la durée de son absence (ne remonte pas comme au parc). À son 1er jour
 //     de reprise, il est réinséré en DERNIÈRE position de la file ; à partir
@@ -44,7 +44,7 @@
 // l'ordre de demain dépend du résultat réel d'aujourd'hui.
 // ==========================================
 
-const CC_FROZEN_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION"];
+const CC_FROZEN_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
 
 function ccBlockKey(driver) {
   return driver.teamId + "_" + (driver.initialVacation === "V2" ? "V2" : "V1");
