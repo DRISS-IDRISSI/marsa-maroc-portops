@@ -1670,7 +1670,7 @@ function MonthYearTeamPicker({ month, setMonth, year, setYear, teamId, setTeamId
       <div>
         <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Détail</label>
         <div className="flex gap-1">
-          {[["code","C"],["vacation","V1"],["zone","V1/A"]].map(([k,l]) => (
+          {[["code","C"],["vacation","V1"],["zone","V1/A"],["mouvement","M"]].map(([k,l]) => (
             <button key={k} onClick={() => setDetailLevel(k)}
               className={`px-2.5 py-2 text-xs font-semibold rounded-lg transition-all ${detailLevel === k ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{l}</button>
           ))}
@@ -1922,7 +1922,7 @@ function ImportStagiairePlanningModal({ team, month, year, drivers, state, plann
   );
 }
 
-function Cell({ assignment, detailLevel, onEdit, frameCls, noRotation }) {
+function Cell({ assignment, detailLevel, onEdit, frameCls, noRotation, mouvementsByKey }) {
   const weekStartCls = frameCls || "";
   if (!assignment) return <td className={`border border-slate-200/60 bg-slate-50/40 ${weekStartCls}`}></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
@@ -1930,7 +1930,15 @@ function Cell({ assignment, detailLevel, onEdit, frameCls, noRotation }) {
   // le code "C" (Travail) ne s'affiche plus, pour éviter la confusion avec
   // "CG" (Congé).
   let text = assignment.status === "PRESENT" ? "" : meta.code;
-  if (assignment.status === "PRESENT" && noRotation) {
+  if (assignment.status === "PRESENT" && detailLevel === "mouvement") {
+    // Mode "M" (Mouvement) : nombre de mouvements TOS réalisés ce jour-là
+    // par ce conducteur (mêmes données que le Rapport RH / Mouvements CC),
+    // demande explicite de l'exploitant — un 4ème mode de détail à côté de
+    // C/V1/V1-A, indépendant du rendu vacation/zone/shift ci-dessous.
+    const key = assignment.driverId + "_" + assignment.date;
+    const mvt = mouvementsByKey ? mouvementsByKey[key] : undefined;
+    text = mvt === undefined ? "—" : String(mvt);
+  } else if (assignment.status === "PRESENT" && noRotation) {
     // Stagiaires : ni vacation ni zone (concepts qui ne s'appliquent pas à
     // eux, cf. PlanningEngine) — seul le SHIFT sur lequel ils ont été
     // affectés ce jour-là est pertinent, quel que soit le mode "Détail".
@@ -2100,7 +2108,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
 // colonnes que le modèle Excel réel fourni (bloc de conducteurs suivi d'une
 // ligne "Nombre de présent" par jour), avec cellules cliquables si l'usager
 // a le droit de modifier le planning à la main (§32).
-function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell, team, noRotation }) {
+function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell, team, noRotation, mouvementsByKey }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   // Regroupe les jours consécutifs sous le même shift (rotation hebdomadaire
@@ -2186,7 +2194,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   <td className="hidden sm:table-cell border border-slate-200/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
                   {planning.days.map((day, i) => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
-                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} frameCls={weekFrameCls(i)} noRotation={noRotation} />;
+                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} frameCls={weekFrameCls(i)} noRotation={noRotation} mouvementsByKey={mouvementsByKey} />;
                   })}
                 </tr>
               ))}
@@ -2210,7 +2218,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
   );
 }
 
-function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }) {
+function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit, mouvementsByKey }) {
   const [editing, setEditing] = useState(null);
   const onEditCell = canEdit ? (driver, iso, assignment) => assignment && setEditing({ driver: driver, iso: iso, assignment: assignment }) : undefined;
 
@@ -2242,11 +2250,11 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
               // jour (pas de rotation synchronisée d'équipe) — un en-tête
               // "Shift 1/2/3" fusionné par semaine serait donc trompeur ici
               // (même raison que isNoRotationTeam dans pages2.js).
-              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} noRotation />
+              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} noRotation mouvementsByKey={mouvementsByKey} />
             ) : (
               <>
-                <VacationGroupTable label="Vacation 1" drivers={teamDrivers.filter(d => d.initialVacation !== "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
-                <VacationGroupTable label="Vacation 2" drivers={teamDrivers.filter(d => d.initialVacation === "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
+                <VacationGroupTable label="Vacation 1" drivers={teamDrivers.filter(d => d.initialVacation !== "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} mouvementsByKey={mouvementsByKey} />
+                <VacationGroupTable label="Vacation 2" drivers={teamDrivers.filter(d => d.initialVacation === "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} mouvementsByKey={mouvementsByKey} />
               </>
             )}
           </div>
@@ -2681,6 +2689,33 @@ function PlanningMensuel() {
   const [teamId, setTeamId] = useState(shiftRestricted ? ownTeamId : "all");
   const [detailLevel, setDetailLevel] = useState("vacation");
 
+  // Mode "M" (Mouvement) — nombre de mouvements TOS réalisés par chaque
+  // conducteur chaque jour (mêmes données que le Rapport RH / Mouvements
+  // CC) : chargé seulement quand ce mode est sélectionné, pour ne pas
+  // alourdir l'affichage par défaut du Planning mensuel.
+  const [mvtRows, setMvtRows] = useState([]);
+  useEffect(() => {
+    if (detailLevel !== "mouvement") return;
+    const dim = RTGDate.daysInMonth(month, year);
+    const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
+    const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
+    let cancelled = false;
+    RTGStore.fetchMouvementsTos({ dateFrom: dateFrom, dateTo: dateTo })
+      .then(rows => { if (!cancelled) setMvtRows(rows); })
+      .catch(() => { if (!cancelled) setMvtRows([]); });
+    return () => { cancelled = true; };
+  }, [detailLevel, month, year]);
+
+  const mouvementsByKey = useMemo(() => {
+    const map = {};
+    mvtRows.forEach(r => {
+      if (!r.driverId) return;
+      const key = r.driverId + "_" + r.dateTravail;
+      map[key] = (map[key] || 0) + (r.totalMvmt || 0);
+    });
+    return map;
+  }, [mvtRows]);
+
   const effectiveTeamId = shiftRestricted ? ownTeamId : teamId;
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
   // Trie par ordreAffichage (rempli par l'import Excel — §35) pour que la
@@ -2789,7 +2824,7 @@ function PlanningMensuel() {
       </div>
 
       <div className="print:hidden">
-        <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} teams={state.teams} canEdit={canEditPlanning} />
+        <PlanningGrid planning={planning} drivers={drivers} detailLevel={detailLevel} config={state.config} teams={state.teams} canEdit={canEditPlanning} mouvementsByKey={mouvementsByKey} />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-4 print:hidden">
