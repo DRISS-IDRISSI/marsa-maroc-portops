@@ -62,7 +62,16 @@ const PlanningEngine = {
 
       let shift = null, vacation = null, zone = null, startTime = null, endTime = null;
       let vacationBalanceAlert = false, restCorrection = null;
-      if (status === "PRESENT" && team) {
+      // Équipe "stagiaires" (pas de rotation fixe, cf. isNoRotationTeam
+      // pages2.js / CcPosteRotationEngine._ccDrivers, même détection à
+      // double critère) : shift/vacation/zone ne sont JAMAIS calculés
+      // automatiquement pour eux — ils travaillent la journée complète et
+      // sont affectés au jour le jour, au shift qui a besoin de renfort,
+      // selon le terrain (jamais une rotation individuelle fictive). Seule
+      // une correction manuelle (ou un import du planning réel) renseigne
+      // ces valeurs — voir AssignmentEditModal (sélecteur de shift dédié).
+      const isNoRotationTeam = team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""));
+      if (status === "PRESENT" && team && !isNoRotationTeam) {
         shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
         vacation = VacationRotationEngine.getVacationForDate(driver, date, state, team);
         zone = ZoneRotationEngine.getZoneForDate(driver, date, state, teams);

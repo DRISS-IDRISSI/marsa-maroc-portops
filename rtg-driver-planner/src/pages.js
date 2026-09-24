@@ -32,6 +32,7 @@ function loadXlsxLib() {
 }
 
 const IMPORT_REPOS_CODES = ["R"];
+const IMPORT_REPOS_COMPENSATOIRE_CODES = ["RC"];
 const IMPORT_CONGE_CODES = ["C", "CG", "CONGE", "CONGÉ"];
 const IMPORT_MALADIE_CODES = ["M", "MALADIE"];
 const IMPORT_DETACHEMENT_CODES = ["D", "DT", "DETACHEMENT", "DÉTACHEMENT"];
@@ -264,6 +265,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   };
 
   const reposByDriver = {};
+  const reposCompByDriver = {};
   const congeByDriver = {};
   const presentByDriver = {};
   const maladieByDriver = {};
@@ -284,6 +286,8 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
       }
       if (IMPORT_REPOS_CODES.indexOf(code) !== -1) {
         (reposByDriver[driverId] = reposByDriver[driverId] || []).push(day);
+      } else if (IMPORT_REPOS_COMPENSATOIRE_CODES.indexOf(code) !== -1) {
+        (reposCompByDriver[driverId] = reposCompByDriver[driverId] || []).push(day);
       } else if (IMPORT_CONGE_CODES.indexOf(code) !== -1) {
         rawConge.push(day);
       } else if (IMPORT_MALADIE_CODES.indexOf(code) !== -1) {
@@ -339,6 +343,13 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     });
   });
 
+  const reposCompDays = [];
+  Object.keys(reposCompByDriver).forEach(driverId => {
+    reposCompByDriver[driverId].forEach(day => {
+      reposCompDays.push({ driverId: driverId, iso: RTGDate.toISO(RTGDate.makeDate(year, month, day)) });
+    });
+  });
+
   const presentDays = [];
   Object.keys(presentByDriver).forEach(driverId => {
     presentByDriver[driverId].forEach(day => {
@@ -364,6 +375,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     maladieRanges: maladieRanges,
     detachementRanges: detachementRanges,
     reposDays: reposDays,
+    reposCompDays: reposCompDays,
     presentDays: presentDays,
     orderByDriver: orderByDriver,
     unknownCodes: unknownCodes
@@ -578,7 +590,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       const day = planning.days.find(d => d.iso === iso);
       const a = day && day.assignments.find(x => x.driverId === driverId);
       if (!a) return false;
-      if (a.status === "REPOS") return true;
+      if (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") return true;
       // Répare une correction précédente laissée sans zone par un bug déjà
       // corrigé (voir historique) : un import déjà passé par ici a pu créer
       // une correction manuelle PRESENT sans zone valide.
@@ -594,23 +606,33 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   // aussi qu'ajouter ce repos ne crée pas 2 repos consécutifs pour ce
   // conducteur (règle absolue, vérifiée sur données réelles — §RestDayEngine) :
   // les jours en conflit sont écartés, jamais appliqués silencieusement.
+  // REPOS et REPOS_COMPENSATOIRE (RC — repos accordé en compensation,
+  // distinct du repos hebdomadaire normal, cf. légende du fichier réel)
+  // suivent exactement le même traitement : un seul flux, chaque entrée
+  // gardant son statut cible propre.
+  const allReposDaysParsed = useMemo(() => {
+    if (!parsed) return [];
+    return parsed.reposDays.map(r => Object.assign({ status: "REPOS" }, r))
+      .concat((parsed.reposCompDays || []).map(r => Object.assign({ status: "REPOS_COMPENSATOIRE" }, r)));
+  }, [parsed]);
+
   const { reposToApply, reposConflicts } = useMemo(() => {
     if (!parsed || !planning) return { reposToApply: [], reposConflicts: [] };
-    const candidates = parsed.reposDays.filter(({ driverId, iso }) => {
+    const candidates = allReposDaysParsed.filter(({ driverId, iso, status }) => {
       const day = planning.days.find(d => d.iso === iso);
       const a = day && day.assignments.find(x => x.driverId === driverId);
       if (!a) return true;
-      // Un REPOS déjà MANUEL sur ce jour est définitivement figé — inutile
-      // de le réécrire. Un REPOS simplement AUTO qui tombe par coïncidence
-      // sur le bon jour n'est PAS un statut figé : le quota mensuel du
-      // conducteur est recalculé dynamiquement, et écrire d'autres repos ou
-      // congés manuels ailleurs dans son mois peut faire disparaître ce
-      // repos auto (le quota se retrouvant déjà satisfait par les jours
-      // manuels) — déjà observé en pratique (AGUELMOUK : le 04/09, auto-
-      // correct au moment de l'aperçu, redevenait "Travail" une fois les
-      // autres jours du mois forcés). Il faut donc le figer en MANUEL lui
-      // aussi, même s'il est "déjà correct" à cet instant précis.
-      if (a.status === "REPOS" && a.source === "MANUAL") return false;
+      // Un repos déjà MANUEL du même statut sur ce jour est définitivement
+      // figé — inutile de le réécrire. Un repos simplement AUTO qui tombe
+      // par coïncidence sur le bon jour n'est PAS un statut figé : le quota
+      // mensuel du conducteur est recalculé dynamiquement, et écrire
+      // d'autres repos ou congés manuels ailleurs dans son mois peut faire
+      // disparaître ce repos auto (le quota se retrouvant déjà satisfait par
+      // les jours manuels) — déjà observé en pratique (AGUELMOUK : le
+      // 04/09, auto-correct au moment de l'aperçu, redevenait "Travail" une
+      // fois les autres jours du mois forcés). Il faut donc le figer en
+      // MANUEL lui aussi, même s'il est "déjà correct" à cet instant précis.
+      if (a.status === status && a.source === "MANUAL") return false;
       if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "FERIE"].indexOf(a.status) !== -1) return false;
       return true;
     });
@@ -619,7 +641,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     const dayOf = iso => RTGDate.parseISO(iso).getUTCDate();
     planning.days.forEach(day => {
       day.assignments.forEach(a => {
-        if (a.status === "REPOS") (finalReposDaysByDriver[a.driverId] = finalReposDaysByDriver[a.driverId] || new Set()).add(dayOf(day.iso));
+        if (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") (finalReposDaysByDriver[a.driverId] = finalReposDaysByDriver[a.driverId] || new Set()).add(dayOf(day.iso));
       });
     });
     presenceCorrectionsToApply.forEach(({ driverId, iso }) => {
@@ -637,7 +659,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       else toApply.push(item);
     });
     return { reposToApply: toApply, reposConflicts: conflicts };
-  }, [parsed, planning, presenceCorrectionsToApply]);
+  }, [parsed, planning, presenceCorrectionsToApply, allReposDaysParsed]);
 
   // Réordonne les conducteurs de l'appli dans le même ordre que les lignes
   // du fichier, pour comparer facilement le Planning mensuel affiché avec
@@ -791,7 +813,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     let done = 0, reposErrors = 0, presenceErrors = 0, orderErrors = 0;
     for (const r of reposToApply) {
       try {
-        await RTGStore.setManualOverride(r.iso, r.driverId, { status: "REPOS", shift: null, vacation: null, zone: null, startTime: null, endTime: null }, RTG_IMPORT_OVERRIDE_MOTIF, team.nom + " — " + r.iso);
+        await RTGStore.setManualOverride(r.iso, r.driverId, { status: r.status || "REPOS", shift: null, vacation: null, zone: null, startTime: null, endTime: null }, RTG_IMPORT_OVERRIDE_MOTIF, team.nom + " — " + r.iso);
       } catch (e) { console.error(e); reposErrors++; }
       done++; setProgress({ done: done, total: total });
     }
@@ -998,7 +1020,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
 
         {step === "previewRepos" && parsed && (
           <div className="space-y-3 text-xs text-slate-600">
-            <p><span className="text-slate-900 font-semibold">{reposToApply.length}</span> repos à forcer manuellement{parsed.reposDays.length !== reposToApply.length + reposConflicts.length ? " (" + (parsed.reposDays.length - reposToApply.length - reposConflicts.length) + " déjà correct(s), ignoré(s))" : ""}.</p>
+            <p><span className="text-slate-900 font-semibold">{reposToApply.length}</span> repos (dont repos compensatoires) à forcer manuellement{allReposDaysParsed.length !== reposToApply.length + reposConflicts.length ? " (" + (allReposDaysParsed.length - reposToApply.length - reposConflicts.length) + " déjà correct(s), ignoré(s))" : ""}.</p>
             {reposConflicts.length > 0 && (
               <p className="text-red-700">
                 <i className="fas fa-triangle-exclamation mr-1.5"></i>{reposConflicts.length} repos NON appliqué(s) car ils créeraient 2 repos consécutifs (règle absolue) : {reposConflicts.slice(0, 8).map(c => {
@@ -1014,14 +1036,15 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
                 {(() => {
                   const toApplyKeys = new Set(reposToApply.map(r => r.driverId + "_" + r.iso));
                   const conflictKeys = new Set(reposConflicts.map(r => r.driverId + "_" + r.iso));
-                  return parsed.reposDays.slice().sort((a, b) => a.iso.localeCompare(b.iso)).map((r, idx) => {
+                  return allReposDaysParsed.slice().sort((a, b) => a.iso.localeCompare(b.iso)).map((r, idx) => {
                     const d = drivers.find(x => x.id === r.driverId);
                     const key = r.driverId + "_" + r.iso;
                     let verdict, cls;
                     if (conflictKeys.has(key)) { verdict = "REJETÉ (conflit 2 repos consécutifs)"; cls = "text-red-700"; }
                     else if (toApplyKeys.has(key)) { verdict = "sera forcé"; cls = "text-emerald-400"; }
                     else { verdict = "déjà correct, ignoré"; cls = "text-slate-500"; }
-                    return <div key={idx} className={cls}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {r.iso.slice(8, 10)}/{r.iso.slice(5, 7)} — {verdict}</div>;
+                    const statusLabel = r.status === "REPOS_COMPENSATOIRE" ? " (RC)" : "";
+                    return <div key={idx} className={cls}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {r.iso.slice(8, 10)}/{r.iso.slice(5, 7)}{statusLabel} — {verdict}</div>;
                   });
                 })()}
               </div>
@@ -1189,6 +1212,7 @@ function fleetTeamIdSet(state, restrictedTeamIdValue) {
 const RTG_STATUS_META = {
   PRESENT: { code: "C", label: "Travail", className: "bg-amber-500/25 text-amber-700 border-amber-500/40" },
   REPOS: { code: "R", label: "Repos", className: "bg-rose-500/20 text-rose-700 border-rose-500/30" },
+  REPOS_COMPENSATOIRE: { code: "RC", label: "Repos compensatoire", className: "bg-fuchsia-500/20 text-fuchsia-700 border-fuchsia-500/30" },
   CONGE: { code: "CG", label: "Congé", className: "bg-orange-600/30 text-orange-700 border-orange-600/40" },
   MALADIE: { code: "M", label: "Maladie", className: "bg-purple-600/30 text-purple-700 border-purple-600/40" },
   ABSENCE: { code: "A", label: "Absence", className: "bg-red-600/30 text-red-700 border-red-600/40" },
@@ -1204,6 +1228,7 @@ const RTG_STATUS_META = {
 // de couleur : la case reste vierge (volontairement, cf. VacationGroupTablePrintable).
 const PRINT_STATUS_BG = {
   REPOS: "#fecdd3",
+  REPOS_COMPENSATOIRE: "#f5d0fe",
   CONGE: "#fed7aa",
   MALADIE: "#e9d5ff",
   ABSENCE: "#fecaca",
@@ -1571,7 +1596,7 @@ function ValidationBanner({ validation }) {
   );
 }
 
-function Cell({ assignment, detailLevel, onEdit, frameCls }) {
+function Cell({ assignment, detailLevel, onEdit, frameCls, noRotation }) {
   const weekStartCls = frameCls || "";
   if (!assignment) return <td className={`border border-slate-200/60 bg-slate-50/40 ${weekStartCls}`}></td>;
   const meta = RTG_STATUS_META[assignment.status] || { code: assignment.status, className: "text-slate-400" };
@@ -1579,14 +1604,19 @@ function Cell({ assignment, detailLevel, onEdit, frameCls }) {
   // le code "C" (Travail) ne s'affiche plus, pour éviter la confusion avec
   // "CG" (Congé).
   let text = assignment.status === "PRESENT" ? "" : meta.code;
-  if (assignment.status === "PRESENT" && detailLevel !== "code") {
+  if (assignment.status === "PRESENT" && noRotation) {
+    // Stagiaires : ni vacation ni zone (concepts qui ne s'appliquent pas à
+    // eux, cf. PlanningEngine) — seul le SHIFT sur lequel ils ont été
+    // affectés ce jour-là est pertinent, quel que soit le mode "Détail".
+    text = assignment.shift ? assignment.shift.replace(/^S/, "") : "";
+  } else if (assignment.status === "PRESENT" && detailLevel !== "code") {
     text = detailLevel === "zone" ? (assignment.zone || "") : (assignment.vacation || "");
   }
   const isManual = assignment.source === "MANUAL";
   const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
   // Repos et Congé mis en avant (gras) — les deux statuts qu'un responsable
   // cherche à repérer en priorité en balayant la grille du regard.
-  const emphasized = assignment.status === "REPOS" || assignment.status === "CONGE";
+  const emphasized = assignment.status === "REPOS" || assignment.status === "REPOS_COMPENSATOIRE" || assignment.status === "CONGE";
   return (
     <td
       className={`border border-slate-200/60 text-center text-[11px] ${emphasized ? "font-bold" : "font-semibold"} px-1 py-1.5 ${meta.className} ${onEdit ? "cursor-pointer hover:brightness-125" : ""} ${weekStartCls}`}
@@ -1602,7 +1632,7 @@ function Cell({ assignment, detailLevel, onEdit, frameCls }) {
 // à l'ADMIN / RESPONSABLE / RESPONSABLE_SHIFT de forcer le statut/vacation/zone
 // d'un conducteur pour un jour donné, notamment pour équilibrer à la main les
 // vacations V1/V2 quand l'algorithme automatique ne suffit pas.
-const EDITABLE_STATUSES = ["PRESENT", "REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "OFF"];
+const EDITABLE_STATUSES = ["PRESENT", "REPOS", "REPOS_COMPENSATOIRE", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "OFF"];
 
 // Chaque zone de stockage RTG (A-H) est physiquement divisée en 2 blocs ; un
 // conducteur peut être affecté à toute la zone (seul, se déplaçant entre les
@@ -1630,13 +1660,21 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
   const team = teams.find(t => t.id === driver.teamId);
   const fleet = (team && team.typeEngin) || "RTG";
   const fleetZones = zonesForFleet(config, fleet);
+  // Stagiaires (pas de rotation fixe, cf. isNoRotationTeam pages2.js /
+  // PlanningEngine, même détection à double critère) : jamais de shift
+  // déduit automatiquement de l'équipe (fictif pour eux) — le responsable
+  // choisit lui-même, au jour le jour, sur quel shift affecter ce
+  // conducteur selon le besoin réel, et il travaille la journée complète
+  // (V1+V2), jamais une seule vacation.
+  const isNoRotation = !!team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""));
   const [status, setStatus] = useState(assignment.status);
-  const [vacation, setVacation] = useState(assignment.vacation || "V1");
+  const [vacation, setVacation] = useState(assignment.vacation || (isNoRotation ? "V1+V2" : "V1"));
   const [zone, setZone] = useState(assignment.zone || fleetZones[0]);
+  const [shiftChoice, setShiftChoice] = useState(assignment.shift || (config.shifts[0] && config.shifts[0].id));
   const [saving, setSaving] = useState(false);
   const isManual = assignment.source === "MANUAL";
 
-  const shift = assignment.shift || (team ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(iso), config) : null);
+  const shift = isNoRotation ? shiftChoice : (assignment.shift || (team ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(iso), config) : null));
   const vacDefs = shift ? (config.vacations[shift] || []) : [];
   const zoneOptions = buildManualZoneOptions(fleetZones, fleet);
 
@@ -1694,13 +1732,22 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
           </div>
           {status === "PRESENT" && (
             <div className="flex gap-3">
-              <div className="flex-1">
-                <label className={LABEL_CLS}>Vacation</label>
-                <select className={FIELD_CLS} value={vacation} onChange={e => setVacation(e.target.value)}>
-                  {vacDefs.map(v => <option key={v.id} value={v.id}>{v.id} ({v.start}-{v.end})</option>)}
-                  {vacDefs.length > 0 && <option value="V1+V2">Journée complète — V1+V2 (stagiaire 8h)</option>}
-                </select>
-              </div>
+              {isNoRotation ? (
+                <div className="flex-1">
+                  <label className={LABEL_CLS}>Shift (journée complète — 8h)</label>
+                  <select className={FIELD_CLS} value={shiftChoice} onChange={e => setShiftChoice(e.target.value)}>
+                    {config.shifts.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex-1">
+                  <label className={LABEL_CLS}>Vacation</label>
+                  <select className={FIELD_CLS} value={vacation} onChange={e => setVacation(e.target.value)}>
+                    {vacDefs.map(v => <option key={v.id} value={v.id}>{v.id} ({v.start}-{v.end})</option>)}
+                    {vacDefs.length > 0 && <option value="V1+V2">Journée complète — V1+V2 (stagiaire 8h)</option>}
+                  </select>
+                </div>
+              )}
               <div className="flex-1">
                 <label className={LABEL_CLS}>Zone</label>
                 <select className={FIELD_CLS} value={zone} onChange={e => setZone(e.target.value)}>
@@ -1727,7 +1774,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
 // colonnes que le modèle Excel réel fourni (bloc de conducteurs suivi d'une
 // ligne "Nombre de présent" par jour), avec cellules cliquables si l'usager
 // a le droit de modifier le planning à la main (§32).
-function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell, team }) {
+function VacationGroupTable({ label, drivers, planning, detailLevel, config, onEditCell, team, noRotation }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   // Regroupe les jours consécutifs sous le même shift (rotation hebdomadaire
@@ -1813,7 +1860,7 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   <td className="hidden sm:table-cell border border-slate-200/60 px-2 py-1.5 text-slate-400">{driver.prenom}</td>
                   {planning.days.map((day, i) => {
                     const a = day.assignments.find(x => x.driverId === driver.id);
-                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} frameCls={weekFrameCls(i)} />;
+                    return <Cell key={day.iso} assignment={a} detailLevel={detailLevel} onEdit={onEditCell ? () => onEditCell(driver, day.iso, a) : undefined} frameCls={weekFrameCls(i)} noRotation={noRotation} />;
                   })}
                 </tr>
               ))}
@@ -1869,7 +1916,7 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
               // jour (pas de rotation synchronisée d'équipe) — un en-tête
               // "Shift 1/2/3" fusionné par semaine serait donc trompeur ici
               // (même raison que isNoRotationTeam dans pages2.js).
-              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} />
+              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} noRotation />
             ) : (
               <>
                 <VacationGroupTable label="Vacation 1" drivers={teamDrivers.filter(d => d.initialVacation !== "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
@@ -2714,7 +2761,7 @@ function AffectationDuJour() {
   // aujourd'hui apparaissait sous "Vacation V2" — son identité fixe — alors
   // que ses collègues PRÉSENTS du même bloc, eux, apparaissaient bien sous
   // "Vacation V1", le label du jour).
-  const ABSENT_STATUSES = ["REPOS", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
+  const ABSENT_STATUSES = ["REPOS", "REPOS_COMPENSATOIRE", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
   const driverById = {};
   state.drivers.forEach(d => { driverById[d.id] = d; });
   const teamShiftMap = {};
@@ -2983,7 +3030,7 @@ function AffectationDuJour() {
           <div>
             <p className="text-xs mb-3">Jour férié — {holiday.label} — journée chômée, aucune affectation générée.</p>
             <FerieMouvementsPrintable dateStr={dateStr} presentDrivers={presentDrivers} />
-            <ReposCongesPrintable rows={assignments.filter(a => a.status === "REPOS" || a.status === "CONGE")} />
+            <ReposCongesPrintable rows={assignments.filter(a => a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE" || a.status === "CONGE")} />
           </div>
           <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
             Document généré automatiquement par CES Driver Planner.
