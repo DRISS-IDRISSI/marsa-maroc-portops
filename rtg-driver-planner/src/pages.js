@@ -203,10 +203,8 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   const { headerRowIdx, dayColumns } = detectDayColumns(rows, month, year, sheetName);
   const matchDriver = buildDriverMatcher(drivers);
 
-  const reposByDriver = {};
-  const congeByDriver = {};
-  const presentByDriver = {};
-  const maladieByDriver = {};
+  const codesByDriverDay = {};
+  const dayHasAnyCode = {};
   const unknownCodes = [];
   const unmatchedMatricules = new Set();
   const matchedDriverIds = new Set();
@@ -234,27 +232,67 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     if (found.via !== "matricule") fallbackMatches.push({ matriculeFichier: String(matCell).trim(), matriculeAppli: driver.matricule, nom: driver.nom, prenom: driver.prenom, via: found.via });
     matchedDriverIds.add(driver.id);
     orderByDriver[driver.id] = orderCounter++;
+    const codesByDay = codesByDriverDay[driver.id] = codesByDriverDay[driver.id] || {};
     dayColumns.forEach(({ day, colIdx }) => {
       const raw = row[colIdx];
-      // Case vide = "Conducteur présent" (légende du fichier réel) : à
-      // rapprocher du statut calculé par le moteur pour annuler un repos
-      // que l'algorithme aurait généré à tort ce jour-là (voir plus bas).
-      if (raw === null || raw === undefined || String(raw).trim() === "") {
-        (presentByDriver[driver.id] = presentByDriver[driver.id] || []).push(day);
-        return;
-      }
-      const code = String(raw).trim().toUpperCase();
-      if (IMPORT_REPOS_CODES.indexOf(code) !== -1) {
-        (reposByDriver[driver.id] = reposByDriver[driver.id] || []).push(day);
-      } else if (IMPORT_CONGE_CODES.indexOf(code) !== -1) {
-        (congeByDriver[driver.id] = congeByDriver[driver.id] || []).push(day);
-      } else if (IMPORT_MALADIE_CODES.indexOf(code) !== -1) {
-        (maladieByDriver[driver.id] = maladieByDriver[driver.id] || []).push(day);
-      } else {
-        unknownCodes.push({ matricule: driver.matricule, day: day, code: code });
-      }
+      const code = (raw === null || raw === undefined || String(raw).trim() === "") ? null : String(raw).trim().toUpperCase();
+      codesByDay[day] = code;
+      if (code !== null) dayHasAnyCode[day] = true;
     });
   }
+
+  // Jour où AUCUN conducteur reconnu de l'équipe n'a de code (R/C/M) : un jour
+  // chômé pour TOUTE l'équipe (ex. dimanche du 3ème shift, cf.
+  // offShift3Dimanche), pas un jour "présent" comme une case vide ordinaire —
+  // la case y est vide pour tout le monde, y compris un conducteur en réalité
+  // en congé/maladie ce jour-là (le fichier ne le distingue pas). Sans ce
+  // traitement, un congé/une maladie qui traverse un tel jour serait scindé à
+  // tort en deux périodes distinctes (cas réel observé : EL MOUHAJIR, GR
+  // HADDAZI, jour du 3ème shift dimanche chômé).
+  const universallyBlankDays = new Set(dayColumns.map(c => c.day).filter(day => !dayHasAnyCode[day]));
+  const bridgeGaps = days => {
+    const set = new Set(days);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      universallyBlankDays.forEach(day => {
+        if (!set.has(day) && set.has(day - 1) && set.has(day + 1)) { set.add(day); changed = true; }
+      });
+    }
+    return Array.from(set);
+  };
+
+  const reposByDriver = {};
+  const congeByDriver = {};
+  const presentByDriver = {};
+  const maladieByDriver = {};
+  Object.keys(codesByDriverDay).forEach(driverId => {
+    const driver = drivers.find(d => d.id === driverId);
+    const codesByDay = codesByDriverDay[driverId];
+    const rawConge = [], rawMaladie = [];
+    Object.keys(codesByDay).forEach(dayStr => {
+      const day = parseInt(dayStr, 10);
+      const code = codesByDay[day];
+      if (code === null) {
+        // Case vide = "Conducteur présent" (légende du fichier réel), SAUF un
+        // jour chômé pour toute l'équipe (voir ci-dessus) qui ne signifie rien
+        // de particulier pour ce conducteur.
+        if (!universallyBlankDays.has(day)) (presentByDriver[driverId] = presentByDriver[driverId] || []).push(day);
+        return;
+      }
+      if (IMPORT_REPOS_CODES.indexOf(code) !== -1) {
+        (reposByDriver[driverId] = reposByDriver[driverId] || []).push(day);
+      } else if (IMPORT_CONGE_CODES.indexOf(code) !== -1) {
+        rawConge.push(day);
+      } else if (IMPORT_MALADIE_CODES.indexOf(code) !== -1) {
+        rawMaladie.push(day);
+      } else {
+        unknownCodes.push({ matricule: driver ? driver.matricule : driverId, day: day, code: code });
+      }
+    });
+    if (rawConge.length) congeByDriver[driverId] = bridgeGaps(rawConge);
+    if (rawMaladie.length) maladieByDriver[driverId] = bridgeGaps(rawMaladie);
+  });
 
   const congeRanges = [];
   Object.keys(congeByDriver).forEach(driverId => {
