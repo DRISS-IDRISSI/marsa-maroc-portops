@@ -432,7 +432,19 @@ function parseVacationLabelExcel(workbook, drivers, month, year, teamNom) {
     sheetName: sheetName,
     blocksFound: blocks.length,
     driversInBlocks: blocks.reduce((n, b) => n + b.driverIds.length, 0),
-    corrections: corrections
+    corrections: corrections,
+    // Composition RÉELLE des blocs ("VACATION A" = blocks[0], "VACATION B" =
+    // blocks[1]...) — sert à corriger driver.initialVacation quand la
+    // création en masse des conducteurs (parseConducteursFromShiftExcel,
+    // pages2.js) l'a affecté par simple parité de position dans la feuille
+    // (i % 2 === 0 ? "V1" : "V2") au lieu du VRAI bloc physique du fichier :
+    // ça mélange deux conducteurs de blocs différents sous la même étiquette
+    // V1/V2, ce qui fausse à la fois l'affichage (groupe Vacation 1/2 du
+    // Planning Mensuel) ET la file QUAI/PARC (CcPosteRotationEngine.ccBlockKey,
+    // qui utilise justement teamId+initialVacation pour ne jamais séparer un
+    // bloc réel) — constaté en pratique sur GR HOUSSAM (TOURI, bloc A réel,
+    // affiché à tort dans le groupe "Vacation 2").
+    blocks: blocks.map(b => b.driverIds.slice())
   };
 }
 
@@ -447,6 +459,7 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   const [vacationParsed, setVacationParsed] = useState(null);
   const [vacationParseError, setVacationParseError] = useState("");
   const [vacationApplyResult, setVacationApplyResult] = useState(null);
+  const [blockApplyResult, setBlockApplyResult] = useState(null);
 
   const doReset = async () => {
     setStep("resetting");
@@ -617,6 +630,55 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       });
   }, [parsed, drivers]);
 
+  // Bloc réel (VACATION A/B) de chaque conducteur, d'après le fichier —
+  // corrige driver.initialVacation quand la création en masse des
+  // conducteurs (pages2.js, ImportConducteursModal.apply) l'a affecté par
+  // simple parité de position dans la feuille (i % 2, sans notion de bloc)
+  // au lieu du vrai bloc physique : deux conducteurs de blocs réels
+  // différents se retrouvent alors par hasard sous la même étiquette V1/V2,
+  // ce qui fausse le groupe Vacation 1/2 affiché ET la file QUAI/PARC (CC),
+  // qui s'appuie sur ce même champ (ccBlockKey) pour ne jamais séparer un
+  // bloc réel. Constaté en pratique sur GR HOUSSAM (TOURI, bloc A réel,
+  // affiché à tort dans le groupe "Vacation 2" à la place de HOMMANE, bloc B).
+  const blockCorrectionsToApply = useMemo(() => {
+    if (!vacationParsed || !vacationParsed.blocks || vacationParsed.blocks.length !== 2) return [];
+    const [blockA, blockB] = vacationParsed.blocks;
+    const currentLabel = driverId => {
+      const d = drivers.find(x => x.id === driverId);
+      return d ? (d.initialVacation === "V2" ? "V2" : "V1") : null;
+    };
+    // Teste les deux étiquetages possibles (bloc A=V1/bloc B=V2, ou l'inverse)
+    // et retient celui qui demande le MOINS de changements — le sens exact
+    // (V1 ou V2) n'a aucune importance pour la file QUAI/PARC, seule compte
+    // la cohésion du bloc réel (jamais mélanger A et B sous la même étiquette).
+    const countMismatches = (labelA, labelB) => {
+      let n = 0;
+      blockA.forEach(id => { if (currentLabel(id) !== labelA) n++; });
+      blockB.forEach(id => { if (currentLabel(id) !== labelB) n++; });
+      return n;
+    };
+    const [labelA, labelB] = countMismatches("V1", "V2") <= countMismatches("V2", "V1") ? ["V1", "V2"] : ["V2", "V1"];
+    const corrections = [];
+    blockA.forEach(id => { if (currentLabel(id) !== labelA) corrections.push({ driverId: id, to: labelA }); });
+    blockB.forEach(id => { if (currentLabel(id) !== labelB) corrections.push({ driverId: id, to: labelB }); });
+    return corrections;
+  }, [vacationParsed, drivers]);
+
+  const applyBlockCorrections = async () => {
+    setStep("applyingBlock");
+    const total = blockCorrectionsToApply.length;
+    setProgress({ done: 0, total: total });
+    let done = 0, errors = 0;
+    for (const r of blockCorrectionsToApply) {
+      try {
+        await RTGStore.updateDriver(r.driverId, { initialVacation: r.to });
+      } catch (e) { console.error(e); errors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    setBlockApplyResult({ applied: blockCorrectionsToApply.length - errors, errors: errors });
+    setStep("blockDone");
+  };
+
   // Corrections de vacation (V1/V2) tirées de la ligne "VACATION 1 OU 2" du
   // fichier réel (parseVacationLabelExcel) — ne garder que les jours où le
   // conducteur est PRÉSENT (une vacation n'a pas de sens sinon, déjà à null)
@@ -774,11 +836,11 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "applyingConges", "applyingVacation", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "applyingConges", "applyingVacation", "applyingBlock", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
       <div className="bg-white border border-slate-200 rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-slate-900 font-semibold text-sm">Importer Repos &amp; Congés depuis Excel</h3>
-          {["applying", "applyingConges", "applyingVacation", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><i className="fas fa-xmark"></i></button>}
+          {["applying", "applyingConges", "applyingVacation", "applyingBlock", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><i className="fas fa-xmark"></i></button>}
         </div>
         <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-slate-900 font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}</p>
 
@@ -946,11 +1008,49 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s) et " + congeResult.maladiesCreated + " maladie(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
             {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-700">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
             {vacationParsed ? (
-              <button onClick={() => setStep("previewVacation")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les vacations (V1/V2)</button>
+              <button onClick={() => setStep("previewBlock")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les blocs et vacations (V1/V2)</button>
             ) : (
               vacationParseError && <p className="text-slate-500"><i className="fas fa-circle-info mr-1.5"></i>Ligne "VACATION 1 OU 2" non exploitée ({vacationParseError}).</p>
             )}
             <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Fermer</button>
+          </div>
+        )}
+
+        {step === "previewBlock" && vacationParsed && (
+          <div className="space-y-3 text-xs text-slate-600">
+            <p className="text-slate-500">
+              <i className="fas fa-circle-info mr-1.5"></i>Vérifie que chaque conducteur a bien l'étiquette V1/V2 de son VRAI bloc physique ("VACATION A"/"VACATION B" du fichier) — une création en masse antérieure a pu l'affecter par simple parité de position, mélangeant par erreur des conducteurs de blocs différents (ce qui fausse aussi le groupe Vacation 1/2 affiché et la file QUAI/PARC).
+            </p>
+            <p><span className="text-slate-900 font-semibold">{blockCorrectionsToApply.length}</span> conducteur(s) seront réaffecté(s) à leur vrai bloc.</p>
+            {blockCorrectionsToApply.length > 0 && (
+              <details className="text-slate-500">
+                <summary className="cursor-pointer hover:text-slate-600">Détail (vérification)</summary>
+                <div className="mt-1.5 max-h-48 overflow-y-auto space-y-0.5">
+                  {blockCorrectionsToApply.map((r, idx) => {
+                    const d = drivers.find(x => x.id === r.driverId);
+                    return <div key={idx}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {(d ? d.initialVacation : "?")} → {r.to}</div>;
+                  })}
+                </div>
+              </details>
+            )}
+            <div className="flex gap-2 pt-2">
+              {blockCorrectionsToApply.length > 0 ? (
+                <button onClick={applyBlockCorrections} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Appliquer</button>
+              ) : (
+                <button onClick={() => setStep("previewVacation")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer</button>
+              )}
+              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Fermer</button>
+            </div>
+          </div>
+        )}
+
+        {step === "applyingBlock" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Correction des blocs en cours… {progress.done}/{progress.total}</p>}
+
+        {step === "blockDone" && blockApplyResult && (
+          <div className="space-y-2 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{blockApplyResult.applied} conducteur(s) réaffecté(s) à leur vrai bloc.</p>
+            {blockApplyResult.errors > 0 && <p className="text-red-700">{blockApplyResult.errors} erreur(s) — voir la console.</p>}
+            <button onClick={() => setStep("previewVacation")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les vacations (V1/V2)</button>
           </div>
         )}
 
