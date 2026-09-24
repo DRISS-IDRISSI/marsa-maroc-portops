@@ -761,22 +761,30 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       return true;
     });
 
+    // La règle "jamais 2 repos consécutifs" ne concerne QUE le repos
+    // hebdomadaire normal (REPOS), généré automatiquement par RestDayEngine —
+    // jamais le REPOS_COMPENSATOIRE (RC), qui est un jour de repos GAGNÉ
+    // (compensation), légitimement accolé à un repos normal ou à un autre RC
+    // sur le terrain. Un RC ne peut donc jamais être rejeté pour ce motif, et
+    // sa présence ne bloque pas non plus un REPOS voisin.
     const finalReposDaysByDriver = {};
     const dayOf = iso => RTGDate.parseISO(iso).getUTCDate();
     planning.days.forEach(day => {
       day.assignments.forEach(a => {
-        if (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") (finalReposDaysByDriver[a.driverId] = finalReposDaysByDriver[a.driverId] || new Set()).add(dayOf(day.iso));
+        if (a.status === "REPOS") (finalReposDaysByDriver[a.driverId] = finalReposDaysByDriver[a.driverId] || new Set()).add(dayOf(day.iso));
       });
     });
     presenceCorrectionsToApply.forEach(({ driverId, iso }) => {
       if (finalReposDaysByDriver[driverId]) finalReposDaysByDriver[driverId].delete(dayOf(iso));
     });
-    candidates.forEach(({ driverId, iso }) => {
+    candidates.forEach(({ driverId, iso, status }) => {
+      if (status !== "REPOS") return;
       (finalReposDaysByDriver[driverId] = finalReposDaysByDriver[driverId] || new Set()).add(dayOf(iso));
     });
 
     const toApply = [], conflicts = [];
     candidates.forEach(item => {
+      if (item.status !== "REPOS") { toApply.push(item); return; }
       const day = dayOf(item.iso);
       const set = finalReposDaysByDriver[item.driverId] || new Set();
       if (set.has(day - 1) || set.has(day + 1)) conflicts.push(item);
