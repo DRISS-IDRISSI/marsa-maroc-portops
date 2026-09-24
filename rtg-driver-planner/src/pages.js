@@ -777,6 +777,17 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
     presenceCorrectionsToApply.forEach(({ driverId, iso }) => {
       if (finalReposDaysByDriver[driverId]) finalReposDaysByDriver[driverId].delete(dayOf(iso));
     });
+    // Un jour actuellement REPOS (auto) dans l'appli mais qui va devenir RC
+    // par cet import n'est plus un vrai "repos normal" une fois l'import
+    // appliqué — à retirer du set AVANT de tester les voisins, sinon un RC
+    // qui remplace un ancien repos auto bloque à tort le jour adjacent (cas
+    // réel : HAIOUED, le 19 passe REPOS auto → RC, ce qui ne doit plus
+    // compter comme "repos" pour juger le 20).
+    candidates.forEach(({ driverId, iso, status }) => {
+      if (status === "REPOS_COMPENSATOIRE" && finalReposDaysByDriver[driverId]) {
+        finalReposDaysByDriver[driverId].delete(dayOf(iso));
+      }
+    });
     candidates.forEach(({ driverId, iso, status }) => {
       if (status !== "REPOS") return;
       (finalReposDaysByDriver[driverId] = finalReposDaysByDriver[driverId] || new Set()).add(dayOf(iso));
