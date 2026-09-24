@@ -1448,12 +1448,17 @@ function ExportPdfButton({ onClick, busy }) {
   );
 }
 
-function PrintHeader({ subtitle, count, countLabel }) {
+function PrintHeader({ subtitle, count, countLabel, fleet }) {
   const generatedAt = new Date();
+  // Logo par flotte (demande explicite de l'exploitant) : Marsa Maroc pour
+  // les Chariots Cavaliers, TC3PC (déjà le logo historique du terminal) pour
+  // les RTG — jamais l'inverse, malgré TC3PC = filiale de Marsa Maroc.
+  const logoSrc = fleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg";
+  const logoAlt = fleet === "CC" ? "Marsa Maroc" : "TC3PC";
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
       <div className="flex items-center gap-3 min-w-0">
-        <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
+        <img src={logoSrc} alt={logoAlt} className="h-9 w-auto shrink-0" />
         {/* Sans whitespace-nowrap : sur une page plus étroite (export
             portrait, § AffectationDuJour), ce titre long se met à la ligne
             au lieu de déborder sur le bloc "Généré le..." à droite — bug
@@ -2389,7 +2394,8 @@ function PlanningMensuel() {
       {/* Rapport imprimable — noir sur blanc, indépendant du thème sombre de l'appli. */}
       <div ref={printRef} className="print-report bg-white text-slate-900 rounded-xl p-0">
         <PrintHeader
-          subtitle={"Rapport de planning mensuel — RTG — " + RAPPORT_MOIS_LABELS_P[month - 1] + " " + year + (effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : "")}
+          fleet={shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet}
+          subtitle={"Rapport de planning mensuel — " + (shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet) + " — " + RAPPORT_MOIS_LABELS_P[month - 1] + " " + year + (effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : "")}
           count={drivers.length} countLabel="conducteur"
         />
         <PlanningGridPrintable planning={planning} drivers={drivers} config={state.config} teams={state.teams} />
@@ -2924,7 +2930,8 @@ function AffectationDuJour() {
       {holiday ? (
         <div ref={holidayPrintRef} className="print-report bg-white text-slate-900 rounded-xl p-0">
           <PrintHeader
-            subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === ownTeamId) || {}).nom : "")}
+            fleet={displayedFleet}
+            subtitle={"Rapport d'affectation journalière — " + displayedFleet + " — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + (shiftRestricted ? " — " + (state.teams.find(t => t.id === ownTeamId) || {}).nom : "")}
             count={presentDrivers.length} countLabel="conducteur présent"
           />
           <div>
@@ -2944,7 +2951,8 @@ function AffectationDuJour() {
           return (
             <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl p-0">
               <PrintHeader
-                subtitle={"Rapport d'affectation journalière — RTG — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + " — " + s.label + (s.start ? ` (${s.start} → ${s.end})` : "") + (shiftTeam ? " — " + shiftTeam.nom : "")}
+                fleet={displayedFleet}
+                subtitle={"Rapport d'affectation journalière — " + displayedFleet + " — " + RTGDate.formatFr(RTGDate.parseISO(dateStr)) + " — " + s.label + (s.start ? ` (${s.start} → ${s.end})` : "") + (shiftTeam ? " — " + shiftTeam.nom : "")}
                 count={shiftCount} countLabel="conducteur"
               />
               <div>

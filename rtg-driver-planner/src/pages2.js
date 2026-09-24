@@ -1768,10 +1768,10 @@ function RapportRHPage() {
       <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div className="flex items-center gap-3">
-            <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
+            <img src={rawState.currentFleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg"} alt={rawState.currentFleet === "CC" ? "Marsa Maroc" : "TC3PC"} className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
-              <div className="text-xs sm:text-sm text-slate-600">Rapport RH — Conducteurs RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+              <div className="text-xs sm:text-sm text-slate-600">Rapport RH — Conducteurs {rawState.currentFleet} — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
@@ -1837,10 +1837,10 @@ function RapportRHPage() {
       <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div className="flex items-center gap-3">
-            <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
+            <img src={rawState.currentFleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg"} alt={rawState.currentFleet === "CC" ? "Marsa Maroc" : "TC3PC"} className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
-              <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés &amp; 3ème shift dimanche — RTG — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+              <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés &amp; 3ème shift dimanche — {rawState.currentFleet} — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
@@ -1904,7 +1904,7 @@ function RapportRHPage() {
       <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
           <div className="flex items-center gap-3">
-            <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-9 w-auto shrink-0" />
+            <img src={rawState.currentFleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg"} alt={rawState.currentFleet === "CC" ? "Marsa Maroc" : "TC3PC"} className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
               <div className="text-xs sm:text-sm text-slate-600">Mouvements {state.currentFleet} (import TOS) — {dayIso ? RTGDate.formatFr(RTGDate.parseISO(dayIso)) : RAPPORT_MOIS_LABELS[month - 1] + " " + year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
@@ -2761,12 +2761,12 @@ function A4ScaledPreview({ widthMm, heightMm, children, wrapperRef: externalWrap
 // ci-dessus (sans jamais changer ses dimensions RÉELLES, capturées telles
 // quelles par html2canvas à l'envoi/export via formRef, posé directement
 // sur CE nœud — jamais sur son wrapper transformé).
-function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, signatureCanvasRef, onSignatureChange, formRef }) {
+function CongeFormPrintable({ driver, fleet, dateDebut, dateFin, dernierCongePris, signatureCanvasRef, onSignatureChange, formRef }) {
   return (
       <div ref={formRef} className="bg-white text-slate-900 shadow-lg text-sm leading-snug"
         style={{ width: "210mm", minHeight: "297mm", padding: "16mm 18mm", boxSizing: "border-box" }}>
         <div className="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4 mb-5">
-          <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-14 w-auto shrink-0" />
+          <img src={fleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg"} alt={fleet === "CC" ? "Marsa Maroc" : "TC3PC"} className="h-14 w-auto shrink-0" />
           <div className="text-right">
             <div className="text-base font-bold uppercase">Demande de congé administratif</div>
             <div className="text-sm">Personnel 5 à 18</div>
@@ -2786,7 +2786,7 @@ function CongeFormPrintable({ driver, dateDebut, dateFin, dernierCongePris, sign
         <div className="text-center text-sm font-bold uppercase underline mb-4">À remplir par l'intéressé</div>
         <div className="space-y-2.5 mb-6">
           <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Nom et Prénom</span><span>: <span className="font-semibold">{driver.nom} {driver.prenom}</span> — Mle {driver.matricule}</span></div>
-          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Fonction</span><span>: Conducteur RTG</span></div>
+          <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Fonction</span><span>: Conducteur {fleet}</span></div>
           <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Entité</span><span>: TC3PC</span></div>
           <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Dernier congé pris</span><span>: {dernierCongePris || "—"}</span></div>
           <div className="flex flex-wrap gap-x-2"><span className="w-52 shrink-0 text-slate-600">Date début de congé</span><span>: {dateDebut ? RTGDate.formatFr(RTGDate.parseISO(dateDebut)) : "—"}</span></div>
@@ -2830,6 +2830,8 @@ function MesCongesPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const driver = currentUser && currentUser.driverId ? state.drivers.find(d => d.id === currentUser.driverId) : null;
+  const driverTeam = driver ? state.teams.find(t => t.id === driver.teamId) : null;
+  const driverFleet = driverTeam ? (driverTeam.typeEngin || "RTG") : "RTG";
   const [form, setForm] = useState({ dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
   const [hasSignature, setHasSignature] = useState(false);
   const signatureCanvasRef = useRef(null);
@@ -2994,7 +2996,7 @@ function MesCongesPage() {
           <div>
             <label className={LABEL_CLS}>Aperçu — signez directement sur le formulaire ci-dessous</label>
             <A4ScaledPreview widthMm={210} heightMm={297} wrapperRef={previewWrapperRef} scaleBoxRef={previewScaleBoxRef}>
-              <CongeFormPrintable driver={driver} dateDebut={form.dateDebut} dateFin={form.dateFin} dernierCongePris={dernierCongePris}
+              <CongeFormPrintable driver={driver} fleet={driverFleet} dateDebut={form.dateDebut} dateFin={form.dateFin} dernierCongePris={dernierCongePris}
                 signatureCanvasRef={signatureCanvasRef} onSignatureChange={setHasSignature} formRef={formNodeRef} />
             </A4ScaledPreview>
           </div>
