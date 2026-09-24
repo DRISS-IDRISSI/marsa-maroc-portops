@@ -148,8 +148,26 @@ const CcPosteRotationEngine = {
       const blockDrivers = byBlock[key];
       const team = teams.find(t => t.id === blockDrivers[0].teamId);
       const bootstrap = ccBootstrapOrderFor(team);
-      const vacPart = blockDrivers[0].initialVacation === "V2" ? "V2" : "V1";
-      const explicitOrder = bootstrap ? bootstrap[vacPart] : null;
+      // Choisit la liste (V1 ou V2) qui correspond le mieux aux matricules
+      // RÉELS de ce bloc, plutôt que de faire confiance à
+      // driver.initialVacation pour deviner laquelle consulter : ce champ ne
+      // reflète que l'étiquette de départ du bloc à rotationReferenceDate
+      // (RTG, notion distincte), pas forcément la même convention que celle
+      // utilisée pour relever le document papier — un bloc peut très bien
+      // avoir initialVacation="V2" alors que sa vraie liste communiquée est
+      // rangée ici sous la clé "V1" (ou l'inverse). Se fier à cette étiquette
+      // pour choisir la liste faisait échouer TOUT le rattachement en
+      // silence (repli intégral sur le tri matricule, plus aucun conducteur
+      // du bloc ne matchant la mauvaise liste) — bug réel constaté sur GR
+      // HADDAZI, ordre affiché redevenu matricule malgré CC_BOOTSTRAP_ORDER
+      // correctement renseigné.
+      let explicitOrder = null;
+      if (bootstrap) {
+        const blockMatricules = new Set(blockDrivers.map(d => String(d.matricule).trim().toUpperCase()));
+        const countMatches = list => (list || []).reduce((n, mat) => n + (blockMatricules.has(String(mat).trim().toUpperCase()) ? 1 : 0), 0);
+        const v1Count = countMatches(bootstrap.V1), v2Count = countMatches(bootstrap.V2);
+        if (v1Count > 0 || v2Count > 0) explicitOrder = v1Count >= v2Count ? bootstrap.V1 : bootstrap.V2;
+      }
 
       let ordered;
       if (explicitOrder) {
