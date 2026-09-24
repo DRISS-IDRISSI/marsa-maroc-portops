@@ -33,15 +33,22 @@ const ValidationEngine = {
     // zones RTG sont des lettres A-H, les postes CC sont P71/P72.../DTV/PARC
     // — voir zonesForFleet, data.js) : jamais "Zone A-H" pour un conducteur CC.
     const zoneLabelByDriverId = {};
+    const ccDriverIds = new Set();
     state.drivers.forEach(d => {
       const team = state.teams.find(t => t.id === d.teamId);
       if (team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""))) {
         noRotationDriverIds.add(d.id);
       }
       const fleet = (team && team.typeEngin) || "RTG";
+      if (fleet === "CC") ccDriverIds.add(d.id);
       const zones = zonesForFleet(state.config, fleet);
       zoneLabelByDriverId[d.id] = fleet === "RTG" ? `Zone ${zones[0]}-${zones[zones.length - 1]}` : "Poste QUAI ou PARC";
     });
+    // "Jour de départ" CC (config.ccRotationReferenceDate) : avant cette
+    // date, CcPosteRotationEngine ne calcule plus AUCUNE zone (demande
+    // explicite de l'exploitant — ignorer tout avant ce point de départ),
+    // donc une affectation CC sans zone y est normale, pas une anomalie.
+    const ccRefDateIso = state.config.ccRotationReferenceDate || state.config.rotationReferenceDate;
 
     days.forEach(day => {
       day.assignments.forEach(a => {
@@ -54,7 +61,8 @@ const ValidationEngine = {
         if (a.status === "PRESENT" && !noRotationDriverIds.has(a.driverId)) {
           if (!a.shift) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans shift", attendu: "Shift défini", trouve: "—" });
           if (!a.vacation) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans vacation", attendu: "V1 ou V2", trouve: "—" });
-          if (!a.zone) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: zoneLabelByDriverId[a.driverId] || "Zone définie", trouve: "—" });
+          const beforeCcJourDeDepart = ccDriverIds.has(a.driverId) && day.iso < ccRefDateIso;
+          if (!a.zone && !beforeCcJourDeDepart) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: zoneLabelByDriverId[a.driverId] || "Zone définie", trouve: "—" });
         }
 
         if (a.status === "OFF" && (a.shift || a.vacation || a.zone)) {
