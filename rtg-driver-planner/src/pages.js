@@ -1580,10 +1580,7 @@ function Cell({ assignment, detailLevel, onEdit, frameCls }) {
   // "CG" (Congé).
   let text = assignment.status === "PRESENT" ? "" : meta.code;
   if (assignment.status === "PRESENT" && detailLevel !== "code") {
-    const parts = [];
-    if (assignment.vacation) parts.push(assignment.vacation);
-    if (detailLevel === "zone" && assignment.zone) parts.push(assignment.zone);
-    text = parts.length ? parts.join("/") : "";
+    text = detailLevel === "zone" ? (assignment.zone || "") : (assignment.vacation || "");
   }
   const isManual = assignment.source === "MANUAL";
   const title = (assignment.shift ? `${assignment.shift} ${assignment.startTime || ""}-${assignment.endTime || ""} · Zone ${assignment.zone || "-"}` : meta.label) + (isManual ? " · Modifié manuellement" : "") + (onEdit ? " · Cliquer pour modifier" : "");
