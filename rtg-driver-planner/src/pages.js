@@ -1854,13 +1854,28 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit }
       {teamIds.map(teamId => {
         const team = teams.find(t => t.id === teamId);
         const teamDrivers = drivers.filter(d => d.teamId === teamId);
-        const v1 = teamDrivers.filter(d => d.initialVacation !== "V2");
-        const v2 = teamDrivers.filter(d => d.initialVacation === "V2");
+        // Équipe "stagiaires" (pas de rotation fixe, cf. isNoRotationTeam
+        // dans pages2.js — même détection à double critère) : pas de bloc
+        // Vacation 1/Vacation 2, ces conducteurs n'ont pas de vacation fixe,
+        // ils travaillent la journée complète (V1+V2) sur le shift où on les
+        // affecte au jour le jour selon le besoin — demande explicite de
+        // l'exploitant, un seul tableau pour toute l'équipe.
+        const isStagiaireTeam = !team || (!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || "");
         return (
           <div key={teamId} className="mb-6 last:mb-0">
             {teamIds.length > 1 && <h3 className="text-slate-900 font-semibold text-sm mb-2">{team ? team.nom : teamId}</h3>}
-            <VacationGroupTable label="Vacation 1" drivers={v1} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
-            <VacationGroupTable label="Vacation 2" drivers={v2} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
+            {isStagiaireTeam ? (
+              // team=null : chaque stagiaire suit son propre shift au jour le
+              // jour (pas de rotation synchronisée d'équipe) — un en-tête
+              // "Shift 1/2/3" fusionné par semaine serait donc trompeur ici
+              // (même raison que isNoRotationTeam dans pages2.js).
+              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} />
+            ) : (
+              <>
+                <VacationGroupTable label="Vacation 1" drivers={teamDrivers.filter(d => d.initialVacation !== "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
+                <VacationGroupTable label="Vacation 2" drivers={teamDrivers.filter(d => d.initialVacation === "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} />
+              </>
+            )}
           </div>
         );
       })}
@@ -2224,13 +2239,20 @@ function PlanningGridPrintable({ planning, drivers, config, teams }) {
       {teamIds.map(teamId => {
         const team = teams.find(t => t.id === teamId);
         const teamDrivers = drivers.filter(d => d.teamId === teamId);
-        const v1 = teamDrivers.filter(d => d.initialVacation !== "V2");
-        const v2 = teamDrivers.filter(d => d.initialVacation === "V2");
+        // Équipe "stagiaires" : même exception qu'à l'écran (PlanningGrid) —
+        // un seul tableau, pas de split Vacation 1/Vacation 2.
+        const isStagiaireTeam = !team || (!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || "");
         return (
           <div key={teamId} className="mb-2 last:mb-0">
             {teamIds.length > 1 && <div className="text-[10px] font-bold mb-0.5">{team ? team.nom : teamId}</div>}
-            <VacationGroupTablePrintable label="Vacation 1" drivers={v1} planning={planning} config={config} team={team} />
-            <VacationGroupTablePrintable label="Vacation 2" drivers={v2} planning={planning} config={config} team={team} />
+            {isStagiaireTeam ? (
+              <VacationGroupTablePrintable label="Effectif" drivers={teamDrivers} planning={planning} config={config} team={null} />
+            ) : (
+              <>
+                <VacationGroupTablePrintable label="Vacation 1" drivers={teamDrivers.filter(d => d.initialVacation !== "V2")} planning={planning} config={config} team={team} />
+                <VacationGroupTablePrintable label="Vacation 2" drivers={teamDrivers.filter(d => d.initialVacation === "V2")} planning={planning} config={config} team={team} />
+              </>
+            )}
           </div>
         );
       })}
