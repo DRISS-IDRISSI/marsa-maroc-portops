@@ -153,13 +153,15 @@ const RTGStore = (function () {
   // chaque rechargement de page, l'appli ne la voyant simplement jamais dans
   // ce chargement tronqué. Pagine par blocs de 1000 jusqu'à épuisement pour
   // garantir de toujours tout récupérer, quelle que soit la taille de la table.
-  async function fetchAllRows(table) {
-    // Une limite explicite très large plutôt qu'une pagination par .range() —
-    // .range() nécessite un ordre stable des lignes (sans .order() explicite,
-    // certains projets Supabase renvoient une erreur "column ... undefined
-    // does not exist" lors de la pagination). Un seul aller simple avec une
-    // limite haute reste largement suffisant pour la volumétrie réelle de
-    // cette table, sans ce risque.
+  // Nommée différemment de fetchAllRows(table, dateCol, driverId, dateFrom,
+  // dateTo) plus bas dans ce fichier (mouvements TOS) : deux "function
+  // fetchAllRows" dans la même portée s'écrasent silencieusement en JS (la
+  // déclaration la plus basse du fichier gagne), ce qui appelait ici la
+  // version à 5 paramètres avec dateCol/driverId/dateFrom/dateTo tous
+  // `undefined` — d'où l'erreur "column manual_overrides.undefined does not
+  // exist" observée au login, qui a persisté même après réécriture du corps
+  // de CETTE fonction (jamais réellement appelée).
+  async function fetchAllRowsSimple(table) {
     return sb.from(table).select("*").limit(50000);
   }
 
@@ -176,7 +178,7 @@ const RTGStore = (function () {
       sb.from("absences").select("*"),
       sb.from("heures_exceptionnelles").select("*"),
       sb.from("feries_mouvements").select("*"),
-      fetchAllRows("manual_overrides"),
+      fetchAllRowsSimple("manual_overrides"),
       sb.from("audit_log").select("*").order("date", { ascending: false }).limit(500)
     ]);
 
