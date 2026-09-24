@@ -66,6 +66,21 @@ function ccRefDate(state) {
   return RTGDate.parseISO(state.config.ccRotationReferenceDate || state.config.rotationReferenceDate);
 }
 
+// config.ccQuaiPosts est une liste de {id, capacity} (ex. P71 capacity 4,
+// P74 capacity 2, DTV capacity 1 — plusieurs conducteurs peuvent partager le
+// même poste physique en même temps, confirmé par l'exploitant sur le relevé
+// papier du 24/09/2026). "Aplatit" cette liste en une séquence de postes (un
+// élément par PLACE, pas par poste) : le reste du moteur ci-dessous continue
+// de traiter cette séquence comme avant (les N premiers PRESENT de la file
+// reçoivent, dans l'ordre, la Nème place de cette séquence).
+function flattenQuaiPosts(quaiPostsConfig) {
+  const flat = [];
+  (quaiPostsConfig || []).forEach(p => {
+    for (let i = 0; i < (p.capacity || 1); i++) flat.push(p.id);
+  });
+  return flat;
+}
+
 // File de départ RÉELLE (relevé papier "État d'affectation des conducteurs",
 // GR HADDAZI, 24/09/2026), par bloc de vacation — matricules dans l'ordre
 // exact du document, du plus prioritaire (haut de la liste) au moins
@@ -197,7 +212,7 @@ const CcPosteRotationEngine = {
     const targetDate = RTGDate.parseISO(targetIso);
     if (targetDate.getTime() < refDate.getTime()) return;
 
-    const quaiPosts = state.config.ccQuaiPosts || [];
+    const quaiPosts = flattenQuaiPosts(state.config.ccQuaiPosts);
 
     let cursor;
     if (this._cursorIso === null) {
@@ -335,7 +350,7 @@ const CcPosteRotationEngine = {
     this._ensureCascade(iso, state, teams);
     const rank = this._dayRank[iso] ? this._dayRank[iso][driver.id] : undefined;
     if (rank === undefined) return null;
-    const quaiPosts = state.config.ccQuaiPosts || [];
+    const quaiPosts = flattenQuaiPosts(state.config.ccQuaiPosts);
     return rank < quaiPosts.length ? quaiPosts[rank] : "PARC";
   }
 };

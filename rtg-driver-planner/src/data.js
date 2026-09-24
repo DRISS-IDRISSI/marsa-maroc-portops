@@ -31,13 +31,23 @@ const RTG_CONFIG = {
   // affectation manuelle), qui doivent proposer toutes les valeurs possibles.
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "PARC", "AUTORISE"]
+    CC: ["P71", "P74", "DTV", "PARC", "AUTORISE"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
-  // zonesByFleet.CC, sans PARC ni AUTORISE) — le nombre de postes disponibles
-  // (7) plafonne le nombre de conducteurs affectés au QUAI un jour donné,
-  // voir ccPosteRotationEngine.js.
-  ccQuaiPosts: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV"],
+  // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle
+  // (plusieurs conducteurs simultanés au même poste physique — confirmé par
+  // l'exploitant sur l'état d'affectation papier du 24/09/2026 : P71 et P74
+  // accueillent chacun plusieurs chariots à la fois, pas un seul). Le nombre
+  // TOTAL de places (7 : 4+2+1) plafonne le nombre de conducteurs affectés au
+  // QUAI un jour donné — voir ccPosteRotationEngine.js (flattenQuaiPosts).
+  // Correctif : la liste plate précédente ["P71","P72","P74","P80","P82","P83","DTV"]
+  // supposait à tort 7 postes DISTINCTS à 1 place chacun (P72/P80/P82/P83
+  // n'existent pas réellement).
+  ccQuaiPosts: [
+    { id: "P71", capacity: 4 },
+    { id: "P74", capacity: 2 },
+    { id: "DTV", capacity: 1 }
+  ],
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
   // Pour chaque tranche de 5 jours de CONGÉ dans le mois, le quota de repos du
