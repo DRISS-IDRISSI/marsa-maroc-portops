@@ -162,7 +162,25 @@ const RTGStore = (function () {
   // exist" observée au login, qui a persisté même après réécriture du corps
   // de CETTE fonction (jamais réellement appelée).
   async function fetchAllRowsSimple(table) {
-    return sb.from(table).select("*").limit(50000);
+    // .limit() seul ne suffit PAS : il ne fait que plafonner la demande côté
+    // client, mais ne dépasse jamais le plafond "Max Rows" configuré côté
+    // projet Supabase (PostgREST), qui tronque silencieusement au-delà sans
+    // erreur — exactement le bug d'origine, resté actif malgré ce .limit(),
+    // simplement masqué (login ne plantait plus, mais les overrides au-delà
+    // du plafond restaient invisibles). Seule une vraie pagination par
+    // .range() sur plusieurs requêtes successives permet de tout récupérer,
+    // quelle que soit la taille de la table — comme déjà fait plus bas dans
+    // ce fichier pour les mouvements TOS. Un .order() explicite (ici sur
+    // "date" puis "id") est nécessaire pour un tri stable entre les pages.
+    const PAGE_SIZE = 1000;
+    const rows = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await sb.from(table).select("*").order("date").order("id").range(offset, offset + PAGE_SIZE - 1);
+      if (error) { console.error(error); return { data: null, error: error }; }
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE_SIZE) break;
+    }
+    return { data: rows, error: null };
   }
 
   async function loadAll() {
