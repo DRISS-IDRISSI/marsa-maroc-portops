@@ -294,9 +294,9 @@ function Topbar() {
   const [time, setTime] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
   return (
-    <header className="print:hidden h-14 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-30">
+    <header className="print:hidden h-14 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between pl-16 pr-3 lg:px-6 sticky top-0 z-30">
       <div className="flex items-center gap-4 min-w-0">
-        <h1 className="hidden sm:block text-lg font-bold text-slate-900 lg:ml-0 truncate">CES <span className="text-orange-500">Driver Planner</span></h1>
+        <h1 className="text-base lg:text-lg font-bold text-slate-900 lg:ml-0 truncate">CES <span className="text-orange-500">Driver Planner</span></h1>
         <span className="hidden sm:inline text-xs text-slate-300">|</span>
         <span className="hidden lg:inline text-xs text-slate-500">Gestion des conducteurs</span>
       </div>
