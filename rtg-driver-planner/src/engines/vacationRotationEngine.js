@@ -8,6 +8,13 @@
 // le jour j+1, SAUF entre dimanche et lundi où il garde la même vacation
 // (changement de shift). driver.initialVacation fixe uniquement la vacation du
 // bloc du conducteur à rotationReferenceDate — pas sa vacation permanente.
+//
+// Exception CC (confirmée par l'exploitant, GR BAHOUS) : la bascule
+// dimanche→lundi ne gèle PAS systématiquement comme pour RTG — son gel dépend
+// du changement de shift réellement en jeu (cycle S1→S3→S2→S1...) :
+//   - S1→S3 : bascule normalement (change de vacation)
+//   - S3→S2 : bascule normalement (change de vacation)
+//   - S2→S1 : gèle (garde la même vacation)
 // ==========================================
 
 const VacationRotationEngine = {
@@ -29,7 +36,16 @@ const VacationRotationEngine = {
     let cursor = refDate;
     while (cursor.getTime() < date.getTime()) {
       const next = RTGDate.addDays(cursor, 1);
-      let freeze = state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next);
+      let freeze = false;
+      if (state.config.exceptionDimancheLundi && RTGDate.isSunday(cursor) && RTGDate.isMonday(next)) {
+        if (team && team.typeEngin === "CC") {
+          // CC : gel uniquement au changement de shift S2→S1 — S1→S3 et
+          // S3→S2 basculent normalement (voir note d'en-tête).
+          freeze = ShiftRotationEngine.getTeamShiftForDate(team, cursor, state.config) === "S2";
+        } else {
+          freeze = true;
+        }
+      }
       // Dimanche chômé (3ème shift) : la bascule samedi->dimanche est ELLE
       // AUSSI gelée, pour que le lundi reprenne exactement la même vacation
       // que le samedi (dernier jour réellement travaillé) — au lieu
