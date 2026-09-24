@@ -121,20 +121,17 @@ function parseConducteursFromShiftExcel(workbook, teamNom, existingDrivers) {
   return { sheetName: sheetName, toCreate: toCreate, alreadyExisting: alreadyExisting, invalid: invalid };
 }
 
-function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
-  const XLSX = window.XLSX;
-  const sheetName = selectShiftSheet(workbook, teamNom);
-  const ws = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-
-  // Repère la ligne d'en-tête : celle qui contient le plus de cellules-dates
-  // correspondant au mois/année ciblés (le fichier réel couvre plusieurs mois
-  // sur la même feuille). On lit le numéro de série Excel BRUT (pas de
-  // conversion cellDates de SheetJS en objets Date : sa construction interne
-  // peut introduire une ambiguïté de fuseau horaire — décalage d'un jour déjà
-  // observé en pratique) et on le convertit nous-mêmes en UTC, formule
-  // standard et déterministe (25569 = écart entre l'époque Excel et l'époque
-  // Unix, en jours).
+// Repère la ligne d'en-tête d'une feuille "SHIFT <équipe>" : celle qui
+// contient le plus de cellules-dates correspondant au mois/année ciblés (le
+// fichier réel peut couvrir plusieurs mois sur la même feuille — ex. GR
+// HOUSSAM, août ET septembre côte à côte). On lit le numéro de série Excel
+// BRUT (pas de conversion cellDates de SheetJS en objets Date : sa
+// construction interne peut introduire une ambiguïté de fuseau horaire —
+// décalage d'un jour déjà observé en pratique) et on le convertit nous-mêmes
+// en UTC, formule standard et déterministe (25569 = écart entre l'époque
+// Excel et l'époque Unix, en jours). Partagé par parseRepoCongeExcel et
+// parseVacationLabelExcel (même feuille, même repérage de colonnes).
+function detectDayColumns(rows, month, year, sheetName) {
   const excelSerialToUTCDate = serial => new Date(Math.round((serial - 25569) * 86400 * 1000));
   let headerRowIdx = -1, dayColumns = [];
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -157,13 +154,17 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     seenDays[c.day] = true;
     return true;
   }).sort((a, b) => a.day - b.day);
+  return { headerRowIdx: headerRowIdx, dayColumns: dayColumns };
+}
 
-  // Le matricule affiché dans l'appli n'est pas toujours écrit à l'identique
-  // dans le fichier Excel réel de l'exploitant (préfixes différents — ex.
-  // appli "A00913" / fichier "913", appli "J05183" / fichier "JO5183") : on
-  // tente d'abord une correspondance exacte, puis par la partie numérique du
-  // matricule (chiffres uniquement, zéros de tête ignorés), puis en dernier
-  // recours par nom+prénom — chaque conducteur n'est apparié qu'une fois.
+// Le matricule affiché dans l'appli n'est pas toujours écrit à l'identique
+// dans le fichier Excel réel de l'exploitant (préfixes différents — ex.
+// appli "A00913" / fichier "913", appli "J05183" / fichier "JO5183") : on
+// tente d'abord une correspondance exacte, puis par la partie numérique du
+// matricule (chiffres uniquement, zéros de tête ignorés), puis en dernier
+// recours par nom+prénom — chaque conducteur n'est apparié qu'une fois.
+// Partagé par parseRepoCongeExcel et parseVacationLabelExcel.
+function buildDriverMatcher(drivers) {
   const normalizeNumeric = m => {
     if (m === null || m === undefined) return null;
     const digits = String(m).replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, "");
@@ -182,7 +183,7 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     if (nameKey.trim()) byName[nameKey] = d;
   });
 
-  const matchDriver = (matRaw, nomRaw, prenomRaw) => {
+  return (matRaw, nomRaw, prenomRaw) => {
     const exact = byMatricule[String(matRaw).trim().toUpperCase()];
     if (exact) return { driver: exact, via: "matricule" };
     const num = normalizeNumeric(matRaw);
@@ -191,6 +192,16 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
     if (nameKey.trim() && byName[nameKey]) return { driver: byName[nameKey], via: "nom" };
     return null;
   };
+}
+
+function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
+  const XLSX = window.XLSX;
+  const sheetName = selectShiftSheet(workbook, teamNom);
+  const ws = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+
+  const { headerRowIdx, dayColumns } = detectDayColumns(rows, month, year, sheetName);
+  const matchDriver = buildDriverMatcher(drivers);
 
   const reposByDriver = {};
   const congeByDriver = {};
@@ -304,6 +315,89 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   };
 }
 
+// Lit la ligne "VACATION 1 OU 2" du fichier réel — la VÉRITÉ TERRAIN, tenue à
+// la main par l'exploitant, de la vacation (V1/V2) EFFECTIVEMENT montrée par
+// chaque bloc de conducteurs ("VACATION A" / "VACATION B") un jour donné.
+// Sert à corriger VacationRotationEngine quand son calcul (cascade en
+// pointeur+parité depuis rotationReferenceDate) diverge de la réalité —
+// constaté en pratique sur GR HADDAZI (§ demande explicite de l'exploitant :
+// "corriger les vacations"), sans qu'il ait été possible d'isoler une règle
+// de gel unique qui explique tous les écarts observés. Plutôt que de
+// deviner cette règle, on importe directement la valeur réelle comme override
+// manuel — même logique que le "jour de départ" CC (ccPosteRotationEngine) :
+// la saisie réelle prime sur la simulation.
+//
+// Structure attendue (une par bloc, répétée pour chaque équipe) :
+//   ligne "VACATION A" (ou B)      <- ouvre le bloc
+//   lignes conducteurs (matricule, nom, prénom, R/C/vide par jour...)
+//   ligne "NBR DE PRESENT"         <- ignorée ici
+//   ligne "VACATION 1 OU 2"        <- ferme le bloc, "1" ou "2" par jour
+// Tout ce qui suit la dernière ligne "VACATION 1 OU 2" (ex. le mini-tableau
+// des stagiaires cavaliers, dupliqué sur chaque feuille) est hors bloc et
+// ignoré, puisqu'aucun bloc n'est plus "ouvert" à ce stade du parcours.
+function parseVacationLabelExcel(workbook, drivers, month, year, teamNom) {
+  const XLSX = window.XLSX;
+  const sheetName = selectShiftSheet(workbook, teamNom);
+  const ws = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+
+  const { headerRowIdx, dayColumns } = detectDayColumns(rows, month, year, sheetName);
+  const matchDriver = buildDriverMatcher(drivers);
+
+  const blocks = [];
+  let currentBlock = null;
+  // Balaie TOUTE la feuille depuis le début, pas seulement après la ligne
+  // d'en-tête (headerRowIdx) : le libellé "VACATION A" du tout premier bloc
+  // est sur la ligne juste AU-DESSUS de l'en-tête (même ligne que "SHIFT 1"/
+  // "SHIFT 3"/... — constaté en pratique), donc AVANT elle. Sans conséquence
+  // pour les lignes qui précèdent : aucun matricule ne peut s'y trouver
+  // (currentBlock reste null jusqu'au premier "VACATION A/B" rencontré).
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] || [];
+    // Le libellé se trouve tantôt en colonne A, tantôt en colonne B selon
+    // l'équipe (mise en forme du fichier non uniforme d'une feuille à
+    // l'autre — constaté en pratique) : on regarde les deux.
+    const label = (typeof row[0] === "string" ? row[0] : (typeof row[1] === "string" ? row[1] : "")).trim();
+    if (/^VACATION\s*[AB]$/i.test(label)) {
+      currentBlock = { driverIds: [], vacationByDay: {} };
+      blocks.push(currentBlock);
+      continue;
+    }
+    if (/VACATION\s*1\s*OU\s*2/i.test(label)) {
+      if (currentBlock) {
+        dayColumns.forEach(({ day, colIdx }) => {
+          const v = row[colIdx];
+          if (v === 1 || v === 2) currentBlock.vacationByDay[day] = v;
+        });
+        currentBlock = null;
+      }
+      continue;
+    }
+    if (!currentBlock) continue;
+    const matCell = row[0];
+    if (matCell === null || matCell === undefined || !MATRICULE_PATTERN.test(String(matCell).trim())) continue;
+    const found = matchDriver(matCell, row[1], row[2]);
+    if (found) currentBlock.driverIds.push(found.driver.id);
+  }
+
+  const corrections = [];
+  blocks.forEach(block => {
+    Object.keys(block.vacationByDay).forEach(dayStr => {
+      const day = parseInt(dayStr, 10);
+      const vacation = block.vacationByDay[day] === 1 ? "V1" : "V2";
+      const iso = RTGDate.toISO(RTGDate.makeDate(year, month, day));
+      block.driverIds.forEach(driverId => corrections.push({ driverId: driverId, iso: iso, vacation: vacation }));
+    });
+  });
+
+  return {
+    sheetName: sheetName,
+    blocksFound: blocks.length,
+    driversInBlocks: blocks.reduce((n, b) => n + b.driverIds.length, 0),
+    corrections: corrections
+  };
+}
+
 function ImportPlanningModal({ team, month, year, drivers, state, planning, onClose }) {
   const [step, setStep] = useState("pick");
   const [error, setError] = useState("");
@@ -312,6 +406,9 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   const [congeResult, setCongeResult] = useState(null);
   const [applyResult, setApplyResult] = useState(null);
   const [resetResult, setResetResult] = useState(null);
+  const [vacationParsed, setVacationParsed] = useState(null);
+  const [vacationParseError, setVacationParseError] = useState("");
+  const [vacationApplyResult, setVacationApplyResult] = useState(null);
 
   const doReset = async () => {
     setStep("resetting");
@@ -362,6 +459,17 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
       // de SheetJS en objets Date.
       const wb = window.XLSX.read(buf, { type: "array" });
       setParsed(parseRepoCongeExcel(wb, drivers, month, year, team.nom));
+      // Analysée en même temps (même fichier, même feuille) mais séparément :
+      // une éventuelle erreur ici (structure de bloc "VACATION A/B" non
+      // reconnue) ne doit jamais bloquer le flux repos/congés déjà fiable —
+      // l'étape vacation est juste proposée en moins à la fin (voir "done").
+      try {
+        setVacationParsed(parseVacationLabelExcel(wb, drivers, month, year, team.nom));
+        setVacationParseError("");
+      } catch (e) {
+        setVacationParsed(null);
+        setVacationParseError(e.message || String(e));
+      }
       setStep("preview");
     } catch (e) {
       setError(e.message || String(e));
@@ -470,6 +578,44 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
         return d && d.ordreAffichage !== ordre;
       });
   }, [parsed, drivers]);
+
+  // Corrections de vacation (V1/V2) tirées de la ligne "VACATION 1 OU 2" du
+  // fichier réel (parseVacationLabelExcel) — ne garder que les jours où le
+  // conducteur est PRÉSENT (une vacation n'a pas de sens sinon, déjà à null)
+  // ET où la valeur réelle diffère du calcul automatique actuel
+  // (VacationRotationEngine), pour ne créer une affectation manuelle que là
+  // où c'est nécessaire.
+  const vacationCorrectionsToApply = useMemo(() => {
+    if (!vacationParsed || !planning) return [];
+    return vacationParsed.corrections.filter(({ driverId, iso, vacation }) => {
+      const day = planning.days.find(d => d.iso === iso);
+      const a = day && day.assignments.find(x => x.driverId === driverId);
+      return a && a.status === "PRESENT" && a.vacation !== vacation;
+    });
+  }, [vacationParsed, planning]);
+
+  const applyVacationCorrections = async () => {
+    setStep("applyingVacation");
+    const total = vacationCorrectionsToApply.length;
+    setProgress({ done: 0, total: total });
+    let done = 0, errors = 0;
+    for (const r of vacationCorrectionsToApply) {
+      try {
+        const day = planning.days.find(d => d.iso === r.iso);
+        const a = day.assignments.find(x => x.driverId === r.driverId);
+        const vacDef = (state.config.vacations[a.shift] || []).find(v => v.id === r.vacation);
+        // Conserve le shift/zone/poste déjà calculés (inchangés par la
+        // vacation) — seuls la vacation et l'horaire qui en dépend changent.
+        // setManualOverride REMPLACE la ligne entière : reprendre les autres
+        // champs tels quels est indispensable pour ne pas les effacer à tort.
+        const override = { status: "PRESENT", shift: a.shift, vacation: r.vacation, zone: a.zone, startTime: vacDef ? vacDef.start : a.startTime, endTime: vacDef ? vacDef.end : a.endTime };
+        await RTGStore.setManualOverride(r.iso, r.driverId, override, RTG_IMPORT_OVERRIDE_MOTIF, "vacation réelle (fichier, ligne \"VACATION 1 OU 2\") — " + team.nom + " — " + r.iso);
+      } catch (e) { console.error(e); errors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    setVacationApplyResult({ applied: vacationCorrectionsToApply.length - errors, errors: errors });
+    setStep("vacationDone");
+  };
 
   // Congés ET maladies sont créés dans une étape à part, AVANT de calculer
   // les repos à forcer : RestDayEngine (placement automatique des repos)
@@ -590,11 +736,11 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "applyingConges", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={["applying", "applyingConges", "applyingVacation", "resetting"].indexOf(step) !== -1 ? undefined : onClose}>
       <div className="bg-white border border-slate-200 rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-slate-900 font-semibold text-sm">Importer Repos &amp; Congés depuis Excel</h3>
-          {["applying", "applyingConges", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><i className="fas fa-xmark"></i></button>}
+          {["applying", "applyingConges", "applyingVacation", "resetting"].indexOf(step) === -1 && <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><i className="fas fa-xmark"></i></button>}
         </div>
         <p className="text-xs text-slate-400 mb-3">Équipe <span className="text-slate-900 font-medium">{team.nom}</span> — {RAPPORT_MOIS_LABELS_P[month - 1]} {year}</p>
 
@@ -761,6 +907,46 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           <div className="space-y-2 text-xs">
             <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s) et " + congeResult.maladiesCreated + " maladie(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
             {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-700">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
+            {vacationParsed ? (
+              <button onClick={() => setStep("previewVacation")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les vacations (V1/V2)</button>
+            ) : (
+              vacationParseError && <p className="text-slate-500"><i className="fas fa-circle-info mr-1.5"></i>Ligne "VACATION 1 OU 2" non exploitée ({vacationParseError}).</p>
+            )}
+            <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Fermer</button>
+          </div>
+        )}
+
+        {step === "previewVacation" && vacationParsed && (
+          <div className="space-y-3 text-xs text-slate-600">
+            <p className="text-slate-500">
+              <i className="fas fa-circle-info mr-1.5"></i>Lit la ligne "VACATION 1 OU 2" du fichier (vérité terrain tenue à la main par l'exploitant) pour chaque bloc "VACATION A"/"VACATION B", et corrige la vacation (V1/V2) affichée par l'appli quand elle diverge du calcul automatique.
+            </p>
+            <p>{vacationParsed.blocksFound} bloc(s) détecté(s) ({vacationParsed.driversInBlocks} conducteur(s) au total).</p>
+            <p><span className="text-slate-900 font-semibold">{vacationCorrectionsToApply.length}</span> jour(s)/conducteur(s) où la vacation réelle diffère du calcul automatique et sera corrigée{vacationParsed.corrections.length !== vacationCorrectionsToApply.length ? " (" + (vacationParsed.corrections.length - vacationCorrectionsToApply.length) + " déjà correct(s) ou non applicable(s), ignoré(s))" : ""}.</p>
+            {vacationCorrectionsToApply.length > 0 && (
+              <details className="text-slate-500">
+                <summary className="cursor-pointer hover:text-slate-600">Détail des corrections (vérification)</summary>
+                <div className="mt-1.5 max-h-48 overflow-y-auto space-y-0.5">
+                  {vacationCorrectionsToApply.slice().sort((a, b) => a.iso.localeCompare(b.iso)).map((r, idx) => {
+                    const d = drivers.find(x => x.id === r.driverId);
+                    return <div key={idx}>{(d ? d.matricule + " " + d.nom : r.driverId)} — {r.iso.slice(8, 10)}/{r.iso.slice(5, 7)} → {r.vacation}</div>;
+                  })}
+                </div>
+              </details>
+            )}
+            <div className="flex gap-2 pt-2">
+              <button onClick={applyVacationCorrections} disabled={vacationCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
+              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Fermer</button>
+            </div>
+          </div>
+        )}
+
+        {step === "applyingVacation" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Correction des vacations en cours… {progress.done}/{progress.total}</p>}
+
+        {step === "vacationDone" && vacationApplyResult && (
+          <div className="space-y-2 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{vacationApplyResult.applied} vacation(s) corrigée(s).</p>
+            {vacationApplyResult.errors > 0 && <p className="text-red-700">{vacationApplyResult.errors} erreur(s) — voir la console.</p>}
             <button onClick={onClose} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Fermer</button>
           </div>
         )}
