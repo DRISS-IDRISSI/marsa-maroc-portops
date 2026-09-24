@@ -143,6 +143,30 @@ const RTGStore = (function () {
 
   // ---------- Chargement complet depuis Supabase ----------
 
+  // Un .select("*") sans .range()/.limit() reste plafonné par la limite de
+  // lignes par requête configurée côté projet Supabase (souvent 1000) — au-
+  // delà, PostgREST tronque SILENCIEUSEMENT le résultat (pas d'erreur). Bug
+  // réel constaté sur manual_overrides : cette table grossit vite (une ligne
+  // par jour/conducteur modifié, sur tous les imports et corrections
+  // manuelles cumulés) et avait dépassé ce plafond — une correction manuelle
+  // fraîchement enregistrée (confirmée présente en base) redisparaissait à
+  // chaque rechargement de page, l'appli ne la voyant simplement jamais dans
+  // ce chargement tronqué. Pagine par blocs de 1000 jusqu'à épuisement pour
+  // garantir de toujours tout récupérer, quelle que soit la taille de la table.
+  async function fetchAllRows(table) {
+    const pageSize = 1000;
+    let from = 0;
+    let all = [];
+    for (;;) {
+      const { data, error } = await sb.from(table).select("*").range(from, from + pageSize - 1);
+      if (error) return { data: null, error: error };
+      all = all.concat(data || []);
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return { data: all, error: null };
+  }
+
   async function loadAll() {
     const [
       teamsRes, driversRes, profilesRes, congesRes, maladiesRes, absencesRes,
@@ -156,7 +180,7 @@ const RTGStore = (function () {
       sb.from("absences").select("*"),
       sb.from("heures_exceptionnelles").select("*"),
       sb.from("feries_mouvements").select("*"),
-      sb.from("manual_overrides").select("*"),
+      fetchAllRows("manual_overrides"),
       sb.from("audit_log").select("*").order("date", { ascending: false }).limit(500)
     ]);
 
