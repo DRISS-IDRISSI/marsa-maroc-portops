@@ -382,6 +382,130 @@ function parseRepoCongeExcel(workbook, drivers, month, year, teamNom) {
   };
 }
 
+// Codes shift du planning réel des équipes "stagiaires" — "1"/"2"/"3" (le
+// stagiaire est affecté ce jour-là au shift 1/2/3 d'une équipe titulaire à
+// renforcer, journée complète V1+V2 — jamais une seule vacation de 4h).
+const IMPORT_SHIFT_CODES = { "1": "S1", "2": "S2", "3": "S3", "S1": "S1", "S2": "S2", "S3": "S3" };
+
+// Lit le planning réel d'une équipe "stagiaires" (ex. GR STAGIAIRE) — format
+// différent du planning titulaire (parseRepoCongeExcel ci-dessus) : ici
+// CHAQUE jour porte un code explicite, jamais une case vide = "présent"
+// implicite (le stagiaire n'a pas de rotation automatique à corriger, cf.
+// PlanningEngine — isNoRotationTeam). Codes reconnus : "1"/"2"/"3" (shift
+// affecté, IMPORT_SHIFT_CODES), "R" (repos), "RC" (repos compensatoire), et
+// les mêmes codes congé/maladie/détachement que pour les titulaires.
+// Réutilise detectDayColumns/buildDriverMatcher/mergeConsecutiveDays (mêmes
+// helpers que parseRepoCongeExcel) — pas de "jour universellement vide" ici,
+// ce format n'a jamais de case vide à interpréter.
+function parseStagiairePlanningExcel(workbook, drivers, month, year, teamNom) {
+  const XLSX = window.XLSX;
+  const sheetName = selectShiftSheet(workbook, teamNom);
+  const ws = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+
+  const { headerRowIdx, dayColumns } = detectDayColumns(rows, month, year, sheetName);
+  const matchDriver = buildDriverMatcher(drivers);
+
+  const unknownCodes = [];
+  const unmatchedMatricules = new Set();
+  const matchedDriverIds = new Set();
+  const fallbackMatches = [];
+  const orderByDriver = {};
+  let orderCounter = 0;
+
+  const reposByDriver = {};
+  const reposCompByDriver = {};
+  const congeByDriver = {};
+  const maladieByDriver = {};
+  const detachementByDriver = {};
+  const shiftByDriver = {};
+
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const matCell = row[0];
+    const nomCell = row[1];
+    const prenomCell = row[2];
+    if (typeof nomCell === "string" && /NOMBRE DE PRESENT|Vacation/i.test(nomCell)) continue;
+    if (matCell === null || matCell === undefined || String(matCell).trim() === "") continue;
+    if (!/\d/.test(String(matCell))) continue;
+    const found = matchDriver(matCell, nomCell, prenomCell);
+    if (!found) { unmatchedMatricules.add(String(matCell).trim() + (nomCell ? " (" + nomCell + ")" : "")); continue; }
+    const driver = found.driver;
+    if (found.via !== "matricule") fallbackMatches.push({ matriculeFichier: String(matCell).trim(), matriculeAppli: driver.matricule, nom: driver.nom, prenom: driver.prenom, via: found.via });
+    matchedDriverIds.add(driver.id);
+    orderByDriver[driver.id] = orderCounter++;
+
+    dayColumns.forEach(({ day, colIdx }) => {
+      const raw = row[colIdx];
+      const code = (raw === null || raw === undefined || String(raw).trim() === "") ? null : String(raw).trim().toUpperCase();
+      if (code === null) return;
+      if (IMPORT_REPOS_CODES.indexOf(code) !== -1) {
+        (reposByDriver[driver.id] = reposByDriver[driver.id] || []).push(day);
+      } else if (IMPORT_REPOS_COMPENSATOIRE_CODES.indexOf(code) !== -1) {
+        (reposCompByDriver[driver.id] = reposCompByDriver[driver.id] || []).push(day);
+      } else if (IMPORT_CONGE_CODES.indexOf(code) !== -1) {
+        (congeByDriver[driver.id] = congeByDriver[driver.id] || []).push(day);
+      } else if (IMPORT_MALADIE_CODES.indexOf(code) !== -1) {
+        (maladieByDriver[driver.id] = maladieByDriver[driver.id] || []).push(day);
+      } else if (IMPORT_DETACHEMENT_CODES.indexOf(code) !== -1) {
+        (detachementByDriver[driver.id] = detachementByDriver[driver.id] || []).push(day);
+      } else if (IMPORT_SHIFT_CODES[code]) {
+        (shiftByDriver[driver.id] = shiftByDriver[driver.id] || []).push({ day: day, shift: IMPORT_SHIFT_CODES[code] });
+      } else {
+        unknownCodes.push({ matricule: driver.matricule, day: day, code: code });
+      }
+    });
+  }
+
+  const reposDays = [];
+  Object.keys(reposByDriver).forEach(driverId => {
+    reposByDriver[driverId].forEach(day => reposDays.push({ driverId: driverId, iso: RTGDate.toISO(RTGDate.makeDate(year, month, day)) }));
+  });
+  const reposCompDays = [];
+  Object.keys(reposCompByDriver).forEach(driverId => {
+    reposCompByDriver[driverId].forEach(day => reposCompDays.push({ driverId: driverId, iso: RTGDate.toISO(RTGDate.makeDate(year, month, day)) }));
+  });
+  const presentShiftDays = [];
+  Object.keys(shiftByDriver).forEach(driverId => {
+    shiftByDriver[driverId].forEach(({ day, shift }) => presentShiftDays.push({ driverId: driverId, iso: RTGDate.toISO(RTGDate.makeDate(year, month, day)), shift: shift }));
+  });
+
+  const congeRanges = [];
+  Object.keys(congeByDriver).forEach(driverId => {
+    mergeConsecutiveDays(congeByDriver[driverId]).forEach(([start, end]) => {
+      congeRanges.push({ driverId: driverId, dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)), dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end)) });
+    });
+  });
+  const maladieRanges = [];
+  Object.keys(maladieByDriver).forEach(driverId => {
+    mergeConsecutiveDays(maladieByDriver[driverId]).forEach(([start, end]) => {
+      maladieRanges.push({ driverId: driverId, dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)), dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end)) });
+    });
+  });
+  const detachementRanges = [];
+  Object.keys(detachementByDriver).forEach(driverId => {
+    mergeConsecutiveDays(detachementByDriver[driverId]).forEach(([start, end]) => {
+      detachementRanges.push({ driverId: driverId, dateDebut: RTGDate.toISO(RTGDate.makeDate(year, month, start)), dateFin: RTGDate.toISO(RTGDate.makeDate(year, month, end)) });
+    });
+  });
+
+  return {
+    sheetName: sheetName,
+    headerRowNumber: headerRowIdx + 1,
+    matchedCount: matchedDriverIds.size,
+    unmatchedMatricules: Array.from(unmatchedMatricules),
+    fallbackMatches: fallbackMatches,
+    congeRanges: congeRanges,
+    maladieRanges: maladieRanges,
+    detachementRanges: detachementRanges,
+    reposDays: reposDays,
+    reposCompDays: reposCompDays,
+    presentShiftDays: presentShiftDays,
+    orderByDriver: orderByDriver,
+    unknownCodes: unknownCodes
+  };
+}
+
 // Lit la ligne "VACATION 1 OU 2" du fichier réel — la VÉRITÉ TERRAIN, tenue à
 // la main par l'exploitant, de la vacation (V1/V2) EFFECTIVEMENT montrée par
 // chaque bloc de conducteurs ("VACATION A" / "VACATION B") un jour donné.
@@ -1596,6 +1720,208 @@ function ValidationBanner({ validation }) {
   );
 }
 
+// Import dédié au planning réel d'une équipe "stagiaires" (ex. GR
+// STAGIAIRE) — bien plus simple que ImportPlanningModal (pas de bloc
+// vacation A/B, pas de rotation à corriger) : chaque jour du fichier porte
+// un code explicite (shift affecté, repos, repos compensatoire, congé...),
+// appliqué tel quel en une seule étape.
+function ImportStagiairePlanningModal({ team, month, year, drivers, state, planning, onClose }) {
+  const [step, setStep] = useState("pick");
+  const [error, setError] = useState("");
+  const [parsed, setParsed] = useState(null);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [applyResult, setApplyResult] = useState(null);
+
+  const handleFile = async file => {
+    setStep("parsing");
+    setError("");
+    try {
+      await loadXlsxLib();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      setParsed(parseStagiairePlanningExcel(wb, drivers, month, year, team.nom));
+      setStep("preview");
+    } catch (e) {
+      setError(e.message || String(e));
+      setStep("error");
+    }
+  };
+
+  const congesToApply = useMemo(() => {
+    if (!parsed) return [];
+    return parsed.congeRanges.filter(r => !state.conges.some(c => c.driverId === r.driverId && c.dateDebut === r.dateDebut && c.dateFin === r.dateFin));
+  }, [parsed, state.conges]);
+
+  const maladiesToApply = useMemo(() => {
+    if (!parsed) return [];
+    return parsed.maladieRanges.filter(r => !state.maladies.some(m => m.driverId === r.driverId && m.dateDebut === r.dateDebut && m.dateFin === r.dateFin));
+  }, [parsed, state.maladies]);
+
+  const detachementsToApply = useMemo(() => {
+    if (!parsed) return [];
+    return parsed.detachementRanges.filter(r => !state.absences.some(a => a.driverId === r.driverId && a.dateDebut === r.dateDebut && a.dateFin === r.dateFin && a.type === "DETACHEMENT"));
+  }, [parsed, state.absences]);
+
+  // Repos/RC : appliqués seulement si pas déjà exactement ce statut en
+  // MANUEL sur ce jour (inutile de réécrire) — jamais par-dessus un statut
+  // figé (congé/maladie/absence/formation/férié). Contrairement à
+  // ImportPlanningModal, aucune détection de conflit "2 repos consécutifs"
+  // ici : ce planning est la réalité terrain telle quelle, pas un
+  // recalcul algorithmique à vérifier.
+  const reposAndCompToApply = useMemo(() => {
+    if (!parsed || !planning) return [];
+    const all = parsed.reposDays.map(r => Object.assign({ status: "REPOS" }, r))
+      .concat(parsed.reposCompDays.map(r => Object.assign({ status: "REPOS_COMPENSATOIRE" }, r)));
+    return all.filter(({ driverId, iso, status }) => {
+      const day = planning.days.find(d => d.iso === iso);
+      const a = day && day.assignments.find(x => x.driverId === driverId);
+      if (!a) return true;
+      if (a.status === status && a.source === "MANUAL") return false;
+      if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "FERIE"].indexOf(a.status) !== -1) return false;
+      return true;
+    });
+  }, [parsed, planning]);
+
+  // Shift affecté (journée complète V1+V2) : appliqué seulement si pas déjà
+  // exactement ce shift en MANUEL sur ce jour.
+  const shiftPresenceToApply = useMemo(() => {
+    if (!parsed || !planning) return [];
+    return parsed.presentShiftDays.filter(({ driverId, iso, shift }) => {
+      const day = planning.days.find(d => d.iso === iso);
+      const a = day && day.assignments.find(x => x.driverId === driverId);
+      if (!a) return true;
+      if (a.status === "PRESENT" && a.source === "MANUAL" && a.shift === shift) return false;
+      if (["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "FERIE"].indexOf(a.status) !== -1) return false;
+      return true;
+    });
+  }, [parsed, planning]);
+
+  const orderCorrectionsToApply = useMemo(() => {
+    if (!parsed) return [];
+    return Object.keys(parsed.orderByDriver)
+      .map(driverId => ({ driverId: driverId, ordre: parsed.orderByDriver[driverId] }))
+      .filter(({ driverId, ordre }) => {
+        const d = drivers.find(x => x.id === driverId);
+        return d && d.ordreAffichage !== ordre;
+      });
+  }, [parsed, drivers]);
+
+  const applyAll = async () => {
+    setStep("applying");
+    const total = congesToApply.length + maladiesToApply.length + detachementsToApply.length + reposAndCompToApply.length + shiftPresenceToApply.length + orderCorrectionsToApply.length;
+    setProgress({ done: 0, total: total });
+    let done = 0, congeErrors = 0, maladieErrors = 0, detachementErrors = 0, reposErrors = 0, shiftErrors = 0, orderErrors = 0;
+    for (const r of congesToApply) {
+      try { await RTGStore.addConge({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: RTG_IMPORT_CONGE_COMMENT }); }
+      catch (e) { console.error(e); congeErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    for (const r of maladiesToApply) {
+      try { await RTGStore.addMaladie({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, commentaire: RTG_IMPORT_MALADIE_COMMENT }); }
+      catch (e) { console.error(e); maladieErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    for (const r of detachementsToApply) {
+      try { await RTGStore.addAbsence({ driverId: r.driverId, dateDebut: r.dateDebut, dateFin: r.dateFin, type: "DETACHEMENT", commentaire: RTG_IMPORT_CONGE_COMMENT }); }
+      catch (e) { console.error(e); detachementErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    for (const r of reposAndCompToApply) {
+      try { await RTGStore.setManualOverride(r.iso, r.driverId, { status: r.status, shift: null, vacation: null, zone: null, startTime: null, endTime: null }, RTG_IMPORT_OVERRIDE_MOTIF, team.nom + " — " + r.iso); }
+      catch (e) { console.error(e); reposErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    for (const r of shiftPresenceToApply) {
+      try {
+        const vacDefs = state.config.vacations[r.shift] || [];
+        const startTime = vacDefs.length ? vacDefs[0].start : null;
+        const endTime = vacDefs.length ? vacDefs[vacDefs.length - 1].end : null;
+        await RTGStore.setManualOverride(r.iso, r.driverId, { status: "PRESENT", shift: r.shift, vacation: "V1+V2", zone: null, startTime: startTime, endTime: endTime }, RTG_IMPORT_OVERRIDE_MOTIF, "stagiaire — shift affecté (fichier) — " + team.nom + " — " + r.iso);
+      } catch (e) { console.error(e); shiftErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    for (const r of orderCorrectionsToApply) {
+      try { await RTGStore.updateDriver(r.driverId, { ordreAffichage: r.ordre }); }
+      catch (e) { console.error(e); orderErrors++; }
+      done++; setProgress({ done: done, total: total });
+    }
+    setApplyResult({
+      congesCreated: congesToApply.length - congeErrors, maladiesCreated: maladiesToApply.length - maladieErrors,
+      detachementsCreated: detachementsToApply.length - detachementErrors,
+      reposApplied: reposAndCompToApply.length - reposErrors, shiftApplied: shiftPresenceToApply.length - shiftErrors,
+      orderUpdated: orderCorrectionsToApply.length - orderErrors,
+      errors: congeErrors + maladieErrors + detachementErrors + reposErrors + shiftErrors + orderErrors
+    });
+    setStep("done");
+  };
+
+  const backdropCloseAllowed = ["applying"].indexOf(step) === -1;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={backdropCloseAllowed ? onClose : undefined}>
+      <div className="bg-white border border-slate-200 rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-slate-900 font-semibold text-sm">Importer le planning réel — {team.nom}</h3>
+          {backdropCloseAllowed && <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><i className="fas fa-xmark"></i></button>}
+        </div>
+
+        {step === "pick" && (
+          <div className="space-y-3 text-xs text-slate-600">
+            <p>Sélectionnez le fichier Excel du planning réel de cette équipe pour {RAPPORT_MOIS_LABELS_P[month - 1]} {year} — un code par jour et par conducteur : shift affecté (1/2/3), repos (R), repos compensatoire (RC), congé/maladie/détachement.</p>
+            <input type="file" accept=".xlsx,.xls" onChange={e => e.target.files[0] && handleFile(e.target.files[0])} className="text-xs" />
+          </div>
+        )}
+
+        {step === "parsing" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Analyse du fichier…</p>}
+
+        {step === "error" && (
+          <div className="space-y-3 text-xs">
+            <p className="text-red-700"><i className="fas fa-triangle-exclamation mr-1.5"></i>{error}</p>
+            <button onClick={() => setStep("pick")} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-600 hover:text-white">Réessayer</button>
+          </div>
+        )}
+
+        {step === "preview" && parsed && (
+          <div className="space-y-3 text-xs text-slate-600">
+            <p className="text-slate-900">{parsed.matchedCount} conducteur(s) reconnu(s) dans la feuille « {parsed.sheetName} ».</p>
+            {parsed.fallbackMatches.length > 0 && (
+              <p className="text-amber-700"><i className="fas fa-circle-info mr-1.5"></i>{parsed.fallbackMatches.length} conducteur(s) apparié(s) par matricule numérique ou nom (pas de correspondance exacte) : {parsed.fallbackMatches.slice(0, 5).map(m => m.matriculeFichier + "→" + m.matriculeAppli).join(", ")}{parsed.fallbackMatches.length > 5 ? "…" : ""}.</p>
+            )}
+            {parsed.unmatchedMatricules.length > 0 && (
+              <p className="text-red-700"><i className="fas fa-triangle-exclamation mr-1.5"></i>{parsed.unmatchedMatricules.length} ligne(s) non reconnue(s) : {parsed.unmatchedMatricules.slice(0, 5).join(", ")}{parsed.unmatchedMatricules.length > 5 ? "…" : ""}.</p>
+            )}
+            {parsed.unknownCodes.length > 0 && (
+              <p className="text-red-700"><i className="fas fa-triangle-exclamation mr-1.5"></i>{parsed.unknownCodes.length} code(s) non reconnu(s) (ignoré(s)) : {parsed.unknownCodes.slice(0, 8).map(c => c.matricule + "/" + c.day + "=" + c.code).join(", ")}{parsed.unknownCodes.length > 8 ? "…" : ""}.</p>
+            )}
+            <div className="pt-1 space-y-1">
+              <p><span className="text-slate-900 font-semibold">{shiftPresenceToApply.length}</span> shift(s) affecté(s) à forcer (journée complète).</p>
+              <p><span className="text-slate-900 font-semibold">{reposAndCompToApply.length}</span> repos / repos compensatoire(s) à forcer.</p>
+              <p><span className="text-slate-900 font-semibold">{congesToApply.length}</span> congé(s), <span className="text-slate-900 font-semibold">{maladiesToApply.length}</span> maladie(s) et <span className="text-slate-900 font-semibold">{detachementsToApply.length}</span> détachement(s) à créer.</p>
+              <p><span className="text-slate-900 font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés pour correspondre à l'ordre des lignes du fichier.</p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={applyAll}
+                disabled={congesToApply.length + maladiesToApply.length + detachementsToApply.length + reposAndCompToApply.length + shiftPresenceToApply.length + orderCorrectionsToApply.length === 0}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
+              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
+            </div>
+          </div>
+        )}
+
+        {step === "applying" && <p className="text-sm text-slate-600"><i className="fas fa-spinner fa-spin mr-2"></i>Application en cours… {progress.done}/{progress.total}</p>}
+
+        {step === "done" && applyResult && (
+          <div className="space-y-2 text-xs">
+            <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{applyResult.shiftApplied} shift(s) forcé(s), {applyResult.reposApplied} repos/RC forcé(s), {applyResult.congesCreated} congé(s), {applyResult.maladiesCreated} maladie(s), {applyResult.detachementsCreated} détachement(s) créé(s), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
+            {applyResult.errors > 0 && <p className="text-red-700">{applyResult.errors} erreur(s) — voir la console.</p>}
+            <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Fermer</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Cell({ assignment, detailLevel, onEdit, frameCls, noRotation }) {
   const weekStartCls = frameCls || "";
   if (!assignment) return <td className={`border border-slate-200/60 bg-slate-50/40 ${weekStartCls}`}></td>;
@@ -2437,13 +2763,26 @@ function PlanningMensuel() {
         <MonthYearTeamPicker month={month} setMonth={setMonth} year={year} setYear={setYear} teamId={effectiveTeamId} setTeamId={setTeamId} teams={state.teams} detailLevel={detailLevel} setDetailLevel={setDetailLevel} lockTeam={shiftRestricted} lockMonth={monthLocked} />
       </div>
 
-      {showImport && effectiveTeamId !== "all" && (
-        <ImportPlanningModal
-          team={state.teams.find(t => t.id === effectiveTeamId)}
-          month={month} year={year} drivers={drivers} state={state} planning={planning}
-          onClose={() => setShowImport(false)}
-        />
-      )}
+      {showImport && effectiveTeamId !== "all" && (() => {
+        const importTeam = state.teams.find(t => t.id === effectiveTeamId);
+        // Équipe "stagiaires" (pas de rotation fixe) : format de planning
+        // réel différent (shift affecté par jour, jamais de vacation V1/V2)
+        // — import dédié, cf. ImportStagiairePlanningModal ci-dessus.
+        const isStagiaireTeam = !importTeam || (!importTeam.shiftCycle || importTeam.shiftCycle.length === 0) || /stagiaire/i.test(importTeam.nom || "");
+        return isStagiaireTeam ? (
+          <ImportStagiairePlanningModal
+            team={importTeam}
+            month={month} year={year} drivers={drivers} state={state} planning={planning}
+            onClose={() => setShowImport(false)}
+          />
+        ) : (
+          <ImportPlanningModal
+            team={importTeam}
+            month={month} year={year} drivers={drivers} state={state} planning={planning}
+            onClose={() => setShowImport(false)}
+          />
+        );
+      })()}
 
       <div className="print:hidden">
         <ValidationBanner validation={validation} />
