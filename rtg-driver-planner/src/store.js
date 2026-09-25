@@ -801,7 +801,7 @@ const RTGStore = (function () {
 
     const row = {
       id: authData.user.id, username: input.username.trim(), nom: input.nom.trim(), role: input.role,
-      team_id: input.role === "RESPONSABLE_SHIFT" ? input.teamId : null,
+      team_id: (input.role === "RESPONSABLE_SHIFT" || input.role === "CHEF_ESCALE") ? input.teamId : null,
       driver_id: input.role === "CONDUCTEUR" ? input.driverId : null,
       email: input.role === "CONDUCTEUR" ? null : (input.email || null),
       actif: true

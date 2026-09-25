@@ -72,8 +72,8 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique,
   nom text not null,
-  role text not null check (role in ('ADMIN', 'RESPONSABLE', 'RESPONSABLE_SHIFT', 'CONDUCTEUR')),
-  team_id text references teams(id),   -- uniquement pertinent si role = RESPONSABLE_SHIFT
+  role text not null check (role in ('ADMIN', 'RESPONSABLE', 'RESPONSABLE_SHIFT', 'CHEF_ESCALE', 'CONDUCTEUR')),
+  team_id text references teams(id),   -- uniquement pertinent si role = RESPONSABLE_SHIFT ou CHEF_ESCALE
   driver_id text references drivers(id), -- uniquement pertinent si role = CONDUCTEUR (§37)
   actif boolean not null default true,
   -- Email personnel (ADMIN/RESPONSABLE/RESPONSABLE_SHIFT) pour "mot de passe
@@ -281,7 +281,7 @@ create policy "drivers_select" on drivers for select
   using (
     current_user_active() and (
       current_user_role() in ('ADMIN', 'RESPONSABLE')
-      or (current_user_role() = 'RESPONSABLE_SHIFT' and team_id = current_user_team())
+      or (current_user_role() in ('RESPONSABLE_SHIFT', 'CHEF_ESCALE') and team_id = current_user_team())
       or is_own_team_via_driver(id)
     )
   );
@@ -312,9 +312,15 @@ create policy "profiles_write_admin" on profiles for all
 -- ---------- conges / maladies / absences / heures_exceptionnelles (même règle) ----------
 create policy "conges_select" on conges for select
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or is_own_team_via_driver(driver_id)));
+-- is_own_team(driver_id) seul ne suffit pas à exclure CHEF_ESCALE (cette
+-- fonction vérifie uniquement l'équipe, pas le rôle) : rôle EXPLICITE
+-- 'RESPONSABLE_SHIFT' requis pour ÉCRIRE ici — un chef d'escale n'a pas le
+-- droit de gérer les congés (demande explicite de l'exploitant). La lecture
+-- (conges_select ci-dessus) reste ouverte à toute son équipe, chef d'escale
+-- compris.
 create policy "conges_write" on conges for all
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
-  with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or (current_user_role() = 'RESPONSABLE_SHIFT' and is_own_team(driver_id))))
+  with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or (current_user_role() = 'RESPONSABLE_SHIFT' and is_own_team(driver_id))));
 -- Un CONDUCTEUR peut créer SA PROPRE demande, toujours EN_ATTENTE (jamais
 -- s'auto-valider) — §38. Se combine en OR avec "conges_write" ci-dessus
 -- (plusieurs policies permissives sur une même commande), sans l'élargir :
@@ -339,9 +345,11 @@ create policy "absences_write" on absences for all
 
 create policy "heures_exceptionnelles_select" on heures_exceptionnelles for select
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or is_own_team_via_driver(driver_id)));
+-- Rôle EXPLICITE 'RESPONSABLE_SHIFT' requis pour ÉCRIRE (voir conges_write
+-- ci-dessus) : un chef d'escale n'a pas le droit de saisir des Over Times.
 create policy "heures_exceptionnelles_write" on heures_exceptionnelles for all
-  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)))
-  with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id)));
+  using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or (current_user_role() = 'RESPONSABLE_SHIFT' and is_own_team(driver_id))))
+  with check (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or (current_user_role() = 'RESPONSABLE_SHIFT' and is_own_team(driver_id))));
 
 create policy "feries_mouvements_select" on feries_mouvements for select
   using (current_user_active() and (current_user_role() in ('ADMIN', 'RESPONSABLE') or is_own_team(driver_id) or is_own_team_via_driver(driver_id)));

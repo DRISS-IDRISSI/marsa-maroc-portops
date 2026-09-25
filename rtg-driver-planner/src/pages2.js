@@ -448,6 +448,12 @@ function DriversPage() {
   const state = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Chef d'Escale : lecture seule sur la fiche conducteur (gérer un dossier
+  // conducteur — matricule, motif de départ... — reste une action RH, pas
+  // un chef d'escale, dont le rôle se limite à affecter les postes) — RLS
+  // bloque de toute façon l'écriture côté serveur (drivers_write,
+  // migration_019).
+  const canManage = canManageHrRecords(currentUser);
   const loc = useLocation();
   const [teamFilter, setTeamFilter] = useState(shiftRestricted ? currentUser.teamId : "all");
   const [statusFilter, setStatusFilter] = useState("actifs");
@@ -505,9 +511,11 @@ function DriversPage() {
               <i className="fas fa-users-rectangle mr-1.5"></i>Nouvelle équipe
             </button>
           )}
-          <button onClick={() => { setShowForm(true); setShowTeamForm(false); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-            <i className="fas fa-plus mr-1.5"></i>Nouveau conducteur
-          </button>
+          {canManage && (
+            <button onClick={() => { setShowForm(true); setShowTeamForm(false); setEditingId(null); }} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+              <i className="fas fa-plus mr-1.5"></i>Nouveau conducteur
+            </button>
+          )}
         </div>
       </div>
 
@@ -612,11 +620,11 @@ function DriversPage() {
                     <td className="hidden sm:table-cell px-3 py-2"><CongeSoldeBadge driver={d} state={state} /></td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-700">Modifier</button>
+                        {canManage && <button onClick={() => { setEditingId(d.id); setShowForm(true); }} className="text-orange-400 hover:text-orange-700">Modifier</button>}
                         <button onClick={() => setHistoryFor(historyFor === d.id ? null : d.id)} className="text-marine-700 hover:text-slate-900">Historique</button>
-                        {d.actif !== false
+                        {canManage && (d.actif !== false
                           ? <DepartButton onConfirm={motif => RTGStore.setDriverActive(d.id, false, motif)} />
-                          : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, true)} className="text-emerald-400 hover:text-emerald-700 text-xs" />}
+                          : <ConfirmButton label="Réactiver" confirmLabel="Réactiver ?" onConfirm={() => RTGStore.setDriverActive(d.id, true)} className="text-emerald-400 hover:text-emerald-700 text-xs" />)}
                       </div>
                     </td>
                   </tr>
@@ -910,6 +918,12 @@ function CongesPage() {
   const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Chef d'Escale : lecture seule sur cette page (demande explicite de
+  // l'exploitant, "n'a pas le droit de gérer les congés") — RLS
+  // (conges_write, migration_019) bloque de toute façon toute écriture
+  // côté serveur, ce gate côté UI évite juste de proposer des actions qui
+  // échoueraient.
+  const canManage = canManageHrRecords(currentUser);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ driverId: "", dateDebut: RTGDate.toISO(new Date()), dateFin: RTGDate.toISO(new Date()), commentaire: "" });
   const [error, setError] = useState("");
@@ -983,12 +997,14 @@ function CongesPage() {
           <h1 className="text-2xl font-bold text-slate-900">Congés</h1>
           <p className="text-slate-400 text-sm mt-0.5">{records.length} enregistrement{records.length > 1 ? "s" : ""}{pendingCount > 0 ? " — " + pendingCount + " en attente de validation" : ""}</p>
         </div>
-        <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-          <i className="fas fa-plus mr-1.5"></i>Nouveau
-        </button>
+        {canManage && (
+          <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+            <i className="fas fa-plus mr-1.5"></i>Nouveau
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && canManage && (
         <Panel title="Nouvel enregistrement — congé" icon="fa-umbrella-beach">
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
@@ -1048,7 +1064,8 @@ function CongesPage() {
                   <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {isPending && (
+                      {!canManage && <span className="text-slate-400 text-[11px] italic">Lecture seule</span>}
+                      {canManage && isPending && (
                         refusingId === r.id ? (
                           <span className="flex items-center gap-1">
                             <input autoFocus placeholder="Motif (optionnel)" value={refusMotif} onChange={e => setRefusMotif(e.target.value)} className="bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[11px] text-slate-900 w-28" />
@@ -1069,7 +1086,7 @@ function CongesPage() {
                           </React.Fragment>
                         )
                       )}
-                      <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteConge(r.id)} className="text-red-400 hover:text-red-700 text-xs" />
+                      {canManage && <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteConge(r.id)} className="text-red-400 hover:text-red-700 text-xs" />}
                     </div>
                   </td>
                 </tr>
@@ -1111,6 +1128,10 @@ function HeuresExceptionnellesPage() {
   const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Chef d'Escale : lecture seule (demande explicite de l'exploitant, "n'a
+  // pas le droit de saisir des Over Times") — RLS bloque de toute façon
+  // l'écriture côté serveur (heures_exceptionnelles_write, migration_019).
+  const canManage = canManageHrRecords(currentUser);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyHeureExceptionnelleForm());
   const [error, setError] = useState("");
@@ -1152,12 +1173,14 @@ function HeuresExceptionnellesPage() {
           <h1 className="text-2xl font-bold text-slate-900">Over Time</h1>
           <p className="text-slate-400 text-sm mt-0.5">Doublage, jour férié travaillé, 3ème shift dimanche (nécessité de service) — {records.length} enregistrement{records.length > 1 ? "s" : ""}</p>
         </div>
-        <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-          <i className="fas fa-plus mr-1.5"></i>Nouveau
-        </button>
+        {canManage && (
+          <button onClick={() => setShowForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+            <i className="fas fa-plus mr-1.5"></i>Nouveau
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && canManage && (
         <Panel title="Nouvel enregistrement — Over Time" icon="fa-clock-rotate-left">
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
@@ -1223,7 +1246,7 @@ function HeuresExceptionnellesPage() {
                   <td className="px-3 py-2 text-slate-600 text-center">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                   <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
-                  <td className="px-3 py-2"><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></td>
+                  <td className="px-3 py-2">{canManage ? <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /> : <span className="text-slate-400 text-[11px] italic">Lecture seule</span>}</td>
                 </tr>
               );
             })}
@@ -1972,8 +1995,10 @@ const ROLE_OPTIONS = [
   { value: "ADMIN", label: "Administrateur — accès complet + gestion des utilisateurs" },
   { value: "RESPONSABLE", label: "Responsable — accès opérationnel complet, toutes équipes" },
   { value: "RESPONSABLE_SHIFT", label: "Responsable de Shift — accès limité à SON équipe" },
+  { value: "CHEF_ESCALE", label: "Chef d'Escale — affecte les postes de SON équipe, sans gérer congés/mouvements manuels/Over Times" },
   { value: "CONDUCTEUR", label: "Conducteur — accès à SON planning uniquement" }
 ];
+const ROLE_NEEDS_TEAM = ["RESPONSABLE_SHIFT", "CHEF_ESCALE"];
 
 function emptyUserForm(defaultTeamId) {
   return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: defaultTeamId || "", driverId: "", email: "" };
@@ -1988,7 +2013,7 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
     if (!form.nom.trim() || !form.username.trim()) { setError("Nom et identifiant sont obligatoires."); return; }
     if (!editingId && !form.password) { setError("Mot de passe obligatoire à la création."); return; }
     if (RTGStore.isUsernameTaken(form.username.trim(), editingId)) { setError("Cet identifiant est déjà utilisé."); return; }
-    if (form.role === "RESPONSABLE_SHIFT" && !form.teamId) { setError("Sélectionnez l'équipe pour un Responsable de Shift."); return; }
+    if (ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && !form.teamId) { setError("Sélectionnez l'équipe pour ce rôle."); return; }
     if (form.role === "CONDUCTEUR") {
       if (!form.driverId) { setError("Sélectionnez le conducteur rattaché à ce compte."); return; }
       const already = state.users.find(u => u.driverId === form.driverId && u.id !== editingId);
@@ -1997,7 +2022,7 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
 
     const payload = {
       nom: form.nom.trim(), username: form.username.trim(), role: form.role,
-      teamId: form.role === "RESPONSABLE_SHIFT" ? form.teamId : null,
+      teamId: ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 ? form.teamId : null,
       driverId: form.role === "CONDUCTEUR" ? form.driverId : null,
       email: form.role === "CONDUCTEUR" ? null : (form.email || "").trim()
     };
@@ -2033,7 +2058,7 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
             {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>
-        {form.role === "RESPONSABLE_SHIFT" && (
+        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (
           <div>
             <label className={LABEL_CLS}>Équipe / Shift</label>
             <select className={FIELD_CLS} value={form.teamId} onChange={e => setForm(f => Object.assign({}, f, { teamId: e.target.value }))}>
@@ -3340,6 +3365,11 @@ function MouvementsRtgPage() {
   const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
+  // Chef d'Escale : lecture seule sur la saisie manuelle (demande explicite
+  // de l'exploitant, "n'a pas le droit de saisir des mouvements manuels") —
+  // RLS bloque de toute façon l'écriture côté serveur
+  // (mouvements_manuels_write, migration_019).
+  const canManage = canManageHrRecords(currentUser);
   // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
   // propre équipe quelle que soit la flotte affichée par ailleurs. Le rapport
   // TOS (rows/totalRows) revient du serveur pour TOUTES les flottes — les
@@ -3530,12 +3560,14 @@ function MouvementsRtgPage() {
           <h1 className="text-2xl font-bold text-slate-900">Mouvements {state.currentFleet}</h1>
           <p className="text-slate-400 text-sm mt-0.5">Mouvements réalisés, importés automatiquement depuis le rapport TOS</p>
         </div>
-        <button onClick={() => setShowManuelForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
-          <i className="fas fa-plus mr-1.5"></i>Ajouter des mouvements manuels
-        </button>
+        {canManage && (
+          <button onClick={() => setShowManuelForm(s => !s)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+            <i className="fas fa-plus mr-1.5"></i>Ajouter des mouvements manuels
+          </button>
+        )}
       </div>
 
-      {showManuelForm && (
+      {showManuelForm && canManage && (
         <Panel title="Nouvel enregistrement — mouvements manuels" icon="fa-truck-ramp-box">
           <div className="space-y-3">
             <p className="text-[11px] text-slate-500">Pour les mouvements réalisés par un conducteur mais non tracés par le TOS. Renseignez uniquement les types concernés — le total se calcule automatiquement.</p>
@@ -3666,7 +3698,7 @@ function MouvementsRtgPage() {
                         {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className={`px-3 py-1.5 text-center text-slate-600 ${midCellCls}`}>{disp[c.key]}</td>)}
                         <td className={`px-3 py-1.5 text-center text-slate-900 font-bold ${midCellCls}`}>{r.totalMvmt}</td>
                         <td className={`px-3 py-1.5 ${lastCellCls}`}>
-                          {manuelRows.map(mr => (
+                          {canManage && manuelRows.map(mr => (
                             <ConfirmButton key={mr.id} label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => deleteManuel(mr.id)} className="text-red-400 hover:text-red-700 text-[11px] block" />
                           ))}
                         </td>

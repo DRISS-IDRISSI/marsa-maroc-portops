@@ -1299,12 +1299,26 @@ function useCurrentUser() {
   return state.users.find(u => u.id === state.currentUserId) || null;
 }
 
-const ROLE_LABELS = { ADMIN: "Administrateur", RESPONSABLE: "Responsable Exploitation", RESPONSABLE_SHIFT: "Responsable de Shift", CONDUCTEUR: "Conducteur" };
+const ROLE_LABELS = { ADMIN: "Administrateur", RESPONSABLE: "Responsable Exploitation", RESPONSABLE_SHIFT: "Responsable de Shift", CHEF_ESCALE: "Chef d'Escale", CONDUCTEUR: "Conducteur" };
 
-// Un Responsable de Shift ne voit/agit que sur SON équipe (teamId) ; les autres
-// rôles (Admin, Responsable) ont accès à toutes les équipes — §30.
+// Un Responsable de Shift OU un Chef d'Escale ne voit/agit que sur SON
+// équipe (teamId) ; les autres rôles (Admin, Responsable) ont accès à
+// toutes les équipes — §30. Chef d'Escale (demande explicite de
+// l'exploitant) : même périmètre d'équipe qu'un Responsable de Shift
+// (peut affecter les postes — Affectation du jour/Planning mensuel), mais
+// SANS le droit de gérer congés/mouvements manuels/Over Times — voir
+// canManageHrRecords ci-dessous, utilisé par les pages concernées
+// (pages2.js).
 function isShiftRestricted(user) {
-  return !!user && user.role === "RESPONSABLE_SHIFT";
+  return !!user && (user.role === "RESPONSABLE_SHIFT" || user.role === "CHEF_ESCALE");
+}
+
+// ADMIN/RESPONSABLE (toutes équipes) et RESPONSABLE_SHIFT (sa propre
+// équipe) peuvent gérer congés/maladies/absences/mouvements manuels/Over
+// Times — CHEF_ESCALE et CONDUCTEUR ne le peuvent pas (lecture seule,
+// déjà permise côté RLS — voir migration_019_chef_escale_role.sql).
+function canManageHrRecords(user) {
+  return !!user && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"].indexOf(user.role) !== -1;
 }
 
 // Un Conducteur n'a accès qu'à un jeu de pages restreint : "Mon planning",
@@ -2715,7 +2729,7 @@ function PlanningMensuel() {
   // pas (§32) — RESPONSABLE_SHIFT reste de toute façon cantonné à sa
   // propre équipe via effectiveTeamId/lockTeam ci-dessous. CONDUCTEUR n'y
   // figure pas : lecture seule, jamais d'édition.
-  const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"].indexOf(currentUser.role) !== -1;
+  const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT", "CHEF_ESCALE"].indexOf(currentUser.role) !== -1;
   // L'import Excel modifie potentiellement des dizaines d'affectations d'un
   // coup : réservé à l'ADMIN/RESPONSABLE (pas au RESPONSABLE_SHIFT), à la
   // différence de l'édition case par case ci-dessus.
@@ -3389,7 +3403,7 @@ function AffectationDuJour() {
   // rotation automatique n'est qu'une PROPOSITION de priorité (cf. bandeau
   // "prévisionnel" ci-dessus) — c'est la saisie du jour même par le
   // responsable qui fait foi.
-  const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"].indexOf(currentUser.role) !== -1;
+  const canEditPlanning = !!currentUser && ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT", "CHEF_ESCALE"].indexOf(currentUser.role) !== -1;
   const [editing, setEditing] = useState(null);
   const onEditRow = canEditPlanning ? (a) => {
     const driver = driverById[a.driverId];
