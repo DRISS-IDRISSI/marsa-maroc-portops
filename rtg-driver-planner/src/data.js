@@ -29,9 +29,15 @@ const RTG_CONFIG = {
   // (statut particulier, traité comme PARC pour la file d'attente) — cette
   // liste reste utilisée pour les sélecteurs manuels (fiche conducteur,
   // affectation manuelle), qui doivent proposer toutes les valeurs possibles.
+  // P72/P80/P82/P83 réintégrés (retirés par erreur) : la confirmation du
+  // 24/09/2026 (voir ccQuaiPosts ci-dessous) ne portait que sur la capacité
+  // réelle de la file AUTOMATIQUE pour GR HADDAZI ce jour-là, pas sur
+  // l'ensemble des postes possibles pour toutes les équipes CC — d'autres
+  // équipes/terminaux (ex. GR BAKKALI, TC3) utilisent bien ces postes,
+  // le sélecteur manuel doit donc les proposer.
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["P71", "P74", "DTV", "PARC", "AUTORISE"]
+    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "PARC", "AUTORISE"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
   // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle
