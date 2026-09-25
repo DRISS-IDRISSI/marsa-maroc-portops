@@ -107,13 +107,17 @@ const CC_BOOTSTRAP_ORDER = [
 
 // Postes quai PROPRES à chaque équipe CC (libellés ET capacités
 // différents d'une équipe à l'autre — découvert après une erreur
-// d'affectation sur GR BAHOUS, dont le relevé papier du 24/09/2026 montre
-// "74/Parc" (2 places) + "Roro/Parc" (1 place), PAS le modèle P71/P74/DTV
-// confirmé pour GR HADDAZI/GR HOUSSAM). Recherche par nom d'équipe, comme
-// CC_BOOTSTRAP_ORDER/CC_VACATION_FREEZE_FROM_SHIFT ci-dessus — une équipe
-// absente de cette table utilise le modèle par défaut (state.config.ccQuaiPosts).
+// d'affectation sur GR BAHOUS/GR HOUSSAM, dont les relevés papier du
+// 24/09/2026 montrent des postes distincts de P71/P74/DTV : GR BAHOUS =
+// "74/Parc" (2 places) + "Roro/Parc" (1 place) ; GR HOUSSAM = "DTV/Parc"
+// (1 place) + "80/Parc" (2 places). Le modèle P71(4)+P74(2)+DTV(1)=7
+// places reste confirmé pour GR HADDAZI. Recherche par nom d'équipe,
+// comme CC_BOOTSTRAP_ORDER/CC_VACATION_FREEZE_FROM_SHIFT ci-dessus — une
+// équipe absente de cette table utilise le modèle par défaut
+// (state.config.ccQuaiPosts).
 const CC_QUAI_POSTS_BY_TEAM = [
-  { pattern: /bahous/i, posts: [{ id: "74/Parc", capacity: 2 }, { id: "Roro/Parc", capacity: 1 }] }
+  { pattern: /bahous/i, posts: [{ id: "74/Parc", capacity: 2 }, { id: "Roro/Parc", capacity: 1 }] },
+  { pattern: /houssam/i, posts: [{ id: "DTV/Parc", capacity: 1 }, { id: "80/Parc", capacity: 2 }] }
 ];
 
 function ccQuaiPostsFor(team, state) {
