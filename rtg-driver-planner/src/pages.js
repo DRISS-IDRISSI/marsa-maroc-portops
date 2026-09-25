@@ -3387,15 +3387,26 @@ function AffectationDuJour() {
   // que le responsable de shift ne l'a pas saisi lui-même sur le terrain —
   // seule la vacation (A/B) prévue par la rotation est présentée, jamais le
   // poste (demande explicite de l'exploitant, §"L'AFFECTATION DE DEMAIN, LES
-  // ZONES DOIVENT ETRE VIDE"). Le bandeau d'avertissement disparaît de
-  // lui-même dès que le responsable a traité TOUS les conducteurs présents
-  // du shift affiché (plus aucun PARC par défaut, source AUTO) — inutile
-  // d'attendre un bouton "valider" séparé (demande explicite de
-  // l'exploitant, §"LE MESSAGE APPARAIT TOUJOURS...UN BOUTON POUR VALIDER").
-  const hasPendingCcZone = assignments.some(a =>
-    a.status === "PRESENT" && a.source === "AUTO" && a.zone === "PARC" &&
-    (effectiveShiftFilter === "all" || a.shift === effectiveShiftFilter)
-  );
+  // ZONES DOIVENT ETRE VIDE"). Le bandeau disparaît équipe par équipe dès que
+  // le nombre de postes QUAI physiques (capacité fixe, ccQuaiPostsFor) a été
+  // atteint par des saisies manuelles réelles — au-delà de ce nombre, les
+  // conducteurs restants sont normalement au PARC : ce n'est pas une case
+  // "en attente" à ressaisir un par un une fois les postes quai distribués
+  // (demande explicite de l'exploitant, §"PAS DE BESOIN DE REFAIRE
+  // AFFECTATION ALORS QUE LES AUTRES POSTES SONT DEJA AU PARC").
+  const hasPendingCcZone = (() => {
+    const relevant = assignments.filter(a => a.status === "PRESENT" && (effectiveShiftFilter === "all" || a.shift === effectiveShiftFilter));
+    const byTeam = {};
+    relevant.forEach(a => { (byTeam[a.teamId] = byTeam[a.teamId] || []).push(a); });
+    return Object.keys(byTeam).some(teamId => {
+      const rows = byTeam[teamId];
+      if (!rows.some(a => a.source === "AUTO" && a.zone === "PARC")) return false;
+      const team = state.teams.find(t => t.id === teamId);
+      const capacity = flattenQuaiPosts(ccQuaiPostsFor(team, state)).length;
+      const manualQuaiCount = rows.filter(a => a.source === "MANUAL" && a.zone && CC_GENERIC_ZONES.indexOf(String(a.zone).toUpperCase()) === -1).length;
+      return manualQuaiCount < capacity;
+    });
+  })();
   const isCcZonePending = displayedFleet === "CC" && dateStr > todayIso && hasPendingCcZone;
 
   // Un conducteur absent (repos, congé, maladie, absence, formation) reste
@@ -3656,7 +3667,8 @@ function AffectationDuJour() {
             <p className="mt-0.5 text-amber-700">
               Le tableau ci-dessous prévoit la vacation (A/B) de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
               mais certaines cases Zone affichent encore PARC par défaut : c'est au responsable de shift de remplacer PARC par le poste
-              réel, conducteur par conducteur. Ce message disparaît automatiquement une fois tous les conducteurs présents affectés.
+              réel pour chaque conducteur au quai. Une fois tous les postes quai distribués, ce message disparaît automatiquement — les
+              autres conducteurs restant au PARC n'ont pas besoin d'être ressaisis un par un.
             </p>
           </div>
         </div>
