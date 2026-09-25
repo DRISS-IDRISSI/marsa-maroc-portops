@@ -37,7 +37,7 @@ const RTG_CONFIG = {
   // le sélecteur manuel doit donc les proposer.
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "PARC", "AUTORISE"]
+    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "74/Parc", "Roro/Parc", "PARC", "AUTORISE"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
   // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle

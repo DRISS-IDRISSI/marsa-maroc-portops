@@ -105,6 +105,25 @@ const CC_BOOTSTRAP_ORDER = [
   }
 ];
 
+// Postes quai PROPRES à chaque équipe CC (libellés ET capacités
+// différents d'une équipe à l'autre — découvert après une erreur
+// d'affectation sur GR BAHOUS, dont le relevé papier du 24/09/2026 montre
+// "74/Parc" (2 places) + "Roro/Parc" (1 place), PAS le modèle P71/P74/DTV
+// confirmé pour GR HADDAZI/GR HOUSSAM). Recherche par nom d'équipe, comme
+// CC_BOOTSTRAP_ORDER/CC_VACATION_FREEZE_FROM_SHIFT ci-dessus — une équipe
+// absente de cette table utilise le modèle par défaut (state.config.ccQuaiPosts).
+const CC_QUAI_POSTS_BY_TEAM = [
+  { pattern: /bahous/i, posts: [{ id: "74/Parc", capacity: 2 }, { id: "Roro/Parc", capacity: 1 }] }
+];
+
+function ccQuaiPostsFor(team, state) {
+  if (team) {
+    const entry = CC_QUAI_POSTS_BY_TEAM.find(e => e.pattern.test(team.nom || ""));
+    if (entry) return entry.posts;
+  }
+  return state.config.ccQuaiPosts;
+}
+
 function ccBootstrapOrderFor(team) {
   if (!team) return null;
   const entry = CC_BOOTSTRAP_ORDER.find(e => e.pattern.test(team.nom || ""));
@@ -223,8 +242,6 @@ const CcPosteRotationEngine = {
     const targetDate = RTGDate.parseISO(targetIso);
     if (targetDate.getTime() < refDate.getTime()) return;
 
-    const quaiPosts = flattenQuaiPosts(state.config.ccQuaiPosts);
-
     let cursor;
     if (this._cursorIso === null) {
       this._bootstrapOrder(state, teams, refDate);
@@ -252,6 +269,12 @@ const CcPosteRotationEngine = {
       Object.keys(byBlock).forEach(key => {
         const blockDriverIds = byBlock[key];
         let order = (this._order[key] || []).filter(id => driversById[id]);
+        // Postes quai de CETTE équipe (peuvent différer d'une équipe CC à
+        // l'autre — voir CC_QUAI_POSTS_BY_TEAM) : résolus par bloc, pas
+        // globalement, pour ne jamais appliquer le modèle d'une équipe à une
+        // autre.
+        const teamForBlock = teams.find(t => t.id === driversById[blockDriverIds[0]].teamId);
+        const quaiPosts = flattenQuaiPosts(ccQuaiPostsFor(teamForBlock, state));
 
         const statusToday = {};
         blockDriverIds.forEach(id => { statusToday[id] = PlanningEngine.getDailyStatus(driversById[id], cursor, state, teams); });
@@ -361,7 +384,8 @@ const CcPosteRotationEngine = {
     this._ensureCascade(iso, state, teams);
     const rank = this._dayRank[iso] ? this._dayRank[iso][driver.id] : undefined;
     if (rank === undefined) return null;
-    const quaiPosts = flattenQuaiPosts(state.config.ccQuaiPosts);
+    const team = teams.find(t => t.id === driver.teamId);
+    const quaiPosts = flattenQuaiPosts(ccQuaiPostsFor(team, state));
     return rank < quaiPosts.length ? quaiPosts[rank] : "PARC";
   }
 };
