@@ -3387,29 +3387,29 @@ function AffectationDuJour() {
   // que le responsable de shift ne l'a pas saisi lui-même sur le terrain —
   // seule la vacation (A/B) prévue par la rotation est présentée, jamais le
   // poste (demande explicite de l'exploitant, §"L'AFFECTATION DE DEMAIN, LES
-  // ZONES DOIVENT ETRE VIDE"). Le bandeau disparaît équipe par équipe dès que
-  // le nombre de postes QUAI physiques (capacité fixe, ccQuaiPostsFor) a été
-  // atteint par des saisies manuelles réelles — au-delà de ce nombre, les
-  // conducteurs restants sont normalement au PARC : ce n'est pas une case
-  // "en attente" à ressaisir un par un une fois les postes quai distribués
-  // (demande explicite de l'exploitant, §"PAS DE BESOIN DE REFAIRE
-  // AFFECTATION ALORS QUE LES AUTRES POSTES SONT DEJA AU PARC").
+  // ZONES DOIVENT ETRE VIDE"). Le nombre de postes RÉELLEMENT en service un
+  // jour donné dépend de l'exploitation (ex. un seul poste actif ce jour-là,
+  // contre 7 postes physiques possibles au total) — jamais un chiffre fixe
+  // déductible de la config (ccQuaiPostsFor n'est qu'un plafond théorique) :
+  // demande explicite de l'exploitant après un cas réel où un seul cavalier
+  // était affecté par vacation, plafond bien inférieur au nombre de postes
+  // physiques. Le bandeau disparaît donc, équipe et vacation par vacation,
+  // dès qu'AU MOINS UNE saisie manuelle réelle existe pour cette vacation :
+  // c'est cette première saisie qui vaut décision du responsable pour la
+  // journée, jamais un quota à atteindre.
   const hasPendingCcZone = (() => {
     const relevant = assignments.filter(a => a.status === "PRESENT" && (effectiveShiftFilter === "all" || a.shift === effectiveShiftFilter));
     // Regroupe par équipe ET par vacation (A/B) — deux créneaux horaires
     // disjoints du même shift (ex. 07h-11h / 11h-15h) se partagent les MÊMES
     // postes physiques à des moments différents, jamais simultanément :
-    // chacun dispose donc de son propre quota de N postes, pas un quota
-    // unique partagé pour tout le shift.
+    // chacun reflète une décision distincte du responsable.
     const byGroup = {};
-    relevant.forEach(a => { const k = a.teamId + "_" + a.vacation; (byGroup[k] = byGroup[k] || { teamId: a.teamId, rows: [] }).rows.push(a); });
+    relevant.forEach(a => { const k = a.teamId + "_" + a.vacation; (byGroup[k] = byGroup[k] || []).push(a); });
     return Object.keys(byGroup).some(key => {
-      const rows = byGroup[key].rows;
-      if (!rows.some(a => a.source === "AUTO" && a.zone === "PARC")) return false;
-      const team = state.teams.find(t => t.id === byGroup[key].teamId);
-      const capacity = flattenQuaiPosts(ccQuaiPostsFor(team, state)).length;
-      const manualQuaiCount = rows.filter(a => a.source === "MANUAL" && a.zone && CC_GENERIC_ZONES.indexOf(String(a.zone).toUpperCase()) === -1).length;
-      return manualQuaiCount < capacity;
+      const rows = byGroup[key];
+      const stillAutoParc = rows.some(a => a.source === "AUTO" && a.zone === "PARC");
+      const hasAnyManualQuai = rows.some(a => a.source === "MANUAL" && a.zone && CC_GENERIC_ZONES.indexOf(String(a.zone).toUpperCase()) === -1);
+      return stillAutoParc && !hasAnyManualQuai;
     });
   })();
   const isCcZonePending = displayedFleet === "CC" && dateStr > todayIso && hasPendingCcZone;
@@ -3671,9 +3671,10 @@ function AffectationDuJour() {
             <p className="font-semibold">Postes non encore décidés</p>
             <p className="mt-0.5 text-amber-700">
               Le tableau ci-dessous prévoit la vacation (A/B) de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
-              mais certaines cases Zone affichent encore PARC par défaut : c'est au responsable de shift de remplacer PARC par le poste
-              réel pour chaque conducteur au quai. Une fois tous les postes quai distribués, ce message disparaît automatiquement — les
-              autres conducteurs restant au PARC n'ont pas besoin d'être ressaisis un par un.
+              mais la colonne Zone affiche encore PARC par défaut pour tout le monde : c'est au responsable de shift d'affecter au poste
+              réel les conducteurs réellement au quai ce jour-là (leur nombre dépend de l'exploitation, pas d'un chiffre fixe). Dès la
+              première affectation réelle saisie pour une vacation, ce message disparaît pour elle — les autres conducteurs restant au
+              PARC n'ont pas besoin d'être ressaisis.
             </p>
           </div>
         </div>
