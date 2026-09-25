@@ -3375,22 +3375,48 @@ function AffectationDuJour() {
   // rattaché au shift de son équipe ce jour-là (le shift/vacation/zone ne
   // sont calculés par le moteur que pour les conducteurs présents) — on
   // retrouve donc ce shift via son équipe. Pour la vacation, il faut le
-  // label AFFICHÉ ce jour précis par son bloc (VacationRotationEngine —
-  // bascule quotidienne du bloc ENTIER), PAS driver.initialVacation tel
-  // quel : ce dernier n'est que le label de départ du bloc à
-  // rotationReferenceDate, il ne correspond au label du jour que certains
-  // jours sur deux (bug corrigé : un absent d'un bloc affichant "V1"
-  // aujourd'hui apparaissait sous "Vacation V2" — son identité fixe — alors
-  // que ses collègues PRÉSENTS du même bloc, eux, apparaissaient bien sous
-  // "Vacation V1", le label du jour).
+  // label AFFICHÉ ce jour précis par son bloc (le bloc bascule ENTIER,
+  // jamais séparé — règle métier confirmée par l'exploitant, sauf
+  // nécessité de service ponctuelle).
+  //
+  // Ce label ne peut PAS être recalculé "à froid" via
+  // VacationRotationEngine.getVacationForDate : ce calcul est purement
+  // théorique (driver.initialVacation + comptage de bascules depuis
+  // rotationReferenceDate) et DÉRIVE de la réalité terrain dès qu'un import
+  // Excel (ou une correction manuelle ponctuelle) a fixé l'affectation
+  // RÉELLE des conducteurs PRÉSENTS pour telle ou telle équipe — l'import
+  // devient alors la source de vérité pour ce jour-là, pas le modèle
+  // théorique. Sans ce correctif, les absents d'un bloc importé
+  // apparaissaient sous l'ancien label théorique pendant que leurs
+  // collègues PRÉSENTS du même bloc affichaient le label réel (importé),
+  // donnant l'impression que le bloc s'était scindé en deux.
+  //
+  // On déduit donc d'abord le label RÉELLEMENT affiché aujourd'hui par
+  // chaque bloc (majorité parmi ses membres PRÉSENTS, dont l'affectation
+  // vient potentiellement d'un import/correction manuelle) ; seul un bloc
+  // dont AUCUN membre n'est présent ce jour-là retombe sur le calcul
+  // théorique pur (aucune donnée réelle disponible pour ce jour).
   const ABSENT_STATUSES = ["REPOS", "REPOS_COMPENSATOIRE", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
   const driverById = {};
   state.drivers.forEach(d => { driverById[d.id] = d; });
   const teamShiftMap = {};
   const dateObj = RTGDate.parseISO(dateStr);
   state.teams.forEach(t => { teamShiftMap[t.id] = ShiftRotationEngine.getTeamShiftForDate(t, dateObj, state.config); });
+  const driverBlock = d => d.initialVacation === "V2" ? "V2" : "V1";
+  const blockVacationVotes = {};
+  presentDrivers.forEach(a => {
+    const d = driverById[a.driverId];
+    if (!d || !a.vacation) return;
+    const key = d.teamId + "_" + driverBlock(d);
+    const votes = blockVacationVotes[key] || (blockVacationVotes[key] = {});
+    votes[a.vacation] = (votes[a.vacation] || 0) + 1;
+  });
   const vacationLabelToday = {};
-  state.drivers.forEach(d => { vacationLabelToday[d.id] = VacationRotationEngine.getVacationForDate(d, dateObj, state, state.teams.find(t => t.id === d.teamId)); });
+  state.drivers.forEach(d => {
+    const votes = blockVacationVotes[d.teamId + "_" + driverBlock(d)];
+    const dominant = votes ? Object.keys(votes).sort((x, y) => votes[y] - votes[x])[0] : null;
+    vacationLabelToday[d.id] = dominant || VacationRotationEngine.getVacationForDate(d, dateObj, state, state.teams.find(t => t.id === d.teamId));
+  });
   const absentByShift = {};
   state.config.shifts.forEach(s => {
     absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id);
