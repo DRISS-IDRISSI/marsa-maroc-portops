@@ -2989,7 +2989,7 @@ const SHIFT_BLOCK_COL_W = {
 // Libellé "terrain" de chaque poste QUAI (distinct du code interne de
 // l'appli) — vocabulaire déjà utilisé par l'exploitant sur le document
 // papier plutôt que "P71"/"P74"/"DTV" tels quels.
-const CC_POSTE_TERRAIN_LABEL = { P71: "71/parc", P74: "74/parc", DTV: "Roro/parc" };
+const CC_POSTE_TERRAIN_LABEL = { P71: "P71/PARC", P74: "P74/PARC", DTV: "DTV/PARC" };
 
 // Regroupe les lignes (déjà triées dans l'ordre de la file, cf. byCcRank)
 // en segments : les conducteurs PRESENT consécutifs affectés au MÊME poste
@@ -3035,18 +3035,20 @@ function flattenCcPosteRows(rows, quaiPostIds) {
   return flat;
 }
 
-// Les 3 cellules (Poste / Conducteur affecté / Émargement) d'UN côté
-// (Vacation A ou B) pour la ligne rowIndex — la case Poste n'est rendue que
-// sur la première ligne d'un groupe fusionné (rowSpan couvre les suivantes).
+// Les 2 cellules (Poste / Conducteur affecté) d'UN côté (Vacation A ou B)
+// pour la ligne rowIndex — la case Poste n'est rendue que sur la première
+// ligne d'un groupe fusionné (rowSpan couvre les suivantes). Colonne
+// Émargement retirée (demande explicite de l'exploitant) : ce rapport
+// numérique n'est pas destiné à être signé à la main comme le document
+// papier d'origine.
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
-  if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS}></td></React.Fragment>;
+  if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
   const bg = r.a.status !== "PRESENT" ? PRINT_STATUS_BG[r.a.status] : undefined;
   return (
     <React.Fragment>
       {r.isStart && <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
       <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.nom}</td>
-      <td className={PRINT_TD_XS}></td>
     </React.Fragment>
   );
 }
@@ -3070,18 +3072,16 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
       <table className="w-full text-[11px] border-collapse border border-slate-400" style={{ tableLayout: "fixed" }}>
         <thead>
           <tr>
-            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
+            <th className={PRINT_TH_XS + " text-center"} colSpan="2">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
             <th className={PRINT_TH_XS + " text-center"}>Stagiaires</th>
-            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
+            <th className={PRINT_TH_XS + " text-center"} colSpan="2">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
           </tr>
           <tr>
-            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "27%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "5%" }}>Émarg.</th>
-            <th className={PRINT_TH_XS} style={{ width: "21%" }}>Stagiaire</th>
-            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "27%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "5%" }}>Émarg.</th>
+            <th className={PRINT_TH_XS} style={{ width: "10%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "30%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "20%" }}>Stagiaire</th>
+            <th className={PRINT_TH_XS} style={{ width: "10%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "30%" }}>Conducteur affecté</th>
           </tr>
         </thead>
         <tbody>
