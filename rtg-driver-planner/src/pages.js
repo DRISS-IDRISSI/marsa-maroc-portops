@@ -1554,23 +1554,22 @@ async function captureNodeAsPng(node, forceWidth, scale) {
 // rapport à proportions d'origine conservées. Mais un étirement NON borné
 // (proportions ignorées) crée un effet de moiré sur les bordures fines
 // répétées du tableau (lignes floues/mal alignées, bandes colorées en
-// alternance) une fois la page rendue — d'où la limite. Le vide résiduel
-// éventuel (table courte, peu de conducteurs) est centré verticalement
-// plutôt que collé en haut.
+// alternance) une fois la page rendue — d'où la limite.
 // maxStretch abaissé de 1.8 à 1.15 (défaut) : 1.8 restait bien trop
 // permissif pour un rapport compact (peu de lignes) — quasiment TOUJOURS
 // étiré près de la limite haute, d'où des bordures fines nettement floues
 // signalé par l'exploitant ("les traits flous") sur Affectation du jour.
-// Un peu de vide résiduel en bas de page (centré) est un bien meilleur
-// compromis qu'un tableau déformé.
+// Un peu de vide résiduel en bas de page est un bien meilleur compromis
+// qu'un tableau déformé — collé en HAUT de page (pas centré verticalement :
+// demande explicite de l'exploitant, l'en-tête doit rester en haut plutôt
+// que flotter au milieu d'un grand vide).
 function addFittedImageToPage(pdf, img, maxStretch) {
   const pageWidthMm = pdf.internal.pageSize.getWidth(), pageHeightMm = pdf.internal.pageSize.getHeight();
   const margin = 5;
   const usableWidthMm = pageWidthMm - margin * 2, usableHeightMm = pageHeightMm - margin * 2;
   const imgHeightMm = usableWidthMm * img.height / img.width;
   const targetHeightMm = Math.min(usableHeightMm, imgHeightMm * (maxStretch || 1.15));
-  const yOffset = margin + (usableHeightMm - targetHeightMm) / 2;
-  pdf.addImage(img.dataUrl, "PNG", margin, yOffset, usableWidthMm, targetHeightMm);
+  pdf.addImage(img.dataUrl, "PNG", margin, margin, usableWidthMm, targetHeightMm);
 }
 
 async function exportNodeAsPdf(node, filename, opts) {
@@ -3014,7 +3013,11 @@ function buildCcPosteSegments(rows, quaiPostIds) {
 }
 
 function ccPosteCellLabel(a, isQuaiZone) {
-  if (a.status === "PRESENT") return isQuaiZone ? (CC_POSTE_TERRAIN_LABEL[a.zone] || a.zone) : "";
+  // PARC/AUTORISE (ou absent de zone) : afficher le libellé plutôt qu'une
+  // case vide — demande explicite de l'exploitant, pour que chaque
+  // conducteur présent ait une case Poste renseignée, comme sur le document
+  // papier une fois complété à la main.
+  if (a.status === "PRESENT") return isQuaiZone ? (CC_POSTE_TERRAIN_LABEL[a.zone] || a.zone) : (a.zone || "PARC");
   if (a.status === "REPOS") return "repos";
   if (a.status === "REPOS_COMPENSATOIRE") return "RC";
   if (a.status === "CONGE") return "congé";
@@ -3041,10 +3044,17 @@ function flattenCcPosteRows(rows, quaiPostIds) {
 // Émargement retirée (demande explicite de l'exploitant) : ce rapport
 // numérique n'est pas destiné à être signé à la main comme le document
 // papier d'origine.
+// Sur CE rapport uniquement (demande explicite de l'exploitant) : le repos
+// compensatoire (RC) partage la couleur du repos normal plutôt que sa
+// couleur fuchsia distincte utilisée partout ailleurs dans l'appli
+// (Planning mensuel, etc.) — override LOCAL, PRINT_STATUS_BG global
+// inchangé pour ne pas perdre cette distinction là où elle sert.
+const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS_COMPENSATOIRE: PRINT_STATUS_BG.REPOS });
+
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
   if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
-  const bg = r.a.status !== "PRESENT" ? PRINT_STATUS_BG[r.a.status] : undefined;
+  const bg = r.a.status !== "PRESENT" ? CC_POSTE_STATUS_BG[r.a.status] : undefined;
   return (
     <React.Fragment>
       {r.isStart && <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
@@ -3620,7 +3630,7 @@ function AffectationDuJour() {
             const nonStagGroups = vacationGroupsForDisplay(s.id).filter(g => g.vacation.id !== "V1+V2");
             const stagGroup = (grouped[s.id] || []).find(g => g.vacation.id === "V1+V2");
             return (
-              <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl p-0">
+              <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
                 <CcAffectationHeader generatedAt={new Date()} />
                 <CcAffectationTerrainPrintable
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
