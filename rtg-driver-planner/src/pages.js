@@ -2351,15 +2351,19 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit, 
 // Formation) — demande explicite de l'exploitant, pour intégrer présents ET
 // absents d'une même vacation dans UN SEUL tableau plutôt qu'un bloc "Repos
 // & congés" séparé.
-function ZoneOrStatutBadge({ a }) {
+function ZoneOrStatutBadge({ a, fleet }) {
   if (a.status === "PRESENT") {
-    return <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 font-bold">{a.zone}</span>;
+    // Syntaxe uniforme "P71/PARC" pour la flotte CC, quelle que soit
+    // l'équipe (demande explicite de l'exploitant) — jamais pour RTG, où
+    // les zones sont des lettres A-H, pas des postes physiques.
+    const label = fleet === "CC" ? ccPosteDisplayLabel(a.zone) : a.zone;
+    return <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 font-bold">{label}</span>;
   }
   const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "bg-slate-700/40 text-slate-600 border-slate-600/40" };
   return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>;
 }
 
-function ShiftBlock({ title, icon, rows, onEditRow, vacationLetter }) {
+function ShiftBlock({ title, icon, rows, onEditRow, vacationLetter, fleet }) {
   const nav = useNavigate();
   const goToDriver = matricule => nav("/conducteurs?q=" + encodeURIComponent(matricule) + "&open=" + encodeURIComponent(matricule));
   // Bordure plus marquée + ombre (au lieu du simple border-slate-200 des
@@ -2401,7 +2405,7 @@ function ShiftBlock({ title, icon, rows, onEditRow, vacationLetter }) {
                   <td className={`py-1.5 pr-3 ${onEditRow ? "cursor-pointer hover:brightness-125" : ""}`}
                     onClick={onEditRow ? () => onEditRow(a) : undefined}
                     title={onEditRow ? "Cliquer pour modifier l'affectation de ce conducteur" : undefined}>
-                    <ZoneOrStatutBadge a={a} />
+                    <ZoneOrStatutBadge a={a} fleet={fleet} />
                   </td>
                 </tr>
               ))}
@@ -3029,10 +3033,22 @@ const SHIFT_BLOCK_COL_W = {
 // poste physique (voir ccQuaiPosts/capacity, data.js).
 // ==========================================
 
-// Libellé "terrain" de chaque poste QUAI (distinct du code interne de
-// l'appli) — vocabulaire déjà utilisé par l'exploitant sur le document
-// papier plutôt que "P71"/"P74"/"DTV" tels quels.
-const CC_POSTE_TERRAIN_LABEL = { P71: "P71/PARC", P74: "P74/PARC", DTV: "DTV/PARC" };
+// Libellé "terrain" UNIFORME de chaque poste QUAI CC, quelle que soit
+// l'équipe (demande explicite de l'exploitant : la même syntaxe partout
+// dans l'Affectation du jour) — "P71" et "71/Parc" doivent tous deux
+// s'afficher "P71/PARC" ; "74/Parc" -> "P74/PARC" ; "DTV"/"DTV/Parc" ->
+// "DTV/PARC" ; "Roro/Parc" -> "RORO/PARC" (préfixe numérique -> "P" devant,
+// préfixe alphabétique laissé tel quel, tout en MAJUSCULES). PARC/AUTORISE
+// (pas un poste physique, une réserve) restent inchangés.
+const CC_GENERIC_ZONES = ["PARC", "AUTORISE"];
+function ccPosteDisplayLabel(zone) {
+  if (!zone) return zone;
+  if (CC_GENERIC_ZONES.indexOf(zone.toUpperCase()) !== -1) return zone;
+  const slashIdx = zone.indexOf("/");
+  let prefix = (slashIdx === -1 ? zone : zone.slice(0, slashIdx)).toUpperCase();
+  if (/^\d+$/.test(prefix)) prefix = "P" + prefix;
+  return prefix + "/PARC";
+}
 
 // Regroupe les lignes (déjà triées dans l'ordre de la file, cf. byCcRank)
 // en segments : les conducteurs PRESENT consécutifs affectés au MÊME poste
@@ -3061,7 +3077,7 @@ function ccPosteCellLabel(a, isQuaiZone) {
   // case vide — demande explicite de l'exploitant, pour que chaque
   // conducteur présent ait une case Poste renseignée, comme sur le document
   // papier une fois complété à la main.
-  if (a.status === "PRESENT") return isQuaiZone ? (CC_POSTE_TERRAIN_LABEL[a.zone] || a.zone) : (a.zone || "PARC");
+  if (a.status === "PRESENT") return isQuaiZone ? ccPosteDisplayLabel(a.zone) : (a.zone || "PARC");
   if (a.status === "REPOS") return "repos";
   if (a.status === "REPOS_COMPENSATOIRE") return "RC";
   if (a.status === "CONGE") return "congé";
@@ -3174,7 +3190,7 @@ function CcAffectationHeader({ generatedAt }) {
   );
 }
 
-function ShiftBlockPrintable({ title, rows, showTeamColumn = true, vacationLetter }) {
+function ShiftBlockPrintable({ title, rows, showTeamColumn = true, vacationLetter, fleet }) {
   const w = showTeamColumn ? SHIFT_BLOCK_COL_W.withTeam : SHIFT_BLOCK_COL_W.noTeam;
   return (
     <div className="mb-3">
@@ -3199,7 +3215,7 @@ function ShiftBlockPrintable({ title, rows, showTeamColumn = true, vacationLette
               // sinon le statut (Repos/Congé/Maladie/Absence/Formation) —
               // demande explicite de l'exploitant (une seule liste par
               // vacation, présents et absents confondus).
-              const zoneOrStatut = a.status === "PRESENT" ? a.zone : ((RTG_STATUS_META[a.status] || {}).label || a.status);
+              const zoneOrStatut = a.status === "PRESENT" ? (fleet === "CC" ? ccPosteDisplayLabel(a.zone) : a.zone) : ((RTG_STATUS_META[a.status] || {}).label || a.status);
               return (
                 <tr key={a.driverId} style={printRowStyle(idx, a.vacationBalanceAlert)}>
                   <td className={PRINT_TD}>{a.matricule}</td>
@@ -3520,8 +3536,9 @@ function AffectationDuJour() {
       grouped[s.id].forEach(({ vacation, rows: vrows }) => {
         vrows.forEach(a => {
           const statusLabel = (RTG_STATUS_META[a.status] || {}).label || a.status;
+          const zoneLabel = a.status === "PRESENT" && displayedFleet === "CC" ? ccPosteDisplayLabel(a.zone) : a.zone;
           rows.push([s.label, vacation.id, a.matricule, a.nom, a.prenom, a.teamNom,
-            a.startTime ? `${a.startTime}-${a.endTime}` : "", a.zone || "",
+            a.startTime ? `${a.startTime}-${a.endTime}` : "", zoneLabel || "",
             a.status === "PRESENT" ? "Présent" : statusLabel]);
         });
       });
@@ -3647,14 +3664,14 @@ function AffectationDuJour() {
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {vacationGroupsForDisplay(s.id).map(({ vacation, rows }, idx) => (
-                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation, idx)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} />
+                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation, idx)} icon={vacation.id === "V1+V2" ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} fleet={displayedFleet} />
               ))}
             </div>
           </div>
         ))}
 
         {offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3") && (
-          <ShiftBlock title="OFF — Shift 3 dimanche" icon="fa-power-off" rows={offRows} onEditRow={onEditRow} />
+          <ShiftBlock title="OFF — Shift 3 dimanche" icon="fa-power-off" rows={offRows} onEditRow={onEditRow} fleet={displayedFleet} />
         )}
       </div>
 
@@ -3701,7 +3718,7 @@ function AffectationDuJour() {
                   dateStr={dateStr} sideA={nonStagGroups[0]} sideB={nonStagGroups[1]}
                   stagiaireRows={stagGroup ? stagGroup.rows : []} quaiPostIds={ccQuaiPostIds}
                 />
-                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
+                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} fleet={displayedFleet} />}
                 <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
                   Document généré automatiquement par CES Driver Planner.
                 </div>
@@ -3717,9 +3734,9 @@ function AffectationDuJour() {
               />
               <div>
                 {vacationGroupsForDisplay(s.id).map(({ vacation, rows }, idx) => (
-                  <ShiftBlockPrintable key={vacation.id} title={vacationGroupTitle(vacation, idx)} rows={rows} showTeamColumn={false} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} />
+                  <ShiftBlockPrintable key={vacation.id} title={vacationGroupTitle(vacation, idx)} rows={rows} showTeamColumn={false} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} fleet={displayedFleet} />
                 ))}
-                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} />}
+                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} fleet={displayedFleet} />}
               </div>
               <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
                 Document généré automatiquement par CES Driver Planner.
