@@ -82,10 +82,11 @@ function flattenQuaiPosts(quaiPostsConfig) {
 }
 
 // File de départ RÉELLE (relevé papier "État d'affectation des conducteurs",
-// GR HADDAZI et GR HOUSSAM, 24/09/2026), par bloc de vacation — matricules
-// dans l'ordre exact du document, du plus prioritaire (haut de la liste) au
-// moins prioritaire (bas). Une équipe CC absente de cette table démarre par
-// tri matricule classique (comportement historique) à ccRotationReferenceDate.
+// GR HADDAZI, GR HOUSSAM et GR BAHOUS, 24/09/2026), par bloc de vacation —
+// matricules dans l'ordre exact du document, du plus prioritaire (haut de la
+// liste) au moins prioritaire (bas). Une équipe CC absente de cette table
+// démarre par tri matricule classique (comportement historique) à
+// ccRotationReferenceDate.
 const CC_BOOTSTRAP_ORDER = [
   {
     pattern: /haddazi/i,
@@ -96,6 +97,11 @@ const CC_BOOTSTRAP_ORDER = [
     pattern: /houssam/i,
     V1: ["TC0038", "C07525", "C07711", "C07595", "C07596", "C07463", "C07536", "C07494", "C07387", "C05678", "C07399", "C06523"],
     V2: ["C07379", "C07606", "C07586", "C07215", "C07303", "C07777", "C07605", "C07461", "C07503", "J05122", "C07535", "C07705"]
+  },
+  {
+    pattern: /bahous/i,
+    V1: ["C07601", "C07781", "C07794", "C07519", "C07604", "C07539", "C07358", "C07590", "C07513", "TC0036", "C07580", "C07529"],
+    V2: ["C07237", "C07776", "C07517", "C07797", "C07466", "C07508", "C07231", "C07398", "C07788", "C07458", "C07607", "C07778"]
   }
 ];
 
