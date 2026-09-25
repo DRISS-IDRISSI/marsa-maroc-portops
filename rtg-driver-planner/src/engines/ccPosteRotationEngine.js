@@ -82,15 +82,20 @@ function flattenQuaiPosts(quaiPostsConfig) {
 }
 
 // File de départ RÉELLE (relevé papier "État d'affectation des conducteurs",
-// GR HADDAZI, 24/09/2026), par bloc de vacation — matricules dans l'ordre
-// exact du document, du plus prioritaire (haut de la liste) au moins
-// prioritaire (bas). Une équipe CC absente de cette table démarre par tri
-// matricule classique (comportement historique) à ccRotationReferenceDate.
+// GR HADDAZI et GR HOUSSAM, 24/09/2026), par bloc de vacation — matricules
+// dans l'ordre exact du document, du plus prioritaire (haut de la liste) au
+// moins prioritaire (bas). Une équipe CC absente de cette table démarre par
+// tri matricule classique (comportement historique) à ccRotationReferenceDate.
 const CC_BOOTSTRAP_ORDER = [
   {
     pattern: /haddazi/i,
     V1: ["C07482", "C07459", "C07537", "C07779", "C07401", "C07470", "C07521", "C07782", "C07784", "C07591", "C07393", "C07397"],
     V2: ["C07785", "C07377", "C07579", "C07795", "D07348", "C07577", "C07462", "C07578", "C07394", "C07520", "C07603", "C07602", "C06982"]
+  },
+  {
+    pattern: /houssam/i,
+    V1: ["TC0038", "C07525", "C07711", "C07595", "C07596", "C07463", "C07536", "C07494", "C07387", "C05678", "C07399", "C06523"],
+    V2: ["C07379", "C07606", "C07586", "C07215", "C07303", "C07777", "C07605", "C07461", "C07503", "J05122", "C07535", "C07705"]
   }
 ];
 
