@@ -69,6 +69,16 @@ function featureListHtml(role: string, fleet?: string) {
       <li><strong>Mouvements</strong> : mouvements de votre équipe.</li>
       <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
   }
+  if (role === "CHEF_ESCALE") {
+    // Chef d'Escale (demande explicite de l'exploitant) : peut affecter les
+    // postes de son équipe, mais PAS gérer congés/mouvements manuels/Over
+    // Times (droits restreints — voir migration_019_chef_escale_role.sql) :
+    // liste volontairement plus courte que RESPONSABLE_SHIFT.
+    return `
+      <li><strong>Affectation du jour</strong> : affecter les postes (QUAI/PARC) de votre équipe.</li>
+      <li><strong>Planning mensuel</strong> : consulter le planning de votre équipe.</li>
+      <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
+  }
   // RESPONSABLE ou ADMIN : accès à toutes les équipes.
   return `
       <li><strong>Planning mensuel / Affectation du jour</strong> : toutes les équipes.</li>
@@ -78,6 +88,22 @@ function featureListHtml(role: string, fleet?: string) {
       <li><strong>Rapports</strong> : exports et rapports RH.</li>${role === "ADMIN" ? `
       <li><strong>Utilisateurs</strong> : gestion des comptes et rôles.</li>` : ""}
       <li><strong>Mon compte</strong> : changer votre mot de passe.</li>`;
+}
+
+// Mode d'emploi pas à pas de l'Affectation du jour — demande explicite de
+// l'exploitant pour le Chef d'Escale, dont c'est la tâche principale (et la
+// seule affectation qu'il ait le droit de modifier).
+function howToAffectationHtml(role: string) {
+  if (role !== "CHEF_ESCALE") return "";
+  return `
+    <h3 style="color: #0f172a; margin-top: 24px;">Comment affecter un poste (Affectation du jour)</h3>
+    <ol style="font-size: 14px;">
+      <li>Ouvrez <strong>Affectation du jour</strong> dans le menu de gauche.</li>
+      <li>Vérifiez la date (aujourd'hui par défaut) et le shift affiché.</li>
+      <li>Cliquez sur la ligne du conducteur à affecter.</li>
+      <li>Choisissez son statut (Présent, Repos...), sa vacation et son poste (zone).</li>
+      <li>Cliquez sur <strong>Enregistrer</strong> — l'affectation est appliquée immédiatement.</li>
+    </ol>`;
 }
 
 function buildHtml({ driverName, username, password, appUrl, role, fleet }: { driverName: string; username: string; password: string; appUrl: string; role: string; fleet?: string }) {
@@ -121,6 +147,7 @@ function buildHtml({ driverName, username, password, appUrl, role, fleet }: { dr
     <h3 style="color: #0f172a; margin-top: 24px;">Ce que vous pouvez faire dans l'application</h3>
     <ul style="font-size: 14px;">${featureListHtml(role, fleet)}
     </ul>
+    ${howToAffectationHtml(role)}
 
     <p style="margin-top: 24px; font-size: 12px; color: #64748b;">Ceci est un message automatique — merci de ne pas y répondre. ${contactLine}</p>
     <p style="font-size: 12px; color: #64748b;">CES Driver Planner — Marsa Maroc TC3PC</p>
