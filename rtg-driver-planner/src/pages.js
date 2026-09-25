@@ -3016,7 +3016,7 @@ function buildCcPosteSegments(rows, quaiPostIds) {
 function ccPosteCellLabel(a, isQuaiZone) {
   if (a.status === "PRESENT") return isQuaiZone ? (CC_POSTE_TERRAIN_LABEL[a.zone] || a.zone) : "";
   if (a.status === "REPOS") return "repos";
-  if (a.status === "REPOS_COMPENSATOIRE") return "repos comp.";
+  if (a.status === "REPOS_COMPENSATOIRE") return "RC";
   if (a.status === "CONGE") return "congé";
   return (RTG_STATUS_META[a.status] || {}).label || a.status;
 }
@@ -3045,7 +3045,7 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
   return (
     <React.Fragment>
       {r.isStart && <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
-      <td className={PRINT_TD_XS_WRAP} style={bg ? { backgroundColor: bg } : undefined}>{r.a.nom} {r.a.prenom}</td>
+      <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.nom}</td>
       <td className={PRINT_TD_XS}></td>
     </React.Fragment>
   );
@@ -3096,7 +3096,7 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
           {rowIdxs.map(i => (
             <tr key={i} style={{ height: "30px" }}>
               <CcPosteTableHalf flatRows={flatA} rowIndex={i} />
-              <td className={PRINT_TD_XS_WRAP}>{stagiaireRows[i] ? (stagiaireRows[i].nom + " " + stagiaireRows[i].prenom) : ""}</td>
+              <td className={PRINT_TD_XS}>{stagiaireRows[i] ? stagiaireRows[i].nom : ""}</td>
               <CcPosteTableHalf flatRows={flatB} rowIndex={i} />
             </tr>
           ))}
