@@ -1411,6 +1411,15 @@ function printRowStyle(index, vacationBalanceAlert) {
 const PRINT_TH_XS = "border border-slate-400 px-1 py-1 text-left font-semibold whitespace-nowrap align-middle";
 const PRINT_TD_XS = "border border-slate-300 px-1 py-1 whitespace-nowrap align-middle";
 const PRINT_TD_XS_CENTER = PRINT_TD_XS + " text-center";
+// Variante "XS" sans whitespace-nowrap (autorise le retour à la ligne) — même
+// besoin que PRINT_TD_WRAP ci-dessus, mais avec la bordure fine style Excel
+// (border-slate-300) : une colonne "Conducteur affecté" reste forcément
+// étroite (7 colonnes tiennent sur une largeur de capture de 800px pour
+// l'État d'affectation CC, cf. CcAffectationTerrainPrintable), un nom un peu
+// long DOIT passer à la ligne plutôt que déborder — sans ça, le texte se
+// retrouve tronqué/déformé lors de la capture PNG→PDF (whitespace-nowrap
+// combiné à une colonne trop étroite), signalé par l'exploitant.
+const PRINT_TD_XS_WRAP = "border border-slate-300 px-1 py-1 break-words align-middle";
 const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
 // Export Excel des rapports — CSV avec séparateur ";" (convention Excel FR,
@@ -3016,12 +3025,12 @@ function flattenCcPosteRows(rows, quaiPostIds) {
 // sur la première ligne d'un groupe fusionné (rowSpan couvre les suivantes).
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
-  if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS}></td></React.Fragment>;
+  if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS}></td></React.Fragment>;
   const bg = r.a.status !== "PRESENT" ? PRINT_STATUS_BG[r.a.status] : undefined;
   return (
     <React.Fragment>
-      {r.isStart && <td className={PRINT_TD_XS + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
-      <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.nom} {r.a.prenom}</td>
+      {r.isStart && <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
+      <td className={PRINT_TD_XS_WRAP} style={bg ? { backgroundColor: bg } : undefined}>{r.a.nom} {r.a.prenom}</td>
       <td className={PRINT_TD_XS}></td>
     </React.Fragment>
   );
@@ -3051,20 +3060,20 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
             <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
           </tr>
           <tr>
-            <th className={PRINT_TH_XS} style={{ width: "12%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "19%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "11%" }}>Émargement</th>
-            <th className={PRINT_TH_XS} style={{ width: "18%" }}>Stagiaire</th>
-            <th className={PRINT_TH_XS} style={{ width: "12%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "17%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "11%" }}>Émargement</th>
+            <th className={PRINT_TH_XS} style={{ width: "9%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "23%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Émarg.</th>
+            <th className={PRINT_TH_XS} style={{ width: "20%" }}>Stagiaire</th>
+            <th className={PRINT_TH_XS} style={{ width: "9%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "23%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Émarg.</th>
           </tr>
         </thead>
         <tbody>
           {rowIdxs.map(i => (
             <tr key={i}>
               <CcPosteTableHalf flatRows={flatA} rowIndex={i} />
-              <td className={PRINT_TD_XS}>{stagiaireRows[i] ? (stagiaireRows[i].nom + " " + stagiaireRows[i].prenom) : ""}</td>
+              <td className={PRINT_TD_XS_WRAP}>{stagiaireRows[i] ? (stagiaireRows[i].nom + " " + stagiaireRows[i].prenom) : ""}</td>
               <CcPosteTableHalf flatRows={flatB} rowIndex={i} />
             </tr>
           ))}
