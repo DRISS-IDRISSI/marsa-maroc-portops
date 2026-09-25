@@ -3418,38 +3418,20 @@ function AffectationDuJour() {
   });
   const offRows = assignments.filter(a => a.status === "OFF").sort(byOrdreAffichage);
 
-  // Affichage UNIQUEMENT (Affectation du jour — ni la Planning Mensuel, ni
-  // les données/labels V1/V2 réels ne changent) : demande explicite de
-  // l'exploitant, pour GR BAHOUS le groupe de vacation qui commence par
-  // ISSAKHAOUI doit TOUJOURS apparaître EN PREMIER (colonne gauche à
-  // l'écran, 1er bloc à l'impression) — jamais du groupe "V1+V2"
-  // (stagiaires journée complète) qui reste en dernière position.
-  // Bug corrigé : la 1ère version identifiait le bloc d'ISSAKHAOUI par son
-  // id "V2" du jour où la demande a été faite, en supposant à tort que ce
-  // bloc garde TOUJOURS ce même id — alors que le label V1/V2 d'un bloc
-  // bascule chaque jour (VacationRotationEngine). Un jour où son bloc
-  // porte le label "V1", l'ancienne version le reléguait à tort en
-  // "Vacation B" (signalé par l'exploitant : AZIZI passé en 2e position le
-  // 24/09 alors que son bloc — celui d'ISSAKHAOUI — doit rester en 1ère).
-  // Identifie maintenant le bon groupe par CONTENU (présence du conducteur
-  // ISSAKHAOUI parmi ses lignes, présent ou absent ce jour-là) plutôt que
-  // par le label V1/V2 du jour, qui n'a plus d'importance ici.
-  const DISPLAY_ANCHOR_FIRST_TEAMS = [{ pattern: /bahous/i, anchorNom: "ISSAKHAOUI" }];
-  const vacationGroupsForDisplay = (shiftId) => {
-    const groups = grouped[shiftId] || [];
-    const shiftTeam = state.teams.find(t => teamShiftMap[t.id] === shiftId);
-    const anchor = shiftTeam && DISPLAY_ANCHOR_FIRST_TEAMS.find(e => e.pattern.test(shiftTeam.nom || ""));
-    if (!anchor) return groups;
-    const v1Idx = groups.findIndex(g => g.vacation.id === "V1");
-    const v2Idx = groups.findIndex(g => g.vacation.id === "V2");
-    if (v1Idx === -1 || v2Idx === -1) return groups;
-    const anchorIdx = groups.findIndex(g => g.rows.some(a => (a.nom || "").toUpperCase() === anchor.anchorNom.toUpperCase()));
-    if (anchorIdx === -1 || anchorIdx === v1Idx) return groups;
-    const swapped = groups.slice();
-    swapped[v1Idx] = groups[v2Idx];
-    swapped[v2Idx] = groups[v1Idx];
-    return swapped;
-  };
+  // Ordre d'affichage des blocs de vacation (Affectation du jour) : toujours
+  // l'horaire le plus TÔT à gauche ("Vacation A"), le plus tardif à droite
+  // ("Vacation B") — peu importe quel conducteur s'y trouve. grouped[shiftId]
+  // est déjà dans cet ordre par construction (vacDefs = config.vacations[s.id],
+  // V1 toujours défini avec l'heure de début la plus tôt dans data.js pour
+  // les 3 shifts), donc aucun réarrangement n'est nécessaire ici.
+  // Historique : une version précédente inversait l'ordre pour GR BAHOUS
+  // afin de garder le bloc du conducteur ISSAKHAOUI toujours à gauche
+  // (demande explicite à l'époque) — retirée : elle faisait apparaître
+  // l'horaire le plus tardif à gauche les jours où son bloc bascule sur
+  // l'étiquette V2, ce que l'exploitant ne voulait pas non plus au final
+  // ("vous mettez toujours la 1ère vacation à gauche" — l'horaire doit
+  // primer sur l'identité du conducteur).
+  const vacationGroupsForDisplay = (shiftId) => grouped[shiftId] || [];
 
   const exportExcel = () => {
     const suffix = effectiveShiftFilter !== "all" ? "-" + effectiveShiftFilter : "";
