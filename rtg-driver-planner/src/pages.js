@@ -3355,13 +3355,6 @@ function AffectationDuJour() {
   const displayedFleet = shiftRestricted && rawState.teams.find(t => t.id === ownTeamId)
     ? (rawState.teams.find(t => t.id === ownTeamId).typeEngin || "RTG")
     : rawState.currentFleet;
-  // Flotte CC, jour futur (> aujourd'hui) : le poste QUAI/PARC n'est jamais
-  // affiché (case vide, voir PlanningEngine.generateDailyAssignments) tant
-  // que le responsable de shift ne l'a pas saisi lui-même sur le terrain —
-  // seule la vacation (A/B) prévue par la rotation est présentée, jamais le
-  // poste (demande explicite de l'exploitant, §"L'AFFECTATION DE DEMAIN, LES
-  // ZONES DOIVENT ETRE VIDE").
-  const isCcZonePending = displayedFleet === "CC" && dateStr > todayIso;
   // Postes QUAI physiques (P71/P74/DTV...) pour le rapport imprimable
   // "presque identique" au document terrain (CcAffectationTerrainPrintable
   // ci-dessous) — distingue un poste QUAI réel (fusionnable, capacité > 1)
@@ -3388,6 +3381,22 @@ function AffectationDuJour() {
   const holiday = HolidayEngine.getHoliday(dateStr, state.config);
 
   const presentDrivers = assignments.filter(a => a.status === "PRESENT");
+
+  // Flotte CC, jour futur (> aujourd'hui) : le poste QUAI/PARC n'est jamais
+  // affiché à l'avance (voir PlanningEngine.generateDailyAssignments) tant
+  // que le responsable de shift ne l'a pas saisi lui-même sur le terrain —
+  // seule la vacation (A/B) prévue par la rotation est présentée, jamais le
+  // poste (demande explicite de l'exploitant, §"L'AFFECTATION DE DEMAIN, LES
+  // ZONES DOIVENT ETRE VIDE"). Le bandeau d'avertissement disparaît de
+  // lui-même dès que le responsable a traité TOUS les conducteurs présents
+  // du shift affiché (plus aucun PARC par défaut, source AUTO) — inutile
+  // d'attendre un bouton "valider" séparé (demande explicite de
+  // l'exploitant, §"LE MESSAGE APPARAIT TOUJOURS...UN BOUTON POUR VALIDER").
+  const hasPendingCcZone = assignments.some(a =>
+    a.status === "PRESENT" && a.source === "AUTO" && a.zone === "PARC" &&
+    (effectiveShiftFilter === "all" || a.shift === effectiveShiftFilter)
+  );
+  const isCcZonePending = displayedFleet === "CC" && dateStr > todayIso && hasPendingCcZone;
 
   // Un conducteur absent (repos, congé, maladie, absence, formation) reste
   // rattaché au shift de son équipe ce jour-là (le shift/vacation/zone ne
@@ -3646,8 +3655,8 @@ function AffectationDuJour() {
             <p className="font-semibold">Postes non encore décidés</p>
             <p className="mt-0.5 text-amber-700">
               Le tableau ci-dessous prévoit la vacation (A/B) de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
-              mais la colonne Zone affiche PARC par défaut pour chacun : c'est au responsable de shift de remplacer PARC par le poste
-              réel une fois l'affectation décidée sur le terrain, conducteur par conducteur.
+              mais certaines cases Zone affichent encore PARC par défaut : c'est au responsable de shift de remplacer PARC par le poste
+              réel, conducteur par conducteur. Ce message disparaît automatiquement une fois tous les conducteurs présents affectés.
             </p>
           </div>
         </div>
