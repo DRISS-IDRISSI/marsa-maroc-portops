@@ -119,8 +119,8 @@ function buildHtml({ driverName, username, password, appUrl, role, fleet }: { dr
   const safePassword = escapeHtml(password);
   const safeUrl = escapeHtml(appUrl);
   const contactLine = role === "CONDUCTEUR"
-    ? "En cas de problème de connexion, contactez votre Responsable de Shift. Pour toute question ou information, contactez M. FELLAH."
-    : "En cas de problème de connexion, contactez un administrateur de l'application.";
+    ? "En cas de problème de connexion, contactez votre Responsable de Shift. Pour toute question ou information, contactez l'administrateur Mr FELLAH IDRISSI DRISS."
+    : "En cas de problème, veuillez contacter l'administrateur Mr FELLAH IDRISSI DRISS.";
   return `
   <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto;">
     <h2 style="color: #0f172a;">Vos identifiants — CES Driver Planner</h2>

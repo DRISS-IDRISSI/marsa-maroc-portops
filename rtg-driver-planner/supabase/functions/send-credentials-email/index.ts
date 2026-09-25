@@ -75,7 +75,7 @@ function buildHtml({ driverName, username, password, appUrl, fleet }: { driverNa
       <li><strong>Mon compte</strong> : changer votre mot de passe.</li>
     </ul>
 
-    <p style="margin-top: 24px; font-size: 12px; color: #64748b;">Ceci est un message automatique — merci de ne pas y répondre. En cas de problème de connexion, contactez votre Responsable de Shift. Pour toute question ou information, contactez M. FELLAH.</p>
+    <p style="margin-top: 24px; font-size: 12px; color: #64748b;">Ceci est un message automatique — merci de ne pas y répondre. En cas de problème de connexion, contactez votre Responsable de Shift. Pour toute question ou information, contactez l'administrateur Mr FELLAH IDRISSI DRISS.</p>
     <p style="font-size: 12px; color: #64748b;">CES Driver Planner — Marsa Maroc TC3PC</p>
   </div>`;
 }
