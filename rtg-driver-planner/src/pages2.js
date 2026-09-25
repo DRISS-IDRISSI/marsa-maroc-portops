@@ -454,9 +454,13 @@ function DriversPage() {
   // bloque de toute façon l'écriture côté serveur (drivers_write,
   // migration_019).
   const canManage = canManageHrRecords(currentUser);
-  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, state), [currentUser, state]);
+  // Équipe UNIQUE effective : cette page (zones, import Excel, fiche
+  // conducteur par équipe...) ne peut afficher qu'une flotte à la fois —
+  // un compte à 2 équipes (binôme RTG+CC) voit celle sélectionnée via la
+  // bascule RTG/CC de la barre latérale, jamais les deux mélangées.
+  const ownTeamId = shiftRestricted ? restrictedTeamId(currentUser, state) : null;
   const loc = useLocation();
-  const [teamFilter, setTeamFilter] = useState(shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : "all");
+  const [teamFilter, setTeamFilter] = useState(shiftRestricted ? currentUser.teamId : "all");
   const [statusFilter, setStatusFilter] = useState("actifs");
   // Pré-rempli depuis ?q=... quand on arrive via la recherche du tableau de bord.
   const [searchQuery, setSearchQuery] = useState(() => new URLSearchParams(loc.search).get("q") || "");
@@ -480,19 +484,19 @@ function DriversPage() {
   const fleetTeamIds = useMemo(() => new Set(
     state.teams.filter(t => (t.typeEngin || "RTG") === state.currentFleet).map(t => t.id)
   ), [state.teams, state.currentFleet]);
-  const visibleTeams = shiftRestricted ? state.teams.filter(t => restrictedIds.indexOf(t.id) !== -1) : state.teams.filter(t => fleetTeamIds.has(t.id));
+  const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === ownTeamId) : state.teams.filter(t => fleetTeamIds.has(t.id));
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [importTeam, setImportTeam] = useState(null);
 
   const drivers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return state.drivers.filter(d =>
-      (shiftRestricted ? restrictedIds.indexOf(d.teamId) !== -1 : fleetTeamIds.has(d.teamId)) &&
+      (shiftRestricted ? d.teamId === ownTeamId : fleetTeamIds.has(d.teamId)) &&
       (teamFilter === "all" || d.teamId === teamFilter) &&
       (statusFilter === "tous" || (statusFilter === "actifs" ? d.actif !== false : d.actif === false)) &&
       (!q || d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q))
     );
-  }, [state.drivers, teamFilter, statusFilter, searchQuery, shiftRestricted, currentUser, fleetTeamIds, restrictedIds]);
+  }, [state.drivers, teamFilter, statusFilter, searchQuery, shiftRestricted, ownTeamId, fleetTeamIds]);
 
   const today = RTGDate.toISO(new Date());
   const todayDate = RTGDate.parseISO(today);
@@ -558,8 +562,8 @@ function DriversPage() {
 
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
-          <DriverForm state={Object.assign({}, state, { teams: visibleTeams })} lockedTeamId={shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : null}
-            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "", loginTos: editingDriver.loginTos || "" } : emptyDriverForm(shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : (visibleTeams[0] ? visibleTeams[0].id : ""))}
+          <DriverForm state={Object.assign({}, state, { teams: visibleTeams })} lockedTeamId={shiftRestricted ? ownTeamId : null}
+            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "", loginTos: editingDriver.loginTos || "" } : emptyDriverForm(shiftRestricted ? ownTeamId : (visibleTeams[0] ? visibleTeams[0].id : ""))}
             editingId={editingId} onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -569,7 +573,7 @@ function DriversPage() {
           <label className={LABEL_CLS}>Rechercher</label>
           <input className={FIELD_CLS} placeholder="Matricule, nom, prénom..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
         </div>
-        {(!shiftRestricted || visibleTeams.length > 1) && (
+        {!shiftRestricted && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
           <select className={FIELD_CLS} value={teamFilter} onChange={e => setTeamFilter(e.target.value)}>
