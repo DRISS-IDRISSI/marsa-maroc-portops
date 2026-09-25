@@ -118,7 +118,15 @@ const PlanningEngine = {
         source = "MANUAL";
       }
 
-      const zoneManuallySet = !!(override && override.zone !== undefined);
+      // Un import Excel en masse (RTG_IMPORT_OVERRIDE_MOTIF) a pu pré-remplir
+      // une zone pour un jour qui, au moment de l'import, était encore dans
+      // le futur — ce n'est pas une décision prise par le responsable POUR
+      // CE JOUR-LÀ, seulement une prévision reprise telle quelle du fichier.
+      // Pour un jour futur, seule une correction manuelle ad hoc (via la
+      // case cliquable) compte comme "le responsable a renseigné la zone" ;
+      // une zone venant de cet import y est donc ignorée comme si elle
+      // n'existait pas.
+      const zoneManuallySet = !!(override && override.zone !== undefined && override.motif !== RTG_IMPORT_OVERRIDE_MOTIF);
       if (!zoneManuallySet && team && team.typeEngin === "CC" && isoDate > todayIso) {
         zone = null;
       }
