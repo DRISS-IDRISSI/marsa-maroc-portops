@@ -1487,7 +1487,7 @@ function loadPdfLibs() {
 // large que le contenu principal (ex. le titre de l'en-tête) peut élargir
 // tout le conteneur capturé, laissant un vide à droite du contenu réel une
 // fois étiré à la page.
-async function captureNodeAsPng(node, forceWidth) {
+async function captureNodeAsPng(node, forceWidth, scale) {
   // Toujours forcer une largeur explicite (1200px par défaut) pendant la
   // capture — jamais laisser le nœud sans largeur : un bloc normalement
   // display:none, rendu position:fixed hors-écran sans largeur fixée,
@@ -1516,8 +1516,18 @@ async function captureNodeAsPng(node, forceWidth) {
     // document A4 de 210mm affiché à côté d'une barre latérale qui réduit
     // d'autant la largeur disponible) ressort avec un rapport largeur/hauteur
     // faussé — déformé une fois étiré sur une page PDF (addFittedImageToPage).
+    // scale : ce rapport est une CAPTURE (PNG), pas du texte vectoriel — à
+    // scale 2 (défaut), la densité de pixels est correcte à l'écran en
+    // affichage normal, mais devient visiblement floue/pixelisée dès qu'un
+    // lecteur PDF zoome (présenté à un directeur en réunion, zoom sur un
+    // écran haute résolution...), signalé par l'exploitant sur le rapport
+    // Affectation du jour. scale plus élevé (voir appelants) = plus de
+    // pixels réels par rapport à la taille finale sur la page — net même
+    // zoomé — au prix d'un fichier/canvas plus lourd, donc réservé aux
+    // rapports compacts (une page, peu de contenu) plutôt qu'appliqué
+    // partout (Planning mensuel notamment, table bien plus grande).
     const canvas = await window.html2canvas(node, {
-      scale: 2, backgroundColor: "#ffffff", useCORS: true,
+      scale: scale || 2, backgroundColor: "#ffffff", useCORS: true,
       windowWidth: node.scrollWidth, windowHeight: node.scrollHeight
     });
     // PNG (sans perte) plutôt que JPEG : un rapport tableau (texte fin,
@@ -1563,7 +1573,7 @@ async function exportNodeAsPdf(node, filename, opts) {
   const forceWidth = opts && "forceWidth" in opts ? opts.forceWidth : 1200;
   const orientation = (opts && opts.orientation) || "landscape";
   await loadPdfLibs();
-  const img = await captureNodeAsPng(node, forceWidth);
+  const img = await captureNodeAsPng(node, forceWidth, opts && opts.scale);
   const { jsPDF } = window.jspdf;
   // compress:true = indispensable : sans elle, jsPDF écrit l'image capturée
   // (PNG, avec canal alpha) TELLE QUELLE dans le flux du PDF, sans la moindre
@@ -1603,14 +1613,14 @@ async function exportNodeAsPdf(node, filename, opts) {
 // toujours sur UNE SEULE page — demande explicite de l'exploitant — au lieu
 // d'un découpage arbitraire à cheval sur deux pages en cas de repos/congés
 // nombreux ce jour-là.
-async function exportNodesAsPdf(nodes, filename, forceWidth, orientation) {
+async function exportNodesAsPdf(nodes, filename, forceWidth, orientation, scale) {
   await loadPdfLibs();
   const { jsPDF } = window.jspdf;
   // compress:true : voir le commentaire équivalent dans exportNodeAsPdf —
   // sans cette option, jsPDF stocke les images capturées sans compression.
   const pdf = new jsPDF({ orientation: orientation || "landscape", unit: "mm", format: "a4", compress: true });
   for (let i = 0; i < nodes.length; i++) {
-    const img = await captureNodeAsPng(nodes[i], forceWidth);
+    const img = await captureNodeAsPng(nodes[i], forceWidth, scale);
     if (i > 0) pdf.addPage();
     addFittedImageToPage(pdf, img);
   }
@@ -3455,14 +3465,18 @@ function AffectationDuJour() {
       // (Équipe/Horaire retirées), le format portrait laisse donc les noms
       // et zones s'imprimer avec un texte plus grand et plus lisible que
       // sur un format paysage large et peu rempli.
+      // scale: 4 — rapport compact (une page par shift, peu de contenu),
+      // net même zoomé dans un lecteur PDF (présentation, écran haute
+      // résolution) — voir captureNodeAsPng. Pas appliqué au Planning
+      // mensuel (table bien plus grande, resterait à scale 2 par défaut).
       if (holiday) {
         if (!holidayPrintRef.current) return;
-        await exportNodeAsPdf(holidayPrintRef.current, filename, { fitOnePage: true, orientation: "portrait", forceWidth: 800 });
+        await exportNodeAsPdf(holidayPrintRef.current, filename, { fitOnePage: true, orientation: "portrait", forceWidth: 800, scale: 4 });
         return;
       }
       const nodes = visibleShifts.map(s => shiftPrintRefs.current[s.id]).filter(Boolean);
       if (nodes.length === 0) return;
-      await exportNodesAsPdf(nodes, filename, 800, "portrait");
+      await exportNodesAsPdf(nodes, filename, 800, "portrait", 4);
     } catch (e) {
       alert(e.message || String(e));
     } finally {
