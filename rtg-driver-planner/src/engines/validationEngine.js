@@ -49,6 +49,11 @@ const ValidationEngine = {
     // explicite de l'exploitant — ignorer tout avant ce point de départ),
     // donc une affectation CC sans zone y est normale, pas une anomalie.
     const ccRefDateIso = state.config.ccRotationReferenceDate || state.config.rotationReferenceDate;
+    // Au-delà d'aujourd'hui, le poste QUAI/PARC CC est volontairement laissé
+    // vide tant que le responsable de shift ne l'a pas saisi (voir
+    // PlanningEngine.generateDailyAssignments) — ce n'est donc pas non plus
+    // une anomalie à signaler.
+    const todayIso = RTGDate.toISO(new Date());
 
     days.forEach(day => {
       day.assignments.forEach(a => {
@@ -62,7 +67,8 @@ const ValidationEngine = {
           if (!a.shift) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans shift", attendu: "Shift défini", trouve: "—" });
           if (!a.vacation) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans vacation", attendu: "V1 ou V2", trouve: "—" });
           const beforeCcJourDeDepart = ccDriverIds.has(a.driverId) && day.iso < ccRefDateIso;
-          if (!a.zone && !beforeCcJourDeDepart) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: zoneLabelByDriverId[a.driverId] || "Zone définie", trouve: "—" });
+          const ccZonePendingFuture = ccDriverIds.has(a.driverId) && day.iso > todayIso;
+          if (!a.zone && !beforeCcJourDeDepart && !ccZonePendingFuture) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: zoneLabelByDriverId[a.driverId] || "Zone définie", trouve: "—" });
         }
 
         if (a.status === "OFF" && (a.shift || a.vacation || a.zone)) {

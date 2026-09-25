@@ -2353,6 +2353,11 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit, 
 // & congés" séparé.
 function ZoneOrStatutBadge({ a, fleet }) {
   if (a.status === "PRESENT") {
+    // Flotte CC, jour futur (> aujourd'hui) sans saisie manuelle : le poste
+    // QUAI/PARC n'est pas encore décidé par le responsable de shift (voir
+    // PlanningEngine.generateDailyAssignments) — case vide plutôt qu'un
+    // badge vide, demande explicite de l'exploitant.
+    if (fleet === "CC" && !a.zone) return null;
     // Syntaxe uniforme "P71/PARC" pour la flotte CC, quelle que soit
     // l'équipe (demande explicite de l'exploitant) — jamais pour RTG, où
     // les zones sont des lettres A-H, pas des postes physiques.
@@ -3073,11 +3078,12 @@ function buildCcPosteSegments(rows, quaiPostIds) {
 }
 
 function ccPosteCellLabel(a, isQuaiZone) {
-  // PARC/AUTORISE (ou absent de zone) : afficher le libellé plutôt qu'une
-  // case vide — demande explicite de l'exploitant, pour que chaque
-  // conducteur présent ait une case Poste renseignée, comme sur le document
-  // papier une fois complété à la main.
-  if (a.status === "PRESENT") return isQuaiZone ? ccPosteDisplayLabel(a.zone) : (a.zone || "PARC");
+  // PARC/AUTORISE : afficher le libellé plutôt qu'une case vide, comme sur
+  // le document papier une fois complété à la main. Zone absente (jour
+  // futur non encore saisi par le responsable, voir
+  // PlanningEngine.generateDailyAssignments) : case réellement vide —
+  // demande explicite de l'exploitant.
+  if (a.status === "PRESENT") return isQuaiZone ? ccPosteDisplayLabel(a.zone) : (a.zone || "");
   if (a.status === "REPOS") return "repos";
   if (a.status === "REPOS_COMPENSATOIRE") return "RC";
   if (a.status === "CONGE") return "congé";
@@ -3353,13 +3359,13 @@ function AffectationDuJour() {
   const displayedFleet = shiftRestricted && rawState.teams.find(t => t.id === ownTeamId)
     ? (rawState.teams.find(t => t.id === ownTeamId).typeEngin || "RTG")
     : rawState.currentFleet;
-  // Rotation QUAI/PARC CC (file d'attente, §ccPosteRotationEngine) : contrairement
-  // à la rotation RTG (simple pointeur individuel par conducteur), une seule
-  // absence non encore saisie pour demain peut rebattre l'ORDRE DE TOUTE
-  // L'ÉQUIPE au-delà — on ne peut donc pas présenter un jour > demain comme
-  // une affectation acquise tant que l'affectation réelle de demain n'est pas
-  // connue (demande explicite de l'exploitant, §"ON PEUT PAS DIVINER l'AFFECTATION J+2").
-  const isCcProjection = displayedFleet === "CC" && dateStr > tomorrowIso;
+  // Flotte CC, jour futur (> aujourd'hui) : le poste QUAI/PARC n'est jamais
+  // affiché (case vide, voir PlanningEngine.generateDailyAssignments) tant
+  // que le responsable de shift ne l'a pas saisi lui-même sur le terrain —
+  // seule la vacation (A/B) prévue par la rotation est présentée, jamais le
+  // poste (demande explicite de l'exploitant, §"L'AFFECTATION DE DEMAIN, LES
+  // ZONES DOIVENT ETRE VIDE").
+  const isCcZonePending = displayedFleet === "CC" && dateStr > todayIso;
   // Postes QUAI physiques (P71/P74/DTV...) pour le rapport imprimable
   // "presque identique" au document terrain (CcAffectationTerrainPrintable
   // ci-dessous) — distingue un poste QUAI réel (fusionnable, capacité > 1)
@@ -3637,16 +3643,15 @@ function AffectationDuJour() {
         </div>
       )}
 
-      {isCcProjection && (
+      {isCcZonePending && (
         <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-800 rounded-xl px-4 py-3 text-sm print:hidden">
           <i className="fas fa-triangle-exclamation mt-0.5"></i>
           <div>
-            <p className="font-semibold">Affectation prévisionnelle — au-delà de demain</p>
+            <p className="font-semibold">Postes non encore décidés</p>
             <p className="mt-0.5 text-amber-700">
-              Tant que le responsable n'a pas saisi l'affectation réelle de demain ({RTGDate.formatFr(RTGDate.parseISO(tomorrowIso))}),
-              la rotation QUAI/PARC affichée ici pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))} n'est qu'une simulation qui
-              suppose qu'aucun imprévu (congé, maladie, absence) ne survient d'ici là. Un seul imprévu non encore saisi peut rebattre
-              l'ordre de toute l'équipe : ce tableau se recalculera automatiquement au fur et à mesure des saisies réelles, jour après jour.
+              Le tableau ci-dessous prévoit la vacation (A/B) de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
+              mais la colonne Zone reste vide : c'est au responsable de shift d'affecter chaque conducteur à un poste sur le terrain.
+              Elle se remplira automatiquement dès qu'une correction manuelle sera saisie pour ce jour-là.
             </p>
           </div>
         </div>

@@ -45,6 +45,14 @@ const PlanningEngine = {
   generateDailyAssignments(isoDate, state) {
     const date = RTGDate.parseISO(isoDate);
     const teams = state.teams;
+    // Flotte CC : au-delà d'aujourd'hui, le poste QUAI/PARC n'est jamais
+    // affiché tant que le responsable de shift ne l'a pas saisi lui-même sur
+    // le terrain (demande explicite de l'exploitant, §"L'AFFECTATION DE
+    // DEMAIN, LES ZONES DOIVENT ETRE VIDE") — CcPosteRotationEngine continue
+    // de gérer la rotation (vacation/ordre de passage) jour après jour, seul
+    // le champ zone affiché est effacé plus bas si aucune saisie manuelle
+    // n'existe pour ce jour-là.
+    const todayIso = RTGDate.toISO(new Date());
 
     // Passe 1 : statut + shift/vacation/zone "naturels" (rotation individuelle),
     // avant toute affectation manuelle. Le rééquilibrage V1/V2 (Shift 1 et
@@ -108,6 +116,11 @@ const PlanningEngine = {
         if (override.startTime !== undefined) startTime = override.startTime;
         if (override.endTime !== undefined) endTime = override.endTime;
         source = "MANUAL";
+      }
+
+      const zoneManuallySet = !!(override && override.zone !== undefined);
+      if (!zoneManuallySet && team && team.typeEngin === "CC" && isoDate > todayIso) {
+        zone = null;
       }
 
       return {
