@@ -2353,11 +2353,6 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit, 
 // & congés" séparé.
 function ZoneOrStatutBadge({ a, fleet }) {
   if (a.status === "PRESENT") {
-    // Flotte CC, jour futur (> aujourd'hui) sans saisie manuelle : le poste
-    // QUAI/PARC n'est pas encore décidé par le responsable de shift (voir
-    // PlanningEngine.generateDailyAssignments) — case vide plutôt qu'un
-    // badge vide, demande explicite de l'exploitant.
-    if (fleet === "CC" && !a.zone) return null;
     // Syntaxe uniforme "P71/PARC" pour la flotte CC, quelle que soit
     // l'équipe (demande explicite de l'exploitant) — jamais pour RTG, où
     // les zones sont des lettres A-H, pas des postes physiques.
@@ -3078,12 +3073,13 @@ function buildCcPosteSegments(rows, quaiPostIds) {
 }
 
 function ccPosteCellLabel(a, isQuaiZone) {
-  // PARC/AUTORISE : afficher le libellé plutôt qu'une case vide, comme sur
-  // le document papier une fois complété à la main. Zone absente (jour
-  // futur non encore saisi par le responsable, voir
-  // PlanningEngine.generateDailyAssignments) : case réellement vide —
-  // demande explicite de l'exploitant.
-  if (a.status === "PRESENT") return isQuaiZone ? ccPosteDisplayLabel(a.zone) : (a.zone || "");
+  // PARC/AUTORISE (ou absent de zone) : afficher le libellé plutôt qu'une
+  // case vide — demande explicite de l'exploitant, pour que chaque
+  // conducteur présent ait une case Poste renseignée, comme sur le document
+  // papier une fois complété à la main. Pour un jour futur non encore
+  // décidé par le responsable, PlanningEngine.generateDailyAssignments
+  // renvoie déjà "PARC" par défaut (jamais un poste QUAI deviné à l'avance).
+  if (a.status === "PRESENT") return isQuaiZone ? ccPosteDisplayLabel(a.zone) : (a.zone || "PARC");
   if (a.status === "REPOS") return "repos";
   if (a.status === "REPOS_COMPENSATOIRE") return "RC";
   if (a.status === "CONGE") return "congé";
@@ -3650,8 +3646,8 @@ function AffectationDuJour() {
             <p className="font-semibold">Postes non encore décidés</p>
             <p className="mt-0.5 text-amber-700">
               Le tableau ci-dessous prévoit la vacation (A/B) de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
-              mais la colonne Zone reste vide : c'est au responsable de shift d'affecter chaque conducteur à un poste sur le terrain.
-              Elle se remplira automatiquement dès qu'une correction manuelle sera saisie pour ce jour-là.
+              mais la colonne Zone affiche PARC par défaut pour chacun : c'est au responsable de shift de remplacer PARC par le poste
+              réel une fois l'affectation décidée sur le terrain, conducteur par conducteur.
             </p>
           </div>
         </div>

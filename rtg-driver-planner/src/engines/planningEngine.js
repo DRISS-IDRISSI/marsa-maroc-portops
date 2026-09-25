@@ -125,10 +125,13 @@ const PlanningEngine = {
       // Pour un jour futur, seule une correction manuelle ad hoc (via la
       // case cliquable) compte comme "le responsable a renseigné la zone" ;
       // une zone venant de cet import y est donc ignorée comme si elle
-      // n'existait pas.
+      // n'existait pas. Plutôt qu'une case vide, le poste par défaut affiché
+      // est PARC (demande explicite de l'exploitant) — au responsable de
+      // shift de le remplacer par le poste réel sur le terrain, jour après
+      // jour.
       const zoneManuallySet = !!(override && override.zone !== undefined && override.motif !== RTG_IMPORT_OVERRIDE_MOTIF);
-      if (!zoneManuallySet && team && team.typeEngin === "CC" && isoDate > todayIso) {
-        zone = null;
+      if (!zoneManuallySet && finalStatus === "PRESENT" && team && team.typeEngin === "CC" && isoDate > todayIso) {
+        zone = "PARC";
       }
 
       return {
