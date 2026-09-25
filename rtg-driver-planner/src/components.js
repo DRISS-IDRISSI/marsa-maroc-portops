@@ -140,6 +140,16 @@ function AuthGate({ children }) {
       nav("/mon-planning", { replace: true });
     }
   }, [currentUser, loc.pathname]);
+  // Chef d'Escale : pas d'accès à "Mouvements" (même en lecture — demande
+  // explicite de l'exploitant, voir migration_021) — le lien est déjà
+  // masqué dans la Sidebar, ce garde-fou couvre en plus une URL tapée
+  // directement. RLS bloque de toute façon les données côté serveur
+  // (mouvements_tos_select/mouvements_manuels_select).
+  useEffect(() => {
+    if (currentUser && currentUser.role === "CHEF_ESCALE" && loc.pathname === "/mouvements-rtg") {
+      nav("/", { replace: true });
+    }
+  }, [currentUser, loc.pathname]);
   if (!state.authChecked || state.loading) return <AuthLoadingScreen />;
   if (!currentUser) return <LoginPage />;
   return children;
@@ -192,7 +202,10 @@ function Sidebar() {
     { to: "/maladies", icon: "fa-briefcase-medical", label: "Maladies" },
     { to: "/absences", icon: "fa-user-slash", label: "Absences" },
     { to: "/heures-exceptionnelles", icon: "fa-clock-rotate-left", label: "Over Time" },
-    { to: "/mouvements-rtg", icon: "fa-truck-ramp-box", label: "Mouvements " + state.currentFleet },
+    // Mouvements (CC/RTG) : demande explicite de l'exploitant, un Chef
+    // d'Escale n'a pas le droit d'y accéder, même en lecture (voir
+    // migration_021_chef_escale_no_mouvements.sql) — lien masqué pour lui.
+    ...(currentUser && currentUser.role === "CHEF_ESCALE" ? [] : [{ to: "/mouvements-rtg", icon: "fa-truck-ramp-box", label: "Mouvements " + state.currentFleet }]),
     { to: "/remplacement", icon: "fa-people-arrows", label: "Remplacement" },
     { to: "/rapport-rh", icon: "fa-file-invoice", label: "Rapports" },
     { to: "/assistant", icon: "fa-wand-magic-sparkles", label: "Assistant intelligent" }

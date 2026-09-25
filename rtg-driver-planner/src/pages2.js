@@ -1764,7 +1764,12 @@ function RapportRHPage() {
       <div className="flex gap-2 print:hidden">
         <button onClick={() => setTab("rh")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "rh" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Rapport RH</button>
         <button onClick={() => setTab("feries")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "feries" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Jours fériés &amp; 3ème shift dimanche</button>
-        <button onClick={() => setTab("mouvements")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "mouvements" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Mouvements {state.currentFleet}</button>
+        {/* Mouvements (CC/RTG) : demande explicite de l'exploitant, un Chef
+            d'Escale n'a pas le droit d'y accéder, même en lecture (voir
+            migration_021_chef_escale_no_mouvements.sql). */}
+        {(!currentUser || currentUser.role !== "CHEF_ESCALE") && (
+          <button onClick={() => setTab("mouvements")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "mouvements" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Mouvements {state.currentFleet}</button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4 print:hidden">
@@ -3411,6 +3416,12 @@ function MouvementsRtgPage() {
   // complète, nécessaire pour bien les reconnaître comme "rattachées" et ne
   // pas les confondre avec un login réellement non rattaché à personne).
   const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  // Équipe UNIQUE effective pour l'affichage des lignes (fleetFilterRow
+  // ci-dessous) : un compte à 2 équipes (binôme RTG+CC) doit voir UNE
+  // flotte à la fois ici (comme Planning/Affectation/Conducteurs), résolue
+  // via la bascule RTG/CC — sinon les mouvements RTG et CC apparaissent
+  // mélangés dans le même tableau.
+  const ownTeamId = shiftRestricted ? restrictedTeamId(currentUser, rawState) : null;
   const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
@@ -3521,12 +3532,16 @@ function MouvementsRtgPage() {
   // sélectionné, uniquement ses lignes.
   const fleetFilterRow = r => {
     if (filterDriverId) return r.driverId === filterDriverId;
-    if (r.driverId) return fTeamIds.has((rawState.drivers.find(d => d.id === r.driverId) || {}).teamId);
+    if (r.driverId) {
+      const d = rawState.drivers.find(dr => dr.id === r.driverId);
+      if (!d) return false;
+      return shiftRestricted ? d.teamId === ownTeamId : fTeamIds.has(d.teamId);
+    }
     const fleet = inferEnginFleet(r.engin);
     return fleet === null || fleet === rawState.currentFleet;
   };
-  const visibleRows = useMemo(() => rows.filter(fleetFilterRow), [rows, fTeamIds, rawState.drivers, rawState.currentFleet, filterDriverId]);
-  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow), [totalRows, fTeamIds, rawState.drivers, rawState.currentFleet, filterDriverId]);
+  const visibleRows = useMemo(() => rows.filter(fleetFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId]);
+  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId]);
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -3586,6 +3601,23 @@ function MouvementsRtgPage() {
   const unmatched = visibleRows.filter(r => !r.driverId);
   const unmatchedLogins = [...new Set(unmatched.map(r => r.loginTos))];
   const grandTotal = visibleRows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
+
+  // Demande explicite de l'exploitant : un Chef d'Escale n'a pas le droit
+  // d'accéder aux mouvements des conducteurs (CC et RTG), même en lecture
+  // (voir migration_021_chef_escale_no_mouvements.sql) — le lien est déjà
+  // masqué dans la Sidebar et AuthGate redirige toute URL directe ; ce
+  // garde-fou couvre le cas où le composant serait quand même monté. Placé
+  // APRÈS tous les hooks ci-dessus (règles de React) plutôt qu'en tout
+  // début de fonction.
+  if (currentUser && currentUser.role === "CHEF_ESCALE") {
+    return (
+      <div className="space-y-4 fade-in">
+        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
+          <i className="fas fa-lock"></i> Cette page n'est pas accessible aux Chefs d'Escale.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 fade-in">
