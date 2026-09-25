@@ -58,6 +58,15 @@
 
 const CC_FROZEN_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
 
+// Libellés de zone CC qui ne représentent PAS un poste physique (réserve) —
+// tout le reste compte comme "était au quai". Une comparaison stricte au
+// libellé exact de ccQuaiPosts échoue si une correction manuelle antérieure
+// utilise un libellé générique périmé (ex. "P80"/"DTV/Parc" saisis avant la
+// correction des postes propres à GR BAHOUS/GR HOUSSAM) : ce conducteur
+// n'était alors JAMAIS reconnu comme "au quai" et ne redescendait jamais
+// dans la file, gelant tout l'escalier — cas réel observé sur GR BAHOUS.
+const CC_NON_PHYSICAL_ZONES = ["PARC", "AUTORISE"];
+
 function ccBlockKey(driver) {
   return driver.teamId + "_" + (driver.initialVacation === "V2" ? "V2" : "V1");
 }
@@ -334,7 +343,8 @@ const CcPosteRotationEngine = {
           const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
           const useManual = manualYesterday && manualYesterday.motif !== RTG_IMPORT_OVERRIDE_MOTIF;
           const z = useManual ? manualYesterday.zone : yesterdayZone[id];
-          if (z && quaiPosts.indexOf(z) !== -1) back.push(id); else front.push(id);
+          const wasOnQuai = !!z && CC_NON_PHYSICAL_ZONES.indexOf(String(z).toUpperCase()) === -1;
+          if (wasOnQuai) back.push(id); else front.push(id);
         });
         order = front.concat(back).concat(toAppend);
 
