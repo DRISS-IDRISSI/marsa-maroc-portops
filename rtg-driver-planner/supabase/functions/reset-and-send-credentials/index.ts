@@ -103,6 +103,13 @@ function howToAffectationHtml(role: string) {
       <li>Cliquez sur la ligne du conducteur à affecter.</li>
       <li>Choisissez son statut (Présent, Repos...), sa vacation et son poste (zone).</li>
       <li>Cliquez sur <strong>Enregistrer</strong> — l'affectation est appliquée immédiatement.</li>
+    </ol>
+    <h3 style="color: #0f172a; margin-top: 24px;">Comment imprimer l'affectation du jour (pour diffusion)</h3>
+    <ol style="font-size: 14px;">
+      <li>Sur la page <strong>Affectation du jour</strong>, vérifiez d'abord la date et le shift à imprimer.</li>
+      <li>Cliquez sur le bouton <strong>PDF</strong> en haut à droite de la page.</li>
+      <li>Le fichier PDF se télécharge automatiquement sur votre appareil.</li>
+      <li>Imprimez-le, ou transférez-le directement (email, WhatsApp...) pour diffusion.</li>
     </ol>`;
 }
 
