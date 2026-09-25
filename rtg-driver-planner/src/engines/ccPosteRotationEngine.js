@@ -123,7 +123,13 @@ const CC_QUAI_POSTS_BY_TEAM = [
 function ccQuaiPostsFor(team, state) {
   if (team) {
     const entry = CC_QUAI_POSTS_BY_TEAM.find(e => e.pattern.test(team.nom || ""));
+    // DIAGNOSTIC TEMPORAIRE (à retirer) — pour comprendre pourquoi GR HOUSSAM
+    // affiche encore l'ancien modèle P71/P74/DTV en production malgré un
+    // résultat correct testé manuellement en console.
+    console.warn("[CC_DEBUG] ccQuaiPostsFor team.nom=", JSON.stringify(team.nom), "matched=", !!entry, "posts=", JSON.stringify(entry ? entry.posts : state.config.ccQuaiPosts));
     if (entry) return entry.posts;
+  } else {
+    console.warn("[CC_DEBUG] ccQuaiPostsFor called with team=", team);
   }
   return state.config.ccQuaiPosts;
 }
