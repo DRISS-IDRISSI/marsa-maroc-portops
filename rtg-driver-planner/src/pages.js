@@ -1338,24 +1338,47 @@ function isTeamRestricted(user) {
   return isShiftRestricted(user) || isDriverRestricted(user);
 }
 
-// Équipe effective pour ce filtrage : team_id direct pour RESPONSABLE_SHIFT,
-// déduite de la fiche conducteur liée pour CONDUCTEUR.
-function restrictedTeamId(user, state) {
-  if (isShiftRestricted(user)) return user.teamId;
+// Équipe(s) effective(s) pour ce filtrage : team_id (+ team_id2 éventuel,
+// l'autre flotte) pour RESPONSABLE_SHIFT/CHEF_ESCALE, déduite de la fiche
+// conducteur liée pour CONDUCTEUR. Un binôme de responsables (ex. BAHOUS
+// affecté à GR BAHOUS-RTG + AZZAM affecté à GR AZZAM-CC) peut avoir besoin
+// d'accéder aux DEUX équipes de son shift (demande explicite de
+// l'exploitant) — teamId2 porte cette 2ème équipe, dans l'autre flotte.
+function restrictedTeamIds(user, state) {
+  if (isShiftRestricted(user)) return [user.teamId, user.teamId2].filter(Boolean);
   if (isDriverRestricted(user)) {
     const driver = state.drivers.find(d => d.id === user.driverId);
-    return driver ? driver.teamId : null;
+    return driver ? [driver.teamId] : [];
   }
-  return null;
+  return [];
+}
+
+// Équipe UNIQUE effective (pour les pages qui ne peuvent afficher qu'une
+// flotte à la fois — Planning/Affectation/Conducteurs) : s'il y a 2
+// équipes (une par flotte), on résout via la bascule RTG/CC déjà présente
+// dans la barre latérale pour ces comptes (voir Sidebar.showFleetSwitch).
+function restrictedTeamId(user, state) {
+  const ids = restrictedTeamIds(user, state);
+  if (ids.length <= 1) return ids[0] || null;
+  const match = ids.find(id => {
+    const t = state.teams.find(tm => tm.id === id);
+    return t && (t.typeEngin || "RTG") === state.currentFleet;
+  });
+  return match || ids[0];
 }
 
 // Équipes visibles compte tenu de la flotte sélectionnée (bascule RTG/CC,
 // barre latérale — § module Chariots Cavalier) ET de la restriction
-// éventuelle à une seule équipe (Responsable de Shift / Conducteur) : les
-// deux filtres sont indépendants, un compte restreint voit toujours SA
-// équipe, quelle que soit la flotte affichée par ailleurs.
+// éventuelle à une ou deux équipes (Responsable de Shift / Chef d'Escale /
+// Conducteur) : les deux filtres sont indépendants, un compte restreint
+// voit toujours SA (ou SES) équipe(s), quelle que soit la flotte affichée
+// par ailleurs. `restrictedTeamIdValue` accepte un id unique (rétro-
+// compatible) ou un tableau d'ids (restrictedTeamIds ci-dessus).
 function fleetTeams(state, restrictedTeamIdValue) {
-  if (restrictedTeamIdValue) return state.teams.filter(t => t.id === restrictedTeamIdValue);
+  if (restrictedTeamIdValue) {
+    const ids = Array.isArray(restrictedTeamIdValue) ? restrictedTeamIdValue : [restrictedTeamIdValue];
+    if (ids.length) return state.teams.filter(t => ids.indexOf(t.id) !== -1);
+  }
   return state.teams.filter(t => (t.typeEngin || "RTG") === state.currentFleet);
 }
 
@@ -2392,10 +2415,10 @@ function ShiftBlock({ title, icon, rows, onEditRow, vacationLetter }) {
 
 // Recherche rapide d'un conducteur depuis le tableau de bord — évite d'avoir
 // à défiler la liste complète des conducteurs pour en retrouver un.
-function DriverSearchBox({ state, shiftRestricted, currentUser, todayAssignments }) {
+function DriverSearchBox({ state, shiftRestricted, currentUser, todayAssignments, restrictedIds }) {
   const nav = useNavigate();
   const [query, setQuery] = useState("");
-  const pool = shiftRestricted ? state.drivers.filter(d => d.teamId === currentUser.teamId) : state.drivers;
+  const pool = shiftRestricted ? state.drivers.filter(d => restrictedIds.indexOf(d.teamId) !== -1) : state.drivers;
   const q = query.trim().toLowerCase();
   const results = q
     ? pool.filter(d => d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q)).slice(0, 8)
@@ -2444,10 +2467,11 @@ function Home() {
   const year = today.getUTCFullYear();
 
   // Ne considérer que les équipes/conducteurs de la flotte sélectionnée
-  // (bascule RTG/CC) — un compte restreint (Responsable de Shift) reste sur
-  // sa propre équipe quelle que soit cette bascule.
-  const restrictedId = shiftRestricted ? currentUser.teamId : null;
-  const fTeams = fleetTeams(rawState, restrictedId);
+  // (bascule RTG/CC) — un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
+  // que soit cette bascule.
+  const restrictedIds = useMemo(() => (shiftRestricted ? restrictedTeamIds(currentUser, rawState) : []), [shiftRestricted, currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -2456,24 +2480,27 @@ function Home() {
   // Challenge Rendement (§ demande exploitant) : un Responsable (de Shift ou
   // non) voit le champion de CHAQUE équipe de la flotte, pas seulement la
   // sienne — contrairement à la restriction habituelle de cette page pour un
-  // compte restreint, volontaire ici. Filtré sur la flotte RÉELLEMENT
-  // affichée dans le widget (celle de sa propre équipe s'il est restreint,
-  // PAS forcément rawState.currentFleet — sinon décalage possible si la
-  // bascule globale ne correspond pas à sa flotte).
-  const rendementFleet = shiftRestricted && state.teams[0] ? (state.teams[0].typeEngin || "RTG") : rawState.currentFleet;
-  const allFleetTeams = useMemo(() => rawState.teams.filter(t => (t.typeEngin || "RTG") === rendementFleet), [rawState.teams, rendementFleet]);
+  // compte restreint, volontaire ici. Un compte à 2 équipes (binôme
+  // RTG+CC) voit UN challenge par flotte à laquelle il a accès (pas
+  // forcément rawState.currentFleet — sinon décalage possible si la
+  // bascule globale ne correspond pas à sa/ses flotte(s)).
+  const rendementFleets = useMemo(() => {
+    if (!shiftRestricted) return [rawState.currentFleet];
+    const set = new Set(state.teams.map(t => t.typeEngin || "RTG"));
+    return set.size ? Array.from(set) : [rawState.currentFleet];
+  }, [shiftRestricted, state.teams, rawState.currentFleet]);
 
   const planning = useMemo(() => PlanningEngine.generateMonthlyPlanning(month, year, state), [state, month, year]);
   const todayIso = RTGDate.toISO(RTGDate.makeDate(year, month, Math.min(today.getUTCDate(), planning.days.length)));
   const todayAssignments = useMemo(() => {
     const all = PlanningEngine.generateDailyAssignments(todayIso, state);
-    return shiftRestricted ? all.filter(a => a.teamId === currentUser.teamId) : all;
-  }, [state, todayIso, shiftRestricted, currentUser]);
+    return shiftRestricted ? all.filter(a => restrictedIds.indexOf(a.teamId) !== -1) : all;
+  }, [state, todayIso, shiftRestricted, restrictedIds]);
 
   const counts = { PRESENT: 0, REPOS: 0, CONGE: 0, MALADIE: 0, ABSENCE: 0, FORMATION: 0, OFF: 0 };
   todayAssignments.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
 
-  const byTeam = (shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams).map(t => ({
+  const byTeam = state.teams.map(t => ({
     team: t,
     shift: ShiftRotationEngine.getTeamShiftForDate(t, RTGDate.parseISO(todayIso), state.config)
   }));
@@ -2482,7 +2509,7 @@ function Home() {
     ? (() => {
         const anomalies = planning.validation.anomalies.filter(a => {
           const d = state.drivers.find(dr => dr.id === a.driverId);
-          return d && d.teamId === currentUser.teamId;
+          return d && restrictedIds.indexOf(d.teamId) !== -1;
         });
         return { valid: anomalies.length === 0, anomalies: anomalies, count: anomalies.length };
       })()
@@ -2490,25 +2517,28 @@ function Home() {
 
   // Alerte "demandes de congé en attente" (§38, libre-service conducteur) —
   // portée à l'Accueil pour qu'un Responsable/Admin la remarque sans avoir à
-  // ouvrir la page Congés ; un Responsable de Shift ne voit que sa propre
-  // équipe, comme partout ailleurs sur cette page.
+  // ouvrir la page Congés ; un Responsable de Shift/Chef d'Escale ne voit
+  // que sa (ou ses) propre(s) équipe(s), comme partout ailleurs sur cette
+  // page.
   const pendingConges = useMemo(() => rawState.conges.filter(c => {
     if (c.statut !== "EN_ATTENTE") return false;
     const d = state.drivers.find(dr => dr.id === c.driverId);
     if (!d) return false;
-    return !shiftRestricted || d.teamId === currentUser.teamId;
-  }), [rawState.conges, state.drivers, shiftRestricted, currentUser]);
+    return !shiftRestricted || restrictedIds.indexOf(d.teamId) !== -1;
+  }), [rawState.conges, state.drivers, shiftRestricted, restrictedIds]);
 
   return (
     <div className="space-y-6 fade-in">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">CES Driver Planner{!shiftRestricted ? " — " + rawState.currentFleet : ""}</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Gestion des conducteurs — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted ? " — " + byTeam[0].team.nom : ""}</p>
+        <p className="text-slate-500 text-sm mt-0.5">Gestion des conducteurs — Terminal à conteneurs — {RTGDate.formatFr(RTGDate.parseISO(todayIso))}{shiftRestricted && byTeam.length ? " — " + byTeam.map(bt => bt.team.nom).join(" / ") : ""}</p>
       </div>
 
-      <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} />
+      <DriverSearchBox state={state} shiftRestricted={shiftRestricted} currentUser={currentUser} todayAssignments={todayAssignments} restrictedIds={restrictedIds} />
 
-      <RendementLeaderboard fleet={rendementFleet} teams={allFleetTeams} />
+      {rendementFleets.map(fleet => (
+        <RendementLeaderboard key={fleet} fleet={fleet} teams={rawState.teams.filter(t => (t.typeEngin || "RTG") === fleet)} />
+      ))}
 
       {pendingConges.length > 0 && (
         <button onClick={() => nav("/conges")} className="w-full text-left flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-700 rounded-xl px-4 py-3 text-sm hover:bg-amber-500/15 transition-all">

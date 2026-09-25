@@ -454,8 +454,9 @@ function DriversPage() {
   // bloque de toute façon l'écriture côté serveur (drivers_write,
   // migration_019).
   const canManage = canManageHrRecords(currentUser);
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, state), [currentUser, state]);
   const loc = useLocation();
-  const [teamFilter, setTeamFilter] = useState(shiftRestricted ? currentUser.teamId : "all");
+  const [teamFilter, setTeamFilter] = useState(shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : "all");
   const [statusFilter, setStatusFilter] = useState("actifs");
   // Pré-rempli depuis ?q=... quand on arrive via la recherche du tableau de bord.
   const [searchQuery, setSearchQuery] = useState(() => new URLSearchParams(loc.search).get("q") || "");
@@ -479,19 +480,19 @@ function DriversPage() {
   const fleetTeamIds = useMemo(() => new Set(
     state.teams.filter(t => (t.typeEngin || "RTG") === state.currentFleet).map(t => t.id)
   ), [state.teams, state.currentFleet]);
-  const visibleTeams = shiftRestricted ? state.teams.filter(t => t.id === currentUser.teamId) : state.teams.filter(t => fleetTeamIds.has(t.id));
+  const visibleTeams = shiftRestricted ? state.teams.filter(t => restrictedIds.indexOf(t.id) !== -1) : state.teams.filter(t => fleetTeamIds.has(t.id));
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [importTeam, setImportTeam] = useState(null);
 
   const drivers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return state.drivers.filter(d =>
-      (shiftRestricted ? d.teamId === currentUser.teamId : fleetTeamIds.has(d.teamId)) &&
-      (shiftRestricted || teamFilter === "all" || d.teamId === teamFilter) &&
+      (shiftRestricted ? restrictedIds.indexOf(d.teamId) !== -1 : fleetTeamIds.has(d.teamId)) &&
+      (teamFilter === "all" || d.teamId === teamFilter) &&
       (statusFilter === "tous" || (statusFilter === "actifs" ? d.actif !== false : d.actif === false)) &&
       (!q || d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q))
     );
-  }, [state.drivers, teamFilter, statusFilter, searchQuery, shiftRestricted, currentUser, fleetTeamIds]);
+  }, [state.drivers, teamFilter, statusFilter, searchQuery, shiftRestricted, currentUser, fleetTeamIds, restrictedIds]);
 
   const today = RTGDate.toISO(new Date());
   const todayDate = RTGDate.parseISO(today);
@@ -503,7 +504,7 @@ function DriversPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Conducteurs{!shiftRestricted ? " — " + state.currentFleet : ""}</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{drivers.filter(d => d.actif !== false).length} conducteurs actifs{shiftRestricted ? " — " + visibleTeams[0].nom : " sur " + state.drivers.filter(d => fleetTeamIds.has(d.teamId)).length}</p>
+          <p className="text-slate-400 text-sm mt-0.5">{drivers.filter(d => d.actif !== false).length} conducteurs actifs{shiftRestricted ? " — " + visibleTeams.map(t => t.nom).join(" / ") : " sur " + state.drivers.filter(d => fleetTeamIds.has(d.teamId)).length}</p>
         </div>
         <div className="flex gap-2">
           {!shiftRestricted && (
@@ -557,8 +558,8 @@ function DriversPage() {
 
       {showForm && (
         <Panel title={editingId ? "Modifier le conducteur" : "Nouveau conducteur"} icon="fa-user-plus">
-          <DriverForm state={Object.assign({}, state, { teams: visibleTeams })} lockedTeamId={shiftRestricted ? currentUser.teamId : null}
-            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "", loginTos: editingDriver.loginTos || "" } : emptyDriverForm(shiftRestricted ? currentUser.teamId : (visibleTeams[0] ? visibleTeams[0].id : ""))}
+          <DriverForm state={Object.assign({}, state, { teams: visibleTeams })} lockedTeamId={shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : null}
+            initial={editingDriver ? { matricule: editingDriver.matricule, nom: editingDriver.nom, prenom: editingDriver.prenom, email: editingDriver.email || "", teamId: editingDriver.teamId, initialZone: editingDriver.initialZone, initialVacation: editingDriver.initialVacation, dateEntree: editingDriver.dateEntree, observation: editingDriver.observation || "", soldeReport: editingDriver.soldeReport != null ? editingDriver.soldeReport : "", soldeReportAnnee: editingDriver.soldeReportAnnee != null ? editingDriver.soldeReportAnnee : "", loginTos: editingDriver.loginTos || "" } : emptyDriverForm(shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : (visibleTeams[0] ? visibleTeams[0].id : ""))}
             editingId={editingId} onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -568,7 +569,7 @@ function DriversPage() {
           <label className={LABEL_CLS}>Rechercher</label>
           <input className={FIELD_CLS} placeholder="Matricule, nom, prénom..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
         </div>
-        {!shiftRestricted && (
+        {(!shiftRestricted || visibleTeams.length > 1) && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
           <select className={FIELD_CLS} value={teamFilter} onChange={e => setTeamFilter(e.target.value)}>
@@ -664,7 +665,10 @@ function DriversPage() {
 // un était pénible (demande explicite : une case "recherche").
 function DriverSelect({ state, value, onChange, onlyActive, teamId }) {
   let drivers = onlyActive ? state.drivers.filter(d => d.actif !== false) : state.drivers;
-  if (teamId) drivers = drivers.filter(d => d.teamId === teamId);
+  if (teamId) {
+    const teamIds = Array.isArray(teamId) ? teamId : [teamId];
+    if (teamIds.length) drivers = drivers.filter(d => teamIds.indexOf(d.teamId) !== -1);
+  }
 
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -753,9 +757,11 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
   const [error, setError] = useState("");
   const [filterDriverId, setFilterDriverId] = useState("");
 
-  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
-  // propre équipe quelle que soit la flotte affichée par ailleurs.
-  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, s'il en a deux — binôme RTG+CC) propre
+  // équipe quelle que soit la flotte affichée par ailleurs.
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -768,7 +774,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
       const d = state.drivers.find(dr => dr.id === r.driverId);
       if (!d) return false;
       if (!shiftRestricted) return true;
-      return d.teamId === currentUser.teamId;
+      return restrictedIds.indexOf(d.teamId) !== -1;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
   const todayIso = RTGDate.toISO(new Date());
@@ -799,7 +805,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? restrictedIds : null} /></div>
               <div><label className={LABEL_CLS}>Date début</label><input type="date" className={FIELD_CLS} value={form.dateDebut} onChange={e => setForm(f => Object.assign({}, f, { dateDebut: e.target.value }))} /></div>
               <div><label className={LABEL_CLS}>Date fin</label><input type="date" className={FIELD_CLS} value={form.dateFin} onChange={e => setForm(f => Object.assign({}, f, { dateFin: e.target.value }))} /></div>
               {showTypeSelect && (
@@ -822,7 +828,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
         </Panel>
       )}
 
-      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
+      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? restrictedIds : null} />
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -934,9 +940,11 @@ function CongesPage() {
   const [refaireMotif, setRefaireMotif] = useState("");
   const [filterDriverId, setFilterDriverId] = useState("");
 
-  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
-  // propre équipe quelle que soit la flotte affichée par ailleurs.
-  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
+  // que soit la flotte affichée par ailleurs.
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -949,7 +957,7 @@ function CongesPage() {
       const d = state.drivers.find(dr => dr.id === r.driverId);
       if (!d) return false;
       if (!shiftRestricted) return true;
-      return d.teamId === currentUser.teamId;
+      return restrictedIds.indexOf(d.teamId) !== -1;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
   const pendingCount = records.filter(r => r.statut === "EN_ATTENTE").length;
@@ -1009,7 +1017,7 @@ function CongesPage() {
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? restrictedIds : null} /></div>
               <div><label className={LABEL_CLS}>Date début</label><input type="date" className={FIELD_CLS} value={form.dateDebut} onChange={e => setForm(f => Object.assign({}, f, { dateDebut: e.target.value }))} /></div>
               <div><label className={LABEL_CLS}>Date fin</label><input type="date" className={FIELD_CLS} value={form.dateFin} onChange={e => setForm(f => Object.assign({}, f, { dateFin: e.target.value }))} /></div>
               <div className="sm:col-span-4"><label className={LABEL_CLS}>Commentaire</label><input className={FIELD_CLS} value={form.commentaire} onChange={e => setForm(f => Object.assign({}, f, { commentaire: e.target.value }))} /></div>
@@ -1023,7 +1031,7 @@ function CongesPage() {
         </Panel>
       )}
 
-      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
+      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? restrictedIds : null} />
 
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -1137,9 +1145,11 @@ function HeuresExceptionnellesPage() {
   const [error, setError] = useState("");
   const [filterDriverId, setFilterDriverId] = useState("");
 
-  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
-  // propre équipe quelle que soit la flotte affichée par ailleurs.
-  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
+  // que soit la flotte affichée par ailleurs.
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -1152,7 +1162,7 @@ function HeuresExceptionnellesPage() {
       const d = state.drivers.find(dr => dr.id === r.driverId);
       if (!d) return false;
       if (!shiftRestricted) return true;
-      return d.teamId === currentUser.teamId;
+      return restrictedIds.indexOf(d.teamId) !== -1;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
 
@@ -1185,7 +1195,7 @@ function HeuresExceptionnellesPage() {
           <div className="space-y-3">
             {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={form.driverId} onChange={v => setForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? restrictedIds : null} /></div>
               <div><label className={LABEL_CLS}>Date</label><input type="date" className={FIELD_CLS} value={form.date} onChange={e => setForm(f => Object.assign({}, f, { date: e.target.value }))} /></div>
               <div>
                 <label className={LABEL_CLS}>Type</label>
@@ -1213,7 +1223,7 @@ function HeuresExceptionnellesPage() {
       <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div className="w-full sm:w-72">
           <label className={LABEL_CLS}>Filtrer par conducteur</label>
-          <DriverSelect state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
+          <DriverSelect state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? restrictedIds : null} />
         </div>
         {filterDriverId && (
           <button onClick={() => setFilterDriverId("")} className="text-xs text-slate-400 hover:text-slate-900 underline">
@@ -1264,9 +1274,11 @@ function RemplacementPage() {
   const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
-  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
-  // propre équipe quelle que soit la flotte affichée par ailleurs.
-  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
+  // que soit la flotte affichée par ailleurs.
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -1281,7 +1293,7 @@ function RemplacementPage() {
   const assignments = useMemo(() => PlanningEngine.generateDailyAssignments(dateStr, state), [state, dateStr]);
   const absentDrivers = assignments.filter(a =>
     ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"].indexOf(a.status) !== -1 &&
-    (!shiftRestricted || a.teamId === currentUser.teamId)
+    (!shiftRestricted || restrictedIds.indexOf(a.teamId) !== -1)
   );
 
   const candidates = useMemo(() => absentId ? ReplacementEngine.getCandidates(dateStr, absentId, state) : [], [state, dateStr, absentId]);
@@ -1604,9 +1616,11 @@ function RapportRHPage() {
   const rawState = useRtgState();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
-  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
-  // propre équipe quelle que soit la flotte affichée par ailleurs.
-  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
+  // que soit la flotte affichée par ailleurs.
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -1616,8 +1630,8 @@ function RapportRHPage() {
   const [tab, setTab] = useState("rh");
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
-  const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
-  const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
+  const [teamId, setTeamId] = useState(shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : "all");
+  const effectiveTeamId = shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : teamId;
   // Filtre "Jour" — uniquement pertinent pour l'onglet Mouvements RTG (les
   // autres rapports sont des cumuls mensuels par nature) : "all" garde tout
   // le mois, sinon restreint à une seule journée.
@@ -1775,7 +1789,7 @@ function RapportRHPage() {
           </select>
         </div>
         )}
-        {!shiftRestricted && (
+        {(!shiftRestricted || restrictedIds.length > 1) && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
           <select value={teamId} onChange={e => setTeamId(e.target.value)} className={FIELD_CLS}>
@@ -2001,10 +2015,10 @@ const ROLE_OPTIONS = [
 const ROLE_NEEDS_TEAM = ["RESPONSABLE_SHIFT", "CHEF_ESCALE"];
 
 function emptyUserForm(defaultTeamId) {
-  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: defaultTeamId || "", driverId: "", email: "" };
+  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: defaultTeamId || "", teamId2: "", driverId: "", email: "" };
 }
 
-function UserForm({ state, initial, editingId, onCancel, onSaved }) {
+function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -2014,6 +2028,7 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
     if (!editingId && !form.password) { setError("Mot de passe obligatoire à la création."); return; }
     if (RTGStore.isUsernameTaken(form.username.trim(), editingId)) { setError("Cet identifiant est déjà utilisé."); return; }
     if (ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && !form.teamId) { setError("Sélectionnez l'équipe pour ce rôle."); return; }
+    if (form.teamId2 && form.teamId2 === form.teamId) { setError("L'équipe secondaire doit être différente de l'équipe principale."); return; }
     if (form.role === "CONDUCTEUR") {
       if (!form.driverId) { setError("Sélectionnez le conducteur rattaché à ce compte."); return; }
       const already = state.users.find(u => u.driverId === form.driverId && u.id !== editingId);
@@ -2023,6 +2038,7 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
     const payload = {
       nom: form.nom.trim(), username: form.username.trim(), role: form.role,
       teamId: ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 ? form.teamId : null,
+      teamId2: ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 ? (form.teamId2 || null) : null,
       driverId: form.role === "CONDUCTEUR" ? form.driverId : null,
       email: form.role === "CONDUCTEUR" ? null : (form.email || "").trim()
     };
@@ -2065,6 +2081,16 @@ function UserForm({ state, initial, editingId, onCancel, onSaved }) {
               <option value="">— Sélectionner —</option>
               {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
             </select>
+          </div>
+        )}
+        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (
+          <div>
+            <label className={LABEL_CLS}>Équipe secondaire (optionnel — autre flotte)</label>
+            <select className={FIELD_CLS} value={form.teamId2} onChange={e => setForm(f => Object.assign({}, f, { teamId2: e.target.value }))}>
+              <option value="">— Aucune —</option>
+              {(allTeams || state.teams).filter(t => t.id !== form.teamId).map(t => <option key={t.id} value={t.id}>{t.nom} ({t.typeEngin || "RTG"})</option>)}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1">Pour un binôme de responsables couvrant RTG ET CC sur le même shift (ex. BAHOUS/AZZAM) — laisser vide sinon.</p>
           </div>
         )}
         {form.role !== "CONDUCTEUR" && (
@@ -2286,7 +2312,10 @@ function UsersPage() {
     if (u.role === "ADMIN") return true;
     if (u.teamId) {
       const t = state.teams.find(t2 => t2.id === u.teamId);
-      return t ? (t.typeEngin || "RTG") === state.currentFleet : true;
+      const t2 = u.teamId2 ? state.teams.find(t3 => t3.id === u.teamId2) : null;
+      const matchesPrimary = t ? (t.typeEngin || "RTG") === state.currentFleet : true;
+      const matchesSecondary = t2 ? (t2.typeEngin || "RTG") === state.currentFleet : false;
+      return matchesPrimary || matchesSecondary;
     }
     if (u.driverId) {
       const d = state.drivers.find(d2 => d2.id === u.driverId);
@@ -2364,8 +2393,8 @@ function UsersPage() {
 
       {showForm && (
         <Panel title={editingId ? "Modifier l'utilisateur" : "Nouvel utilisateur"} icon="fa-user-shield">
-          <UserForm state={formState} editingId={editingId}
-            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || (formState.teams[0] ? formState.teams[0].id : ""), driverId: editingUser.driverId || "", email: editingUser.email || "" } : emptyUserForm(formState.teams[0] ? formState.teams[0].id : "")}
+          <UserForm state={formState} allTeams={state.teams} editingId={editingId}
+            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || (formState.teams[0] ? formState.teams[0].id : ""), teamId2: editingUser.teamId2 || "", driverId: editingUser.driverId || "", email: editingUser.email || "" } : emptyUserForm(formState.teams[0] ? formState.teams[0].id : "")}
             onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -2381,6 +2410,7 @@ function UsersPage() {
           <tbody>
             {visibleUsers.map(u => {
               const team = u.teamId ? state.teams.find(t => t.id === u.teamId) : null;
+              const team2 = u.teamId2 ? state.teams.find(t => t.id === u.teamId2) : null;
               const driver = u.driverId ? state.drivers.find(d => d.id === u.driverId) : null;
               const isSelf = currentUser.id === u.id;
               const targetEmail = driver ? driver.email : u.email;
@@ -2390,7 +2420,7 @@ function UsersPage() {
                   <td className="px-3 py-2 text-slate-900 font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
                   <td className="px-3 py-2 text-slate-600">{u.username}</td>
                   <td className="px-3 py-2 text-slate-400">{ROLE_LABELS[u.role] || u.role}</td>
-                  <td className="px-3 py-2 text-slate-400">{team ? team.nom : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
+                  <td className="px-3 py-2 text-slate-400">{team ? team.nom + (team2 ? " / " + team2.nom : "") : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
                   <td className="px-3 py-2">
                     {u.actif !== false
                       ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700">Actif</span>
@@ -2457,9 +2487,11 @@ function AssistantIntelligentPage() {
   const nav = useNavigate();
   const currentUser = useCurrentUser();
   const shiftRestricted = isShiftRestricted(currentUser);
-  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
-  // propre équipe quelle que soit la flotte affichée par ailleurs.
-  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
+  // que soit la flotte affichée par ailleurs.
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -2468,9 +2500,9 @@ function AssistantIntelligentPage() {
   const now = new Date();
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
-  const [teamId, setTeamId] = useState(shiftRestricted ? currentUser.teamId : "all");
+  const [teamId, setTeamId] = useState(shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : "all");
   const [severityFilter, setSeverityFilter] = useState("all");
-  const effectiveTeamId = shiftRestricted ? currentUser.teamId : teamId;
+  const effectiveTeamId = shiftRestricted && restrictedIds.length <= 1 ? currentUser.teamId : teamId;
 
   const insights = useMemo(() => AssistantEngine.analyzeMonth(month, year, state, effectiveTeamId), [state, month, year, effectiveTeamId]);
   const visibleInsights = severityFilter === "all" ? insights : insights.filter(i => i.severity === severityFilter);
@@ -2495,7 +2527,7 @@ function AssistantIntelligentPage() {
           <label className={LABEL_CLS}>Année</label>
           <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} className={`w-24 ${FIELD_CLS}`} />
         </div>
-        {!shiftRestricted && (
+        {(!shiftRestricted || restrictedIds.length > 1) && (
           <div>
             <label className={LABEL_CLS}>Équipe</label>
             <select value={teamId} onChange={e => setTeamId(e.target.value)} className={FIELD_CLS}>
@@ -3370,14 +3402,16 @@ function MouvementsRtgPage() {
   // RLS bloque de toute façon l'écriture côté serveur
   // (mouvements_manuels_write, migration_019).
   const canManage = canManageHrRecords(currentUser);
-  // Bascule RTG/CC : un compte restreint (Responsable de Shift) reste sur sa
-  // propre équipe quelle que soit la flotte affichée par ailleurs. Le rapport
+  // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
+  // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
+  // que soit la flotte affichée par ailleurs. Le rapport
   // TOS (rows/totalRows) revient du serveur pour TOUTES les flottes — les
   // lignes déjà rattachées à un conducteur de l'AUTRE flotte sont retirées
   // ci-dessous (visibleRows/visibleTotalRows) via rawState.drivers (liste
   // complète, nécessaire pour bien les reconnaître comme "rattachées" et ne
   // pas les confondre avec un login réellement non rattaché à personne).
-  const fTeams = fleetTeams(rawState, shiftRestricted ? currentUser.teamId : null);
+  const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -3573,7 +3607,7 @@ function MouvementsRtgPage() {
             <p className="text-[11px] text-slate-500">Pour les mouvements réalisés par un conducteur mais non tracés par le TOS. Renseignez uniquement les types concernés — le total se calcule automatiquement.</p>
             {manuelError && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{manuelError}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={manuelForm.driverId} onChange={v => setManuelForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? currentUser.teamId : null} /></div>
+              <div className="sm:col-span-2"><label className={LABEL_CLS}>Conducteur</label><DriverSelect state={state} value={manuelForm.driverId} onChange={v => setManuelForm(f => Object.assign({}, f, { driverId: v }))} teamId={shiftRestricted ? restrictedIds : null} /></div>
               <div><label className={LABEL_CLS}>Date</label><input type="date" className={FIELD_CLS} value={manuelForm.dateTravail} onChange={e => setManuelForm(f => Object.assign({}, f, { dateTravail: e.target.value }))} /></div>
               <div>
                 <label className={LABEL_CLS}>Shift (optionnel)</label>
@@ -3605,7 +3639,7 @@ function MouvementsRtgPage() {
         <button onClick={() => setTab("total")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "total" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Total par conducteur (période)</button>
       </div>
 
-      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? currentUser.teamId : null} />
+      <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? restrictedIds : null} />
 
       {tab === "detail" && (
       <>

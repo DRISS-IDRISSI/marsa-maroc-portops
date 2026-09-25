@@ -74,6 +74,11 @@ create table if not exists profiles (
   nom text not null,
   role text not null check (role in ('ADMIN', 'RESPONSABLE', 'RESPONSABLE_SHIFT', 'CHEF_ESCALE', 'CONDUCTEUR')),
   team_id text references teams(id),   -- uniquement pertinent si role = RESPONSABLE_SHIFT ou CHEF_ESCALE
+  -- Équipe SECONDAIRE, dans l'AUTRE flotte (RTG/CC) — demande explicite de
+  -- l'exploitant : chaque shift a un binôme de responsables (ex.
+  -- BAHOUS/AZZAM) qui doivent accéder aux DEUX équipes de leur shift, pas
+  -- seulement la leur. Optionnel — voir migration_020_team_id2.sql.
+  team_id_2 text references teams(id),
   driver_id text references drivers(id), -- uniquement pertinent si role = CONDUCTEUR (§37)
   actif boolean not null default true,
   -- Email personnel (ADMIN/RESPONSABLE/RESPONSABLE_SHIFT) pour "mot de passe
@@ -213,16 +218,29 @@ language sql stable security definer set search_path = public as $$
   select team_id from profiles where id = auth.uid();
 $$;
 
+-- Équipe secondaire (autre flotte) — binôme de responsables, voir
+-- profiles.team_id_2 ci-dessus. NULL pour la quasi-totalité des comptes.
+create or replace function current_user_team2() returns text
+language sql stable security definer set search_path = public as $$
+  select team_id_2 from profiles where id = auth.uid();
+$$;
+
 create or replace function current_user_active() returns boolean
 language sql stable security definer set search_path = public as $$
   select coalesce((select actif from profiles where id = auth.uid()), false);
 $$;
 
--- Un conducteur est-il dans l'équipe de l'utilisateur courant ?
+-- Un conducteur est-il dans une équipe (principale OU secondaire) de
+-- l'utilisateur courant ? Couvre le binôme RTG+CC (team_id_2 ci-dessus) —
+-- centralisé ici pour que toutes les policies qui l'utilisent (conges_write,
+-- heures_exceptionnelles_write, mouvements_manuels_write...) en bénéficient
+-- sans modification supplémentaire.
 create or replace function is_own_team(p_driver_id text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
-    select 1 from drivers where id = p_driver_id and team_id = current_user_team()
+    select 1 from drivers
+    where id = p_driver_id
+    and (team_id = current_user_team() or (current_user_team2() is not null and team_id = current_user_team2()))
   );
 $$;
 
@@ -281,7 +299,7 @@ create policy "drivers_select" on drivers for select
   using (
     current_user_active() and (
       current_user_role() in ('ADMIN', 'RESPONSABLE')
-      or (current_user_role() in ('RESPONSABLE_SHIFT', 'CHEF_ESCALE') and team_id = current_user_team())
+      or (current_user_role() in ('RESPONSABLE_SHIFT', 'CHEF_ESCALE') and (team_id = current_user_team() or (current_user_team2() is not null and team_id = current_user_team2())))
       or is_own_team_via_driver(id)
     )
   );
@@ -290,13 +308,13 @@ create policy "drivers_write" on drivers for all
   using (
     current_user_active() and (
       current_user_role() in ('ADMIN', 'RESPONSABLE')
-      or (current_user_role() = 'RESPONSABLE_SHIFT' and team_id = current_user_team())
+      or (current_user_role() = 'RESPONSABLE_SHIFT' and (team_id = current_user_team() or (current_user_team2() is not null and team_id = current_user_team2())))
     )
   )
   with check (
     current_user_active() and (
       current_user_role() in ('ADMIN', 'RESPONSABLE')
-      or (current_user_role() = 'RESPONSABLE_SHIFT' and team_id = current_user_team())
+      or (current_user_role() = 'RESPONSABLE_SHIFT' and (team_id = current_user_team() or (current_user_team2() is not null and team_id = current_user_team2())))
     )
   );
 
