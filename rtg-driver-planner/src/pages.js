@@ -1557,13 +1557,18 @@ async function captureNodeAsPng(node, forceWidth, scale) {
 // alternance) une fois la page rendue — d'où la limite. Le vide résiduel
 // éventuel (table courte, peu de conducteurs) est centré verticalement
 // plutôt que collé en haut.
-function addFittedImageToPage(pdf, img) {
+// maxStretch abaissé de 1.8 à 1.15 (défaut) : 1.8 restait bien trop
+// permissif pour un rapport compact (peu de lignes) — quasiment TOUJOURS
+// étiré près de la limite haute, d'où des bordures fines nettement floues
+// signalé par l'exploitant ("les traits flous") sur Affectation du jour.
+// Un peu de vide résiduel en bas de page (centré) est un bien meilleur
+// compromis qu'un tableau déformé.
+function addFittedImageToPage(pdf, img, maxStretch) {
   const pageWidthMm = pdf.internal.pageSize.getWidth(), pageHeightMm = pdf.internal.pageSize.getHeight();
   const margin = 5;
   const usableWidthMm = pageWidthMm - margin * 2, usableHeightMm = pageHeightMm - margin * 2;
   const imgHeightMm = usableWidthMm * img.height / img.width;
-  const maxStretch = 1.8;
-  const targetHeightMm = Math.min(usableHeightMm, imgHeightMm * maxStretch);
+  const targetHeightMm = Math.min(usableHeightMm, imgHeightMm * (maxStretch || 1.15));
   const yOffset = margin + (usableHeightMm - targetHeightMm) / 2;
   pdf.addImage(img.dataUrl, "PNG", margin, yOffset, usableWidthMm, targetHeightMm);
 }
@@ -3070,18 +3075,26 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
             <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
           </tr>
           <tr>
-            <th className={PRINT_TH_XS} style={{ width: "9%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "23%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Émarg.</th>
-            <th className={PRINT_TH_XS} style={{ width: "20%" }}>Stagiaire</th>
-            <th className={PRINT_TH_XS} style={{ width: "9%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "23%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Émarg.</th>
+            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "27%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "5%" }}>Émarg.</th>
+            <th className={PRINT_TH_XS} style={{ width: "21%" }}>Stagiaire</th>
+            <th className={PRINT_TH_XS} style={{ width: "7%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "27%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "5%" }}>Émarg.</th>
           </tr>
         </thead>
         <tbody>
+          {/* Hauteur de ligne minimale FIXE (au lieu de purement dictée par
+              le contenu) — demande explicite de l'exploitant : sans elle,
+              une ligne dont le nom passe sur 2 lignes (colonne étroite)
+              devient nettement plus haute que ses voisines à une seule
+              ligne, donnant un tableau à "cases de tailles différentes" au
+              lieu d'une grille régulière comme le document papier. Les
+              colonnes Conducteur/Stagiaire élargies ci-dessus (27%/21%)
+              rendent ce cas rare ; cette hauteur mini absorbe le reste. */}
           {rowIdxs.map(i => (
-            <tr key={i}>
+            <tr key={i} style={{ height: "30px" }}>
               <CcPosteTableHalf flatRows={flatA} rowIndex={i} />
               <td className={PRINT_TD_XS_WRAP}>{stagiaireRows[i] ? (stagiaireRows[i].nom + " " + stagiaireRows[i].prenom) : ""}</td>
               <CcPosteTableHalf flatRows={flatB} rowIndex={i} />
