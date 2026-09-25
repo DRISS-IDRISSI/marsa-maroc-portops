@@ -320,12 +320,20 @@ const CcPosteRotationEngine = {
         // l'affectation réelle d'un jour, la file du lendemain en tient
         // compte, au lieu de rejouer indéfiniment une simulation théorique
         // qui ne peut pas deviner les corrections de terrain.
+        // Un import Excel en masse (RTG_IMPORT_OVERRIDE_MOTIF) n'est PAS une
+        // "réalité saisie par le responsable" au sens ci-dessus : c'est une
+        // valeur reprise telle quelle du fichier pour TOUT le mois, souvent
+        // identique jour après jour — en tenir compte ici gèlerait la file
+        // (les mêmes conducteurs resteraient indéfiniment au quai ou au parc,
+        // l'escalier ne progressant jamais) — cas réel observé sur GR BAHOUS.
+        // Seule une correction manuelle ad hoc compte comme "réalité du jour".
         const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
         const yesterdayZone = this._dayZone[yesterdayIso] || {};
         const front = [], back = [];
         order.forEach(id => {
           const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
-          const z = manualYesterday ? manualYesterday.zone : yesterdayZone[id];
+          const useManual = manualYesterday && manualYesterday.motif !== RTG_IMPORT_OVERRIDE_MOTIF;
+          const z = useManual ? manualYesterday.zone : yesterdayZone[id];
           if (z && quaiPosts.indexOf(z) !== -1) back.push(id); else front.push(id);
         });
         order = front.concat(back).concat(toAppend);

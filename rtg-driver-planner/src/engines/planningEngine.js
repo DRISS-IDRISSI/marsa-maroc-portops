@@ -118,18 +118,28 @@ const PlanningEngine = {
         source = "MANUAL";
       }
 
-      // Un import Excel en masse (RTG_IMPORT_OVERRIDE_MOTIF) a pu pré-remplir
-      // une zone pour un jour qui, au moment de l'import, était encore dans
-      // le futur — ce n'est pas une décision prise par le responsable POUR
-      // CE JOUR-LÀ, seulement une prévision reprise telle quelle du fichier.
-      // Pour un jour futur, seule une correction manuelle ad hoc (via la
-      // case cliquable) compte comme "le responsable a renseigné la zone" ;
-      // une zone venant de cet import y est donc ignorée comme si elle
-      // n'existait pas. Plutôt qu'une case vide, le poste par défaut affiché
-      // est PARC (demande explicite de l'exploitant) — au responsable de
-      // shift de le remplacer par le poste réel sur le terrain, jour après
-      // jour.
-      const zoneManuallySet = !!(override && override.zone !== undefined && override.motif !== RTG_IMPORT_OVERRIDE_MOTIF);
+      // Un import Excel en masse (RTG_IMPORT_OVERRIDE_MOTIF) a pu figer une
+      // zone CC générique (parfois reprise du mauvais modèle de postes,
+      // constaté sur GR BAHOUS/GR HOUSSAM), jamais réévaluée depuis — ce
+      // n'est jamais une "réalité" à afficher telle quelle pour la flotte CC,
+      // quel que soit le jour (pas seulement les jours futurs) : on retombe
+      // sur la valeur AUTO calculée par CcPosteRotationEngine (b.zone), qui
+      // reflète désormais correctement les postes propres à chaque équipe et
+      // la rotation réelle jour après jour (voir aussi ccPosteRotationEngine.js,
+      // qui ignore ce même import pour calculer l'ordre de la file).
+      const zoneFromImport = !!(override && override.zone !== undefined && override.motif === RTG_IMPORT_OVERRIDE_MOTIF);
+      if (zoneFromImport && team && team.typeEngin === "CC") {
+        zone = b.zone;
+      }
+
+      // Pour un jour futur (> aujourd'hui), seule une correction manuelle ad
+      // hoc (via la case cliquable) compte comme "le responsable a renseigné
+      // la zone" — la prédiction automatique du poste QUAI n'est jamais
+      // affichée à l'avance. Plutôt qu'une case vide, le poste par défaut
+      // affiché est PARC (demande explicite de l'exploitant) — au
+      // responsable de shift de le remplacer par le poste réel sur le
+      // terrain, jour après jour.
+      const zoneManuallySet = !!(override && override.zone !== undefined && !zoneFromImport);
       if (!zoneManuallySet && finalStatus === "PRESENT" && team && team.typeEngin === "CC" && isoDate > todayIso) {
         zone = "PARC";
       }
