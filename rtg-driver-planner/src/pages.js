@@ -3396,12 +3396,17 @@ function AffectationDuJour() {
   // AFFECTATION ALORS QUE LES AUTRES POSTES SONT DEJA AU PARC").
   const hasPendingCcZone = (() => {
     const relevant = assignments.filter(a => a.status === "PRESENT" && (effectiveShiftFilter === "all" || a.shift === effectiveShiftFilter));
-    const byTeam = {};
-    relevant.forEach(a => { (byTeam[a.teamId] = byTeam[a.teamId] || []).push(a); });
-    return Object.keys(byTeam).some(teamId => {
-      const rows = byTeam[teamId];
+    // Regroupe par équipe ET par vacation (A/B) — deux créneaux horaires
+    // disjoints du même shift (ex. 07h-11h / 11h-15h) se partagent les MÊMES
+    // postes physiques à des moments différents, jamais simultanément :
+    // chacun dispose donc de son propre quota de N postes, pas un quota
+    // unique partagé pour tout le shift.
+    const byGroup = {};
+    relevant.forEach(a => { const k = a.teamId + "_" + a.vacation; (byGroup[k] = byGroup[k] || { teamId: a.teamId, rows: [] }).rows.push(a); });
+    return Object.keys(byGroup).some(key => {
+      const rows = byGroup[key].rows;
       if (!rows.some(a => a.source === "AUTO" && a.zone === "PARC")) return false;
-      const team = state.teams.find(t => t.id === teamId);
+      const team = state.teams.find(t => t.id === byGroup[key].teamId);
       const capacity = flattenQuaiPosts(ccQuaiPostsFor(team, state)).length;
       const manualQuaiCount = rows.filter(a => a.source === "MANUAL" && a.zone && CC_GENERIC_ZONES.indexOf(String(a.zone).toUpperCase()) === -1).length;
       return manualQuaiCount < capacity;
