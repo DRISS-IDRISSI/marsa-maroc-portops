@@ -1591,9 +1591,14 @@ function buildRapportFeriesS3(state, month, year, teamId) {
   const records = state.heuresExceptionnelles
     .filter(r => (r.type === "FERIE_TRAVAILLE" || r.type === "DIMANCHE_S3") && r.dateDebut.slice(0, 7) === prefix)
     .filter(r => {
-      if (teamId === "all") return true;
+      // state.drivers est déjà filtré sur la flotte affichée (RTG ou CC) par
+      // l'appelant — sans cette vérification, "Tous" (aucune équipe précise)
+      // laissait passer aussi les enregistrements de l'AUTRE flotte, dont le
+      // conducteur reste introuvable ici : lignes vides ("—") dans le
+      // rapport, demande explicite de l'exploitant.
       const d = state.drivers.find(dr => dr.id === r.driverId);
-      return d && d.teamId === teamId;
+      if (!d) return false;
+      return teamId === "all" || d.teamId === teamId;
     })
     .slice().sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
 
