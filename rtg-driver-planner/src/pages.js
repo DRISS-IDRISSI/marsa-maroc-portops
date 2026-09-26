@@ -2360,7 +2360,11 @@ function ZoneOrStatutBadge({ a, fleet }) {
     return <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 font-bold">{label}</span>;
   }
   const meta = RTG_STATUS_META[a.status] || { label: a.status, className: "bg-slate-700/40 text-slate-600 border-slate-600/40" };
-  return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{meta.label}</span>;
+  // Repos compensatoire : "RC" plutôt que le libellé complet, comme sur le
+  // rapport imprimable (ccPosteCellLabel) — demande explicite de
+  // l'exploitant, la case reste lisible même pour un conducteur au nom long.
+  const text = a.status === "REPOS_COMPENSATOIRE" ? "RC" : meta.label;
+  return <span className={`px-1.5 py-0.5 rounded border ${meta.className}`}>{text}</span>;
 }
 
 function ShiftBlock({ title, icon, rows, onEditRow, vacationLetter, fleet }) {
