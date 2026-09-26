@@ -1,0 +1,443 @@
+// ==========================================
+// RTG DRIVER PLANNER — Edge Function : import automatique des mouvements
+// RTG depuis le rapport TOS "DRIVER MOVES PER SHIFT"
+// ==========================================
+// Le TOS (système d'exploitation du terminal — hors de tout accès direct
+// pour cette application) envoie un email avec ce rapport en pièce jointe
+// .xls à la fin de CHAQUE shift (S1/S2/S3). L'exploitant a mis en place une
+// règle de transfert automatique sur sa boîte professionnelle vers une boîte
+// Gmail dédiée (gestioneffectif@gmail.com), lue ici en IMAP.
+//
+// Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
+// toutes les 5 minutes : se connecte à la boîte Gmail dédiée, cherche les
+// emails NON LUS dont le sujet contient "DRIVER MOVES PER SHIFT", parse la
+// pièce jointe .xls — DEUX onglets, un par flotte : "RTG" et "SC" (Straddle
+// Carrier, le nom technique du chariot cavalier — flotte "CC" dans cette
+// application) — et enregistre une ligne par conducteur x engin dans la
+// table mouvements_tos, pour les deux flottes.
+//
+// Rattachement conducteur : le rapport identifie chaque conducteur par un
+// LOGIN TOS (ex. "mcharihtc3"), jamais par son matricule. Convention confirmée
+// par l'exploitant : LOGIN = 1ère lettre du PRÉNOM + NOM (sans accents/espaces,
+// en minuscules) + suffixe du terminal — mais ce suffixe DIFFÈRE selon la
+// flotte (vérifié sur un rapport réel) : "tc3" pour les conducteurs RTG (ex.
+// "aabouelfathtc3"), "tce" pour les conducteurs CC (ex. "aadditce") — voir
+// LOGIN_SUFFIX_BY_FLEET. Le rattachement est donc déterministe : pour chaque
+// conducteur actif, on calcule son login
+// attendu et on le compare au LOGIN du rapport — aucune table de correspondance
+// à maintenir à la main. La comparaison se fait TOUJOURS au sein de la même
+// flotte que l'onglet en cours (un conducteur RTG et un conducteur CC
+// homonymes ne sont jamais comparés entre eux, même s'ils partagent le même
+// login dérivé — l'un des deux n'apparaît de toute façon jamais dans cet
+// onglet). Un login sans correspondance dans sa flotte (ou ambigu, si jamais
+// 2 conducteurs actifs de la même flotte partageaient le même login dérivé)
+// est importé quand même (driver_id = null, match_note renseigné) pour rester
+// visible et corrigeable plutôt que d'être silencieusement perdu.
+//
+// Les emails traités sont recherchés par DATE (derniers jours), pas par
+// statut lu/non lu : le statut "lu" d'un email peut changer à tout moment
+// (n'importe quelle consultation de la boîte via l'interface Gmail marque
+// l'email comme lu), ce qui le ferait disparaître définitivement de la
+// recherche si on se basait dessus. Comme l'insertion des mouvements est
+// une upsert avec contrainte anti-doublon (login_tos, date_travail, shift,
+// engin), retraiter plusieurs fois le même email ne crée aucun doublon —
+// c'est donc sans risque de le revoir à chaque exécution pendant sa fenêtre
+// de rétention. MAIS le RE-TRAITEMENT COMPLET (téléchargement + parsing
+// mailparser + XLSX de la pièce jointe) de TOUS les emails de la fenêtre à
+// CHAQUE exécution (toutes les 5 min) est coûteux en CPU ; avec 7 jours ×
+// 3 shifts d'accumulés, ce coût grossit et a fini par dépasser le budget CPU
+// de la fonction (erreurs "CPU Time exceeded" observées en pratique,
+// causant l'échec silencieux de TOUT l'import, y compris des shifts jamais
+// encore importés). Pour rester sans risque de perte (toujours rebalayer la
+// fenêtre par date, jamais par statut lu) SANS reparser ce qui est déjà en
+// base, chaque email est d'abord identifié par son Message-ID (fetch léger,
+// sans télécharger la pièce jointe) et comparé à mouvements_tos.source_message_id
+// déjà connus pour cette même fenêtre : seul un email VRAIMENT nouveau
+// déclenche le parsing complet.
+//
+// Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
+//   - TOS_GMAIL_USER : gestioneffectif@gmail.com
+//   - TOS_GMAIL_APP_PASSWORD : mot de passe d'application Gmail de ce compte
+//     (2FA à activer sur ce compte, puis générer un mot de passe d'application
+//     — même procédure que pour GMAIL_APP_PASSWORD utilisé pour l'envoi).
+// SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut, déjà
+// disponibles automatiquement.
+//
+// DÉPLOIEMENT : Edge Functions > Create a new function > "import-tos-moves" >
+// coller ce fichier > Deploy. Puis exécuter migration_008_mouvements_tos.sql
+// (table) et migration_009_cron_import_tos_moves.sql (planification).
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { ImapFlow } from "npm:imapflow@1";
+import { simpleParser } from "npm:mailparser@3";
+import * as XLSX from "npm:xlsx@0.18.5";
+
+const SUBJECT_FILTER = "DRIVER MOVES PER SHIFT";
+
+// Un onglet par flotte : nom de l'onglet dans le .xls, valeur attendue de la
+// colonne TYPE_ENGIN sur ses lignes, et flotte correspondante côté
+// application (teams.type_engin) pour restreindre le rattachement — voir
+// l'en-tête du fichier.
+const SHEETS: { sheetName: string; typeEnginValue: string; fleet: "RTG" | "CC" }[] = [
+  { sheetName: "RTG", typeEnginValue: "RTG", fleet: "RTG" },
+  { sheetName: "SC", typeEnginValue: "SC", fleet: "CC" }
+];
+
+// Déduit la flotte d'un code engin déjà enregistré (mouvements_tos.engin), pour
+// l'auto-réparation ci-dessous — même convention que inferEnginFleet côté UI
+// (pages2.js) : un code commençant par "RTG" est de la flotte RTG, tout le
+// reste (codes SC/CC) est de la flotte CC.
+function fleetForEngin(engin: string): "RTG" | "CC" {
+  return /^RTG/i.test(engin || "") ? "RTG" : "CC";
+}
+
+function stripAccents(s: string) {
+  return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+function normalizeForLogin(s: string) {
+  return stripAccents(s || "").toLowerCase().replace(/[^a-z]/g, "");
+}
+
+// Convention confirmée par l'exploitant : 1ère lettre du prénom + nom complet
+// (sans accents/espaces/tirets) + suffixe du terminal — MAIS ce suffixe n'est
+// PAS le même pour les deux flottes (contrairement à ce que laissait entendre
+// la documentation d'origine) : "tc3" pour les conducteurs RTG (ex.
+// "aabouelfathtc3"), "tce" pour les conducteurs CC (ex. "aadditce") — vérifié
+// directement sur un rapport TOS réel.
+const LOGIN_SUFFIX_BY_FLEET: Record<"RTG" | "CC", string> = { RTG: "tc3", CC: "tce" };
+function deriveTosLogin(driver: { nom: string; prenom: string }, fleet: "RTG" | "CC") {
+  const p = normalizeForLogin(driver.prenom);
+  const n = normalizeForLogin(driver.nom);
+  if (!p || !n) return null;
+  return p.charAt(0) + n + LOGIN_SUFFIX_BY_FLEET[fleet];
+}
+
+function excelDateToIso(v: unknown): string | null {
+  if (v == null) return null;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  const s = String(v).trim();
+  const dmy = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  return s.slice(0, 10) || null;
+}
+
+function toInt(v: unknown) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+Deno.serve(async _req => {
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  const tosUser = Deno.env.get("TOS_GMAIL_USER");
+  const tosPassword = Deno.env.get("TOS_GMAIL_APP_PASSWORD");
+  if (!tosUser || !tosPassword) {
+    return new Response(JSON.stringify({ ok: false, error: "TOS_GMAIL_USER / TOS_GMAIL_APP_PASSWORD non configurés." }), {
+      status: 500, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  // Tous les conducteurs actifs, des deux flottes — mais le rattachement d'un
+  // login se fait TOUJOURS au sein d'une seule flotte à la fois (voir
+  // buildLoginMap ci-dessous), jamais tous conducteurs confondus : sans ça,
+  // un conducteur CC homonyme d'un conducteur RTG (même 1ère lettre de
+  // prénom + même nom, ex. deux "ADDI") produirait le même login dérivé que
+  // son homonyme et rendrait le rattachement faussement ambigu, alors que
+  // chacun n'apparaît que dans l'onglet de sa propre flotte.
+  const { data: drivers, error: driversError } = await admin
+    .from("drivers")
+    .select("id,nom,prenom,actif,login_tos,teams!inner(type_engin)")
+    .eq("actif", true);
+  if (driversError) {
+    return new Response(JSON.stringify({ ok: false, error: "Chargement conducteurs échoué : " + driversError.message }), {
+      status: 500, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  // Selon la version de PostgREST/supabase-js, une ressource imbriquée
+  // to-one (teams!inner(...)) peut être renvoyée soit comme un objet, soit
+  // comme un tableau à un élément — gérer les deux formes explicitement
+  // plutôt que de supposer l'une d'elles est CRITIQUE ici : une mauvaise
+  // supposition rend cette fonction silencieuse (aucune erreur), avec pour
+  // conséquence que TOUS les conducteurs sont exclus des deux flottes, donc
+  // plus AUCUN login ne correspond jamais à personne — et l'upsert plus bas
+  // écrase alors le rattachement déjà correct des lignes déjà importées
+  // (driver_id remis à null) à chaque exécution du cron.
+  function driverFleet(d: { teams: unknown }): string | null {
+    const t = Array.isArray(d.teams) ? d.teams[0] : d.teams;
+    return (t && (t as { type_engin?: string }).type_engin) || null;
+  }
+
+  // login TOS attendu -> liste des driver_id qui y correspondent (normalement
+  // 1 seul ; plus d'un = ambiguïté à signaler). Un login_tos saisi à la main
+  // sur la fiche conducteur (cas d'un compte TOS orthographié différemment du
+  // nom officiel) prime sur la déduction automatique.
+  function buildLoginMap(fleetDrivers: typeof drivers, fleet: "RTG" | "CC") {
+    const loginMap = new Map<string, string[]>();
+    (fleetDrivers || []).forEach(d => {
+      const login = (d.login_tos && d.login_tos.trim()) ? d.login_tos.trim().toLowerCase() : deriveTosLogin(d, fleet);
+      if (!login) return;
+      if (!loginMap.has(login)) loginMap.set(login, []);
+      loginMap.get(login)!.push(d.id);
+    });
+    return loginMap;
+  }
+
+  const loginMapByFleet: Record<"RTG" | "CC", Map<string, string[]>> = {
+    RTG: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "RTG"), "RTG"),
+    CC: buildLoginMap((drivers || []).filter(d => driverFleet(d) === "CC"), "CC")
+  };
+
+  // Garde-fou : si malgré tout aucun conducteur n'est reconnu dans AUCUNE des
+  // deux flottes alors que la table drivers n'est pas vide, quelque chose ne
+  // va pas dans la forme des données renvoyées par la requête ci-dessus —
+  // mieux vaut échouer bruyamment que de continuer et écraser silencieusement
+  // le rattachement déjà correct de toutes les lignes existantes.
+  if ((drivers || []).length > 0 && loginMapByFleet.RTG.size === 0 && loginMapByFleet.CC.size === 0) {
+    return new Response(JSON.stringify({
+      ok: false,
+      error: "Aucun conducteur reconnu dans une flotte (RTG ou CC) alors que " + (drivers || []).length + " conducteur(s) actif(s) existent — anomalie dans la forme des données renvoyées par la requête 'drivers'. Import annulé par sécurité (aucune écriture effectuée)."
+    }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
+
+  // Logins volontairement ignorés (ex. conducteur tracteur ayant ponctuellement
+  // opéré un RTG) — jamais insérés, et toute ligne déjà importée pour l'un
+  // d'eux est supprimée ci-dessous.
+  const { data: ignoredLoginRows } = await admin.from("mouvements_tos_logins_ignores").select("login_tos");
+  const ignoredLogins = new Set((ignoredLoginRows || []).map(r => r.login_tos));
+
+  let ignoredRowsDeleted = 0;
+  if (ignoredLogins.size > 0) {
+    const { data: deleted } = await admin.from("mouvements_tos").delete().in("login_tos", Array.from(ignoredLogins)).select("id");
+    ignoredRowsDeleted = (deleted || []).length;
+  }
+
+  // Auto-réparation : des lignes déjà en base non rattachées (driver_id null,
+  // ex. importées avant qu'un "Login TOS" correctif soit renseigné sur la
+  // fiche conducteur) sont retentées à chaque exécution — sans ça, une
+  // correction faite après coup ne s'appliquerait qu'aux imports futurs,
+  // jamais à l'historique déjà importé. Faite PAR LOT (une requête par login
+  // distinct plutôt qu'une requête par ligne) : avec plusieurs centaines de
+  // lignes non rattachées (ex. après un import massif ou un incident), une
+  // réparation ligne par ligne peut dépasser le temps d'exécution de la
+  // fonction avant même d'avoir traité les emails du jour.
+  // PostgREST plafonne une réponse .select() à 1000 lignes par défaut : sans
+  // pagination explicite, un incident ou un import massif laissant plus de
+  // 1000 lignes non rattachées en base ferait toujours revenir le MÊME
+  // premier millier à chaque exécution — les logins situés au-delà ne
+  // seraient alors JAMAIS réparés, peu importe le nombre de passages du cron.
+  // Plafond de pages (20 × 1000 = 20 000 lignes non rattachées scannées max
+  // par exécution) : une ligne dont le login ne correspondra JAMAIS à un
+  // conducteur (ex. login d'un ancien conducteur parti) resterait sinon
+  // scannée indéfiniment à CHAQUE exécution (toutes les 5 min), un coût qui
+  // grossit avec le temps sans jamais se résorber — contributeur probable,
+  // avec le re-parsing des emails déjà importés (voir plus haut), aux erreurs
+  // "CPU Time exceeded" observées en pratique. Un plafond n'empêche pas la
+  // réparation de progresser d'exécution en exécution (les lignes réparées
+  // sortent du filtre driver_id IS NULL), juste le pire des cas.
+  let reconciledRows = 0;
+  const reconcileTargets = new Map<string, { loginTos: string; fleet: "RTG" | "CC"; driverId: string }>();
+  const PAGE_SIZE = 1000;
+  const MAX_RECONCILE_PAGES = 20;
+  for (let offset = 0, page_num = 0; page_num < MAX_RECONCILE_PAGES; offset += PAGE_SIZE, page_num++) {
+    const { data: page } = await admin.from("mouvements_tos").select("login_tos, engin").is("driver_id", null)
+      .range(offset, offset + PAGE_SIZE - 1);
+    (page || []).forEach(row => {
+      const fleet = fleetForEngin(row.engin);
+      const matches = loginMapByFleet[fleet].get(row.login_tos) || [];
+      if (matches.length !== 1) return;
+      reconcileTargets.set(fleet + "|" + row.login_tos, { loginTos: row.login_tos, fleet, driverId: matches[0] });
+    });
+    if (!page || page.length < PAGE_SIZE) break;
+  }
+  for (const target of reconcileTargets.values()) {
+    let q = admin.from("mouvements_tos").update({ driver_id: target.driverId, match_note: null })
+      .eq("login_tos", target.loginTos).is("driver_id", null);
+    q = target.fleet === "RTG" ? q.ilike("engin", "RTG%") : q.not("engin", "ilike", "RTG%");
+    const { data: updated, error: reconcileError } = await q.select("id");
+    if (!reconcileError) reconciledRows += (updated || []).length;
+  }
+
+  // Fenêtre de recherche large (7 jours) : couvre les week-ends et les
+  // éventuels retards d'acheminement, sans dépendre du statut lu/non lu.
+  // Calculée une seule fois : sert à la fois à la recherche IMAP et au
+  // pré-filtrage par Message-ID ci-dessous (même fenêtre des deux côtés).
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - 7);
+
+  // Message-ID déjà importés sur cette fenêtre — un seul SELECT léger (une
+  // colonne, pas le contenu des rapports) pour éviter de re-télécharger et
+  // re-parser la pièce jointe de chaque email déjà traité à CHAQUE exécution
+  // (voir l'en-tête du fichier).
+  const { data: alreadyImportedRows } = await admin
+    .from("mouvements_tos")
+    .select("source_message_id")
+    .not("source_message_id", "is", null)
+    .gte("date_travail", since.toISOString().slice(0, 10));
+  const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
+
+  const client = new ImapFlow({
+    host: "imap.gmail.com",
+    port: 993,
+    secure: true,
+    auth: { user: tosUser, pass: tosPassword },
+    logger: false
+  });
+
+  let processedEmails = 0;
+  let importedRows = 0;
+  let skippedNoAttachment = 0;
+  let skippedAlreadyImported = 0;
+  const unmatchedLogins = new Set<string>();
+  const errors: string[] = [];
+
+  // ImapFlow (et le socket TLS sous-jacent) émet ses erreurs de connexion via
+  // un événement 'error' (EventEmitter), PAS via une promesse rejetée — sans
+  // écouteur explicite, une simple coupure réseau côté Gmail (fréquente,
+  // ex. "peer closed connection without sending TLS close_notify") remonte
+  // comme une erreur non gérée qui fait planter TOUTE la fonction (crash de
+  // l'isolate, réponse 5xx), alors qu'elle devrait rester une erreur réseau
+  // ordinaire et non bloquante comme les autres, capturées ci-dessous dans
+  // `errors`.
+  client.on("error", err => {
+    errors.push("Erreur de connexion IMAP (non bloquante) : " + (err instanceof Error ? err.message : String(err)));
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const uids: number[] = await client.search({ since, subject: SUBJECT_FILTER }, { uid: true });
+
+      for (const uid of uids) {
+        let markSeen = false;
+        try {
+          // Pré-filtrage bon marché : identifie l'email par son Message-ID
+          // (fetch léger, sans le corps ni la pièce jointe) avant de décider
+          // si le traitement complet (coûteux en CPU) est nécessaire.
+          const envelopeOnly = await client.fetchOne(String(uid), { envelope: true }, { uid: true });
+          const messageId = envelopeOnly && envelopeOnly.envelope ? envelopeOnly.envelope.messageId : null;
+          if (messageId && alreadyImportedMessageIds.has(messageId)) {
+            skippedAlreadyImported++;
+            processedEmails++;
+            continue;
+          }
+
+          const msg = await client.fetchOne(String(uid), { source: true, envelope: true }, { uid: true });
+          if (!msg || !msg.source) { continue; }
+
+          const parsed = await simpleParser(msg.source);
+          const xlsAttachment = (parsed.attachments || []).find(a => /\.xls$/i.test(a.filename || ""));
+
+          if (!xlsAttachment) {
+            skippedNoAttachment++;
+            markSeen = true; // pour la propreté visuelle de la boîte, sans effet sur le traitement
+          } else {
+            const wb = XLSX.read(xlsAttachment.content, { type: "buffer", cellDates: true });
+
+            const records = [];
+            let anySheetFound = false;
+            for (const cfg of SHEETS) {
+              const sheet = wb.Sheets[cfg.sheetName];
+              if (!sheet) continue;
+              anySheetFound = true;
+              const loginMap = loginMapByFleet[cfg.fleet];
+              // Les 2 premières lignes du fichier TOS sont des titres ; l'en-tête
+              // des colonnes est à la 3ème ligne (index 2).
+              const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: 2, defval: null });
+
+              for (const row of rows) {
+                if (String(row.TYPE_ENGIN || "").toUpperCase() !== cfg.typeEnginValue) continue;
+                const rawLogin = String(row.LOGIN || "").trim().toLowerCase();
+                if (!rawLogin || ignoredLogins.has(rawLogin)) continue;
+                const dateTravail = excelDateToIso(row.DATE_TRAVAIL);
+                if (!dateTravail) continue;
+
+                const matches = loginMap.get(rawLogin) || [];
+                let driverId: string | null = null;
+                let matchNote: string | null = null;
+                if (matches.length === 1) {
+                  driverId = matches[0];
+                } else if (matches.length === 0) {
+                  matchNote = `Aucun conducteur ${cfg.fleet} actif ne correspond à ce login.`;
+                  unmatchedLogins.add(rawLogin);
+                } else {
+                  matchNote = `Plusieurs conducteurs ${cfg.fleet} actifs correspondent à ce login (ambigu) : ` + matches.join(", ");
+                  unmatchedLogins.add(rawLogin);
+                }
+
+                records.push({
+                  driver_id: driverId,
+                  login_tos: rawLogin,
+                  date_travail: dateTravail,
+                  shift: String(row.SHIFT || ""),
+                  engin: String(row.ENGIN || ""),
+                  facility: row.FACILITY ? String(row.FACILITY) : null,
+                  nombre_in: toInt(row.NOMBRE_IN),
+                  nombre_out: toInt(row.NOMBRE_OUT),
+                  nombre_move: toInt(row.NOMBRE_MOVE),
+                  nombre_shifting: toInt(row.NOMBRE_SHIFTING),
+                  nombre_disch: toInt(row.NOMBRE_DISCH),
+                  nombre_load: toInt(row.NOMBRE_LOAD),
+                  nombre_autre: toInt(row.NOMBRE_AUTRE),
+                  total_mvmt: toInt(row.TOTAL_MVMT),
+                  match_note: matchNote,
+                  source_message_id: parsed.messageId || null
+                });
+              }
+            }
+
+            if (!anySheetFound) {
+              throw new Error(`Aucun onglet reconnu (${SHEETS.map(s => `"${s.sheetName}"`).join(" / ")}) dans la pièce jointe.`);
+            }
+
+            // Insertion PAR PAQUETS plutôt qu'en un seul upsert géant : un
+            // rapport consolidé multi-jours peut facilement dépasser un
+            // millier de lignes (RTG + SC confondus) en une seule pièce
+            // jointe — un paquet qui échoue (taille, verrou temporaire...)
+            // ne doit pas faire perdre les paquets déjà insérés avec succès.
+            const CHUNK_SIZE = 200;
+            for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+              const chunk = records.slice(i, i + CHUNK_SIZE);
+              const { error: upsertError } = await admin
+                .from("mouvements_tos")
+                .upsert(chunk, { onConflict: "login_tos,date_travail,shift,engin" });
+              if (upsertError) {
+                errors.push(`Email uid=${uid} (paquet ${i}-${i + chunk.length}) : Insertion échouée : ` + upsertError.message);
+                continue;
+              }
+              importedRows += chunk.length;
+            }
+            markSeen = true;
+          }
+        } catch (e) {
+          errors.push(`Email uid=${uid} : ` + (e instanceof Error ? e.message : String(e)));
+        }
+
+        if (markSeen) {
+          try { await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }); } catch { /* non bloquant */ }
+        }
+        processedEmails++;
+      }
+    } finally {
+      lock.release();
+    }
+  } catch (e) {
+    errors.push("Connexion IMAP : " + (e instanceof Error ? e.message : String(e)));
+  } finally {
+    try { await client.logout(); } catch { /* déjà déconnecté */ }
+  }
+
+  return new Response(JSON.stringify({
+    ok: errors.length === 0,
+    processedEmails,
+    skippedNoAttachment,
+    skippedAlreadyImported,
+    importedRows,
+    reconciledRows,
+    ignoredRowsDeleted,
+    unmatchedLogins: Array.from(unmatchedLogins),
+    errors
+  }), { headers: { "Content-Type": "application/json" } });
+});
