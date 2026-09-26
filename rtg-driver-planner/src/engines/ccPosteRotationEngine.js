@@ -322,27 +322,30 @@ const CcPosteRotationEngine = {
         // Partition stable : qui N'ÉTAIT PAS au QUAI hier (repos/parc/autorise)
         // passe devant ; qui ÉTAIT au QUAI hier passe derrière — ordre relatif
         // conservé dans chaque groupe. Le "poste d'hier" retenu est la
-        // RÉALITÉ saisie par le responsable (Affectation du jour →
-        // AssignmentEditModal, override manuel) quand elle existe, PAS le
-        // résultat de la simulation : c'est exactement le "jour de départ"
-        // demandé par l'exploitant — dès que le responsable a renseigné
-        // l'affectation réelle d'un jour, la file du lendemain en tient
-        // compte, au lieu de rejouer indéfiniment une simulation théorique
-        // qui ne peut pas deviner les corrections de terrain.
-        // Un import Excel en masse (RTG_IMPORT_OVERRIDE_MOTIF) n'est PAS une
-        // "réalité saisie par le responsable" au sens ci-dessus : c'est une
-        // valeur reprise telle quelle du fichier pour TOUT le mois, souvent
-        // identique jour après jour — en tenir compte ici gèlerait la file
-        // (les mêmes conducteurs resteraient indéfiniment au quai ou au parc,
-        // l'escalier ne progressant jamais) — cas réel observé sur GR BAHOUS.
-        // Seule une correction manuelle ad hoc compte comme "réalité du jour".
+        // RÉALITÉ saisie pour ce jour-là (une correction existante, quel que
+        // soit son motif) quand elle existe, PAS le résultat de la
+        // simulation : c'est exactement le "jour de départ" demandé par
+        // l'exploitant — dès qu'une affectation réelle existe pour un jour,
+        // la file du lendemain en tient compte, au lieu de rejouer une
+        // simulation théorique qui ne peut pas deviner les corrections de
+        // terrain (ex. combien de postes quai sont réellement en service ce
+        // jour-là — parfois un seul, bien en dessous du plafond théorique de
+        // l'équipe). Seule la NATURE de la zone (poste physique ou
+        // PARC/AUTORISE, cf. CC_NON_PHYSICAL_ZONES) détermine "était au
+        // quai" — jamais la provenance (import ou saisie ad hoc) de la
+        // correction ni son libellé exact : un import en masse ignoré ici
+        // avait gelé l'escalier sur GR BAHOUS (les mêmes conducteurs
+        // resteraient indéfiniment au quai ou au parc), tandis qu'une
+        // correction réelle marquant un conducteur "AUTORISE" (jamais un
+        // poste physique) était au contraire prise pour un poste quai en
+        // retombant sur la simulation théorique — cas réel observé sur GR
+        // HADDAZI (ELMANSORI).
         const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
         const yesterdayZone = this._dayZone[yesterdayIso] || {};
         const front = [], back = [];
         order.forEach(id => {
           const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
-          const useManual = manualYesterday && manualYesterday.motif !== RTG_IMPORT_OVERRIDE_MOTIF;
-          const z = useManual ? manualYesterday.zone : yesterdayZone[id];
+          const z = (manualYesterday && manualYesterday.zone !== undefined) ? manualYesterday.zone : yesterdayZone[id];
           const wasOnQuai = !!z && CC_NON_PHYSICAL_ZONES.indexOf(String(z).toUpperCase()) === -1;
           if (wasOnQuai) back.push(id); else front.push(id);
         });
