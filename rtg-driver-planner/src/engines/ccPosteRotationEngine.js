@@ -251,6 +251,7 @@ const CcPosteRotationEngine = {
   _ensureCascade(targetIso, state, teams) {
     if (this._cursorIso !== null && this._cursorIso >= targetIso) return;
 
+    const todayIsoForCascade = RTGDate.toISO(new Date());
     const refDate = ccRefDate(state);
     const targetDate = RTGDate.parseISO(targetIso);
     if (targetDate.getTime() < refDate.getTime()) return;
@@ -321,31 +322,36 @@ const CcPosteRotationEngine = {
 
         // Partition stable : qui N'ÉTAIT PAS au QUAI hier (repos/parc/autorise)
         // passe devant ; qui ÉTAIT au QUAI hier passe derrière — ordre relatif
-        // conservé dans chaque groupe. Le "poste d'hier" retenu est la
-        // RÉALITÉ saisie pour ce jour-là (une correction existante, quel que
-        // soit son motif) quand elle existe, PAS le résultat de la
-        // simulation : c'est exactement le "jour de départ" demandé par
-        // l'exploitant — dès qu'une affectation réelle existe pour un jour,
-        // la file du lendemain en tient compte, au lieu de rejouer une
-        // simulation théorique qui ne peut pas deviner les corrections de
-        // terrain (ex. combien de postes quai sont réellement en service ce
-        // jour-là — parfois un seul, bien en dessous du plafond théorique de
-        // l'équipe). Seule la NATURE de la zone (poste physique ou
+        // conservé dans chaque groupe. Le "poste d'hier" retenu est UNIQUEMENT
+        // une correction RÉELLEMENT saisie pour ce jour-là (peu importe son
+        // motif) : jamais le résultat de la simulation interne (_dayZone),
+        // qui suppose à tort que TOUS les postes physiques théoriques de
+        // l'équipe sont utilisés chaque jour — en réalité, le nombre de
+        // postes réellement en service varie et peut être bien inférieur
+        // (parfois un seul) — demande explicite de l'exploitant : "PAR
+        // DÉFAUT L'ORDRE DOIT RESTER LE MÊME... POUR TOUS LES PROCHAINS
+        // JOURS" tant qu'aucune vraie décision n'existe. Sans correction
+        // réelle pour hier, le conducteur est donc traité comme "pas au
+        // quai" (repasse devant) — l'escalier reste alors figé sur le
+        // dernier état réel jusqu'à la prochaine vraie saisie, jamais deviné
+        // à l'avance. Seule la NATURE de la zone (poste physique ou
         // PARC/AUTORISE, cf. CC_NON_PHYSICAL_ZONES) détermine "était au
-        // quai" — jamais la provenance (import ou saisie ad hoc) de la
-        // correction ni son libellé exact : un import en masse ignoré ici
-        // avait gelé l'escalier sur GR BAHOUS (les mêmes conducteurs
-        // resteraient indéfiniment au quai ou au parc), tandis qu'une
-        // correction réelle marquant un conducteur "AUTORISE" (jamais un
-        // poste physique) était au contraire prise pour un poste quai en
-        // retombant sur la simulation théorique — cas réel observé sur GR
-        // HADDAZI (ELMANSORI).
+        // quai" — jamais son libellé exact : une correction réelle marquant
+        // un conducteur "AUTORISE" (jamais un poste physique) ne compte donc
+        // jamais comme quai (cas réel GR HADDAZI/ELMANSORI), alors qu'une
+        // correction d'import antérieure au jour même (donc une simple
+        // prévision, pas encore réelle) — ex. GR HADDAZI/TIMSADAK, poste
+        // "DTV" prérempli pour un jour alors futur — ne doit pas non plus
+        // faire avancer l'escalier tant que ce jour n'est pas encore réel :
+        // seule une correction dont la date cible est déjà passée au moment
+        // de la lecture (ou une saisie ad hoc, toujours réelle par
+        // définition) compte comme "réalité du jour".
         const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
-        const yesterdayZone = this._dayZone[yesterdayIso] || {};
         const front = [], back = [];
         order.forEach(id => {
           const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
-          const z = (manualYesterday && manualYesterday.zone !== undefined) ? manualYesterday.zone : yesterdayZone[id];
+          const isImportForecast = manualYesterday && manualYesterday.motif === RTG_IMPORT_OVERRIDE_MOTIF && yesterdayIso >= todayIsoForCascade;
+          const z = (manualYesterday && manualYesterday.zone !== undefined && !isImportForecast) ? manualYesterday.zone : null;
           const wasOnQuai = !!z && CC_NON_PHYSICAL_ZONES.indexOf(String(z).toUpperCase()) === -1;
           if (wasOnQuai) back.push(id); else front.push(id);
         });
