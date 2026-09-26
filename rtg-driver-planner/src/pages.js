@@ -3382,12 +3382,16 @@ function AffectationDuJour() {
 
   const presentDrivers = assignments.filter(a => a.status === "PRESENT");
 
-  // Flotte CC, jour futur (> aujourd'hui) : le poste QUAI/PARC n'est jamais
-  // affiché à l'avance (voir PlanningEngine.generateDailyAssignments) tant
-  // que le responsable de shift ne l'a pas saisi lui-même sur le terrain —
+  // Flotte CC, aujourd'hui ou un jour futur : le poste QUAI/PARC n'est
+  // jamais affiché tel quel avant la saisie du responsable (voir
+  // PlanningEngine.generateDailyAssignments) — même le jour même, tant que
+  // le responsable de shift ne l'a pas saisi lui-même sur le terrain (un
+  // poste ne doit jamais apparaître déjà rempli sans qu'il l'ait décidé) —
   // seule la vacation (A/B) prévue par la rotation est présentée, jamais le
   // poste (demande explicite de l'exploitant, §"L'AFFECTATION DE DEMAIN, LES
-  // ZONES DOIVENT ETRE VIDE"). Le nombre de postes RÉELLEMENT en service un
+  // ZONES DOIVENT ETRE VIDE" puis §"J'AI PAS AFFECTE...GENERE
+  // AUTOMATIQUEMENT POURQUOI"). Seuls les jours déjà passés gardent la
+  // valeur historique telle quelle. Le nombre de postes RÉELLEMENT en service un
   // jour donné dépend de l'exploitation (ex. un seul poste actif ce jour-là,
   // contre 7 postes physiques possibles au total) — jamais un chiffre fixe
   // déductible de la config (ccQuaiPostsFor n'est qu'un plafond théorique) :
@@ -3412,7 +3416,7 @@ function AffectationDuJour() {
       return stillAutoParc && !hasAnyManualQuai;
     });
   })();
-  const isCcZonePending = displayedFleet === "CC" && dateStr > todayIso && hasPendingCcZone;
+  const isCcZonePending = displayedFleet === "CC" && dateStr >= todayIso && hasPendingCcZone;
 
   // Un conducteur absent (repos, congé, maladie, absence, formation) reste
   // rattaché au shift de son équipe ce jour-là (le shift/vacation/zone ne

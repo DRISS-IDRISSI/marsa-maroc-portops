@@ -132,15 +132,21 @@ const PlanningEngine = {
         zone = b.zone;
       }
 
-      // Pour un jour futur (> aujourd'hui), seule une correction manuelle ad
+      // Pour aujourd'hui ou un jour futur, seule une correction manuelle ad
       // hoc (via la case cliquable) compte comme "le responsable a renseigné
       // la zone" — la prédiction automatique du poste QUAI n'est jamais
-      // affichée à l'avance. Plutôt qu'une case vide, le poste par défaut
-      // affiché est PARC (demande explicite de l'exploitant) — au
-      // responsable de shift de le remplacer par le poste réel sur le
-      // terrain, jour après jour.
+      // affichée telle quelle, même le jour même : elle n'est qu'une
+      // simulation interne servant à calculer l'ORDRE de la file (voir
+      // ccPosteRotationEngine.js), jamais une décision à afficher tant que
+      // le responsable ne l'a pas saisie lui-même sur le terrain (demande
+      // explicite de l'exploitant après un cas observé où un poste
+      // apparaissait déjà rempli le jour même sans qu'il l'ait saisi).
+      // Plutôt qu'une case vide, le poste par défaut affiché est PARC — au
+      // responsable de shift de le remplacer par le poste réel, jour après
+      // jour. Seuls les jours PASSÉS (< aujourd'hui) gardent la valeur AUTO
+      // telle quelle, comme registre historique déjà vérifié.
       const zoneManuallySet = !!(override && override.zone !== undefined && !zoneFromImport);
-      if (!zoneManuallySet && finalStatus === "PRESENT" && team && team.typeEngin === "CC" && isoDate > todayIso) {
+      if (!zoneManuallySet && finalStatus === "PRESENT" && team && team.typeEngin === "CC" && isoDate >= todayIso) {
         zone = "PARC";
       }
 
