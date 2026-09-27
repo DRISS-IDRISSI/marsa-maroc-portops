@@ -204,6 +204,34 @@ const ZoneRotationEngine = {
           if (free) effectiveLetter[driver.id] = free;
         });
 
+        // 2c) Aucun doublage n'est mathématiquement nécessaire tant que le
+        // nombre de présents ne dépasse pas le nombre de zones (8) : une
+        // collision qui apparaîtrait par pur hasard entre deux chaînes
+        // individuelles indépendantes (ex. 7 présents, deux conducteurs
+        // atterrissent sur la même lettre par coïncidence) est résolue en
+        // gardant celui au cran le plus bas sur cette lettre et en
+        // redirigeant les autres vers une lettre encore libre (zone A
+        // toujours en tout dernier recours) — jamais de doublage "gratuit".
+        // Un doublage n'est laissé tel quel que lorsqu'il est réellement
+        // inévitable (plus de présents que de zones ce jour-là).
+        if (slotDrivers.length <= chainZones.length) {
+          const byLetterContinuing = {};
+          continuing.forEach(d => {
+            const l = effectiveLetter[d.id];
+            (byLetterContinuing[l] = byLetterContinuing[l] || []).push(d);
+          });
+          Object.keys(byLetterContinuing).forEach(letter => {
+            const group = byLetterContinuing[letter];
+            if (group.length <= 1) return;
+            group.sort((a, b) => this._pointer[a.id] - this._pointer[b.id]);
+            for (let i = 1; i < group.length; i++) {
+              const used = new Set(Object.values(effectiveLetter));
+              const free = chainZones.find(z => z !== zoneA && !used.has(z)) || chainZones.find(z => !used.has(z));
+              if (free) effectiveLetter[group[i].id] = free;
+            }
+          });
+        }
+
         // 3) Zones vacantes ce jour-là (aucun conducteur "fixe" — corrigé ou
         // en chaîne continue — n'y est) : pour les revenants d'absence et
         // les nouveaux, dans l'ordre de leur PROPRE zone avant l'absence
