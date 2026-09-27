@@ -3492,9 +3492,16 @@ function AffectationDuJour() {
     const dominant = votes ? Object.keys(votes).sort((x, y) => votes[y] - votes[x])[0] : null;
     vacationLabelToday[d.id] = dominant || VacationRotationEngine.getVacationForDate(d, dateObj, state, state.teams.find(t => t.id === d.teamId));
   });
+  // Équipes "stagiaires" (pas de rotation fixe, cf. isNoRotationTeam
+  // ci-dessous / PlanningEngine, même détection à double critère) : jamais
+  // mélangées aux titulaires dans les tableaux Vacation A/B, même absents
+  // (repos/RC) — demande explicite de l'exploitant ("doivent être affichés
+  // séparément"). Elles ont leur propre groupe "V1+V2" plus bas, qu'elles
+  // soient présentes ou absentes ce jour-là.
+  const noRotationTeamIds = new Set(state.teams.filter(t => (!t.shiftCycle || t.shiftCycle.length === 0) || /stagiaire/i.test(t.nom || "")).map(t => t.id));
   const absentByShift = {};
   state.config.shifts.forEach(s => {
-    absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id);
+    absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id && !noRotationTeamIds.has(a.teamId));
   });
 
   // Même ordre que le Planning Mensuel (ordreAffichage, rempli par l'import
@@ -3553,7 +3560,13 @@ function AffectationDuJour() {
     // "V1+V2" (journée complète, 8h — stagiaires cavaliers, cf. AssignmentEditModal) :
     // groupe à part, sinon ces affectations manuelles ne correspondent à aucune
     // vacation de 4h ci-dessus et disparaîtraient silencieusement de la page.
-    const fullDayRows = assignments.filter(a => a.shift === s.id && a.vacation === "V1+V2" && a.status === "PRESENT").sort(byOrdreAffichage);
+    // Inclut aussi les stagiaires ABSENTS ce jour-là (repos/RC/congé...),
+    // rattachés au shift via teamShiftMap comme pour absentByShift ci-dessus
+    // — sans ça ils retombaient dans les tableaux Vacation A/B des
+    // titulaires (mélangés, alors qu'ils n'ont pas de vraie vacation A/B).
+    const fullDayRows = assignments.filter(a => a.shift === s.id && a.vacation === "V1+V2" && a.status === "PRESENT")
+      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id))
+      .sort(byOrdreAffichage);
     if (fullDayRows.length > 0) {
       grouped[s.id].push({
         vacation: { id: "V1+V2", start: vacDefs.length ? vacDefs[0].start : "", end: vacDefs.length ? vacDefs[vacDefs.length - 1].end : "" },
