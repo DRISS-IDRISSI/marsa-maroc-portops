@@ -3155,8 +3155,8 @@ function CcStagiairesPrintable({ rows }) {
         <tr>
           <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Mat</th>
           <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Nom</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Poste</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "30%" }}>Prénom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Prénom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "30%" }}>Poste</th>
         </tr>
       </thead>
       <tbody>
@@ -3168,8 +3168,8 @@ function CcStagiairesPrintable({ rows }) {
             <tr key={r.driverId} style={{ height: "22px" }}>
               <td className={PRINT_TD_XS}>{r.matricule}</td>
               <td className={PRINT_TD_XS}>{r.nom}</td>
-              <td className={PRINT_TD_XS + " text-center font-semibold"}>{isQuaiZone ? "🚢 " : ""}{ccPosteCellLabel(r, isQuaiZone)}</td>
               <td className={PRINT_TD_XS}>{r.prenom}</td>
+              <td className={PRINT_TD_XS + " text-center font-semibold"}>{isQuaiZone ? "🚢 " : ""}{ccPosteCellLabel(r, isQuaiZone)}</td>
             </tr>
           );
         })}
