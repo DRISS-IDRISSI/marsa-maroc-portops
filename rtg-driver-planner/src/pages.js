@@ -3129,11 +3129,44 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
   );
 }
 
+// Tableau des stagiaires — placé EN BAS du document plutôt qu'en colonne
+// centrale du tableau principal (demande explicite de l'exploitant : la
+// colonne centrale forçait toutes les lignes du tableau principal à la
+// hauteur du plus grand des 3 groupes alors qu'il n'y a souvent que 1 ou 2
+// stagiaires, gaspillant l'essentiel de la feuille). Ici sa hauteur ne
+// dépend que du nombre réel de stagiaires.
+function CcStagiairesPrintable({ rows }) {
+  if (!rows || rows.length === 0) return null;
+  return (
+    <table className="w-full text-[11px] border-collapse border border-slate-400 mt-2" style={{ tableLayout: "fixed" }}>
+      <thead>
+        <tr>
+          <th className={PRINT_TH_XS + " text-center"} colSpan="3">Stagiaires — {rows.length}</th>
+        </tr>
+        <tr>
+          <th className={PRINT_TH_XS} style={{ width: "20%" }}>Mat</th>
+          <th className={PRINT_TH_XS} style={{ width: "40%" }}>Nom</th>
+          <th className={PRINT_TH_XS} style={{ width: "40%" }}>Prénom</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(r => (
+          <tr key={r.driverId} style={{ height: "22px" }}>
+            <td className={PRINT_TD_XS}>{r.matricule}</td>
+            <td className={PRINT_TD_XS}>{r.nom}</td>
+            <td className={PRINT_TD_XS}>{r.prenom}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB, stagiaireRows, quaiPostIds }) {
   const dateFmt = dateStr.split("-").reverse().join("/");
   const flatA = flattenCcPosteRows(sideA.rows, quaiPostIds);
   const flatB = flattenCcPosteRows(sideB.rows, quaiPostIds);
-  const maxRows = Math.max(flatA.length, flatB.length, stagiaireRows.length);
+  const maxRows = Math.max(flatA.length, flatB.length);
   const rowIdxs = Array.from({ length: maxRows }, (_, i) => i);
   return (
     <div className="mb-3">
@@ -3149,15 +3182,13 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
         <thead>
           <tr>
             <th className={PRINT_TH_XS + " text-center"} colSpan="2">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
-            <th className={PRINT_TH_XS + " text-center"}>Stagiaires</th>
             <th className={PRINT_TH_XS + " text-center"} colSpan="2">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
           </tr>
           <tr>
-            <th className={PRINT_TH_XS} style={{ width: "10%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "30%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "20%" }}>Stagiaire</th>
-            <th className={PRINT_TH_XS} style={{ width: "10%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "30%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "15%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "35%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS} style={{ width: "15%" }}>Poste</th>
+            <th className={PRINT_TH_XS} style={{ width: "35%" }}>Conducteur affecté</th>
           </tr>
         </thead>
         <tbody>
@@ -3166,18 +3197,16 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
               une ligne dont le nom passe sur 2 lignes (colonne étroite)
               devient nettement plus haute que ses voisines à une seule
               ligne, donnant un tableau à "cases de tailles différentes" au
-              lieu d'une grille régulière comme le document papier. Les
-              colonnes Conducteur/Stagiaire élargies ci-dessus (27%/21%)
-              rendent ce cas rare ; cette hauteur mini absorbe le reste. */}
+              lieu d'une grille régulière comme le document papier. */}
           {rowIdxs.map(i => (
             <tr key={i} style={{ height: "30px" }}>
               <CcPosteTableHalf flatRows={flatA} rowIndex={i} />
-              <td className={PRINT_TD_XS}>{stagiaireRows[i] ? stagiaireRows[i].nom : ""}</td>
               <CcPosteTableHalf flatRows={flatB} rowIndex={i} />
             </tr>
           ))}
         </tbody>
       </table>
+      <CcStagiairesPrintable rows={stagiaireRows} />
     </div>
   );
 }
