@@ -2082,7 +2082,14 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
   const isNoRotation = !!team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""));
   const [status, setStatus] = useState(assignment.status);
   const [vacation, setVacation] = useState(assignment.vacation || (isNoRotation ? "V1+V2" : "V1"));
-  const [zone, setZone] = useState(assignment.zone || fleetZones[0]);
+  // Pour la flotte CC (postes QUAI/PARC), la valeur par défaut quand aucune
+  // zone n'est encore renseignée doit être PARC (réserve, jamais un poste
+  // QUAI deviné) — sans ça, fleetZones[0] (le premier poste QUAI de la
+  // liste, ex. "P71") se retrouvait pré-sélectionné dans le formulaire dès
+  // l'ouverture, et pouvait être enregistré tel quel si le responsable ne
+  // touchait pas ce champ (ex. en affectant juste le SHIFT d'un stagiaire) —
+  // donnant l'impression d'un poste QUAI "affecté automatiquement".
+  const [zone, setZone] = useState(assignment.zone || (fleet === "CC" ? "PARC" : fleetZones[0]));
   const [shiftChoice, setShiftChoice] = useState(assignment.shift || (config.shifts[0] && config.shifts[0].id));
   const [saving, setSaving] = useState(false);
   const isManual = assignment.source === "MANUAL";

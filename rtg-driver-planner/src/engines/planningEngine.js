@@ -93,7 +93,7 @@ const PlanningEngine = {
         restCorrection = RestDayEngine.isVacationBalanceCorrection(driver, month, year, state, teams, dom) ? "equilibrage_V1_V2" : null;
       }
 
-      return { driver: driver, driverId: driver.id, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime, vacationBalanceAlert: vacationBalanceAlert, restCorrection: restCorrection };
+      return { driver: driver, driverId: driver.id, team: team, status: status, shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime, vacationBalanceAlert: vacationBalanceAlert, restCorrection: restCorrection, isNoRotationTeam: isNoRotationTeam };
     });
 
     // Passe 2 : applique les affectations manuelles par-dessus le résultat auto —
@@ -126,9 +126,13 @@ const PlanningEngine = {
       // sur la valeur AUTO calculée par CcPosteRotationEngine (b.zone), qui
       // reflète désormais correctement les postes propres à chaque équipe et
       // la rotation réelle jour après jour (voir aussi ccPosteRotationEngine.js,
-      // qui ignore ce même import pour calculer l'ordre de la file).
+      // qui ignore ce même import pour calculer l'ordre de la file). Les
+      // stagiaires (isNoRotationTeam) suivent la même règle même si leur
+      // équipe n'a pas typeEngin="CC" renseigné : ce sont toujours des
+      // cavaliers CC (postes QUAI/PARC), jamais des zones RTG A-H.
+      const isCcContext = !!(team && (team.typeEngin === "CC" || b.isNoRotationTeam));
       const zoneFromImport = !!(override && override.zone !== undefined && override.motif === RTG_IMPORT_OVERRIDE_MOTIF);
-      if (zoneFromImport && team && team.typeEngin === "CC") {
+      if (zoneFromImport && isCcContext) {
         zone = b.zone;
       }
 
@@ -146,7 +150,7 @@ const PlanningEngine = {
       // jour. Seuls les jours PASSÉS (< aujourd'hui) gardent la valeur AUTO
       // telle quelle, comme registre historique déjà vérifié.
       const zoneManuallySet = !!(override && override.zone !== undefined && !zoneFromImport);
-      if (!zoneManuallySet && finalStatus === "PRESENT" && team && team.typeEngin === "CC" && isoDate >= todayIso) {
+      if (!zoneManuallySet && finalStatus === "PRESENT" && isCcContext && isoDate >= todayIso) {
         zone = "PARC";
       }
 
