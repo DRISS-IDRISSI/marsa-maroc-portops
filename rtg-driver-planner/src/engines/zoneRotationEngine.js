@@ -194,14 +194,22 @@ const ZoneRotationEngine = {
 
         // 2b) Zone A évitée : un conducteur en chaîne continue qui atterrit
         // naturellement sur A est redirigé vers la première autre lettre
-        // encore libre ce jour-là (son cran réel — this._pointer — n'est PAS
-        // modifié, seul l'AFFICHAGE du jour change ; la chaîne continue
-        // normalement en coulisses, cf. en-tête).
+        // encore libre ce jour-là. Idem 2c ci-dessous : quand l'AFFICHAGE
+        // du jour diffère du cran brut calculé, le cran réel mémorisé
+        // (this._pointer) est RÉALIGNÉ sur cet affichage (convention même
+        // que pour une zone vacante : 2e cran de la nouvelle lettre) — sinon
+        // la chaîne continuerait en coulisses sur l'ancienne lettre jamais
+        // affichée, et le conducteur reviendrait sans cesse sur la même
+        // redirection au lieu d'avancer réellement (constaté en pratique :
+        // un conducteur répété B→B au lieu de B→C).
         continuing.forEach(driver => {
           if (effectiveLetter[driver.id] !== zoneA) return;
           const used = new Set(Object.values(effectiveLetter));
           const free = chainZones.find(z => z !== zoneA && !used.has(z));
-          if (free) effectiveLetter[driver.id] = free;
+          if (free) {
+            effectiveLetter[driver.id] = free;
+            this._pointer[driver.id] = chainZones.indexOf(free) * 2 + 1;
+          }
         });
 
         // 2c) Aucun doublage n'est mathématiquement nécessaire tant que le
@@ -227,7 +235,10 @@ const ZoneRotationEngine = {
             for (let i = 1; i < group.length; i++) {
               const used = new Set(Object.values(effectiveLetter));
               const free = chainZones.find(z => z !== zoneA && !used.has(z)) || chainZones.find(z => !used.has(z));
-              if (free) effectiveLetter[group[i].id] = free;
+              if (free) {
+                effectiveLetter[group[i].id] = free;
+                this._pointer[group[i].id] = chainZones.indexOf(free) * 2 + 1;
+              }
             }
           });
         }
