@@ -2567,6 +2567,21 @@ function VacationGroupTable({ label, drivers, planning, detailLevel, config, onE
                   return <td key={day.iso} className={`border border-slate-200/60 text-center text-[11px] text-slate-900 px-1 py-1.5 ${weekFrameCls(i)}`}>{count}</td>;
                 })}
               </tr>
+              <tr className="bg-slate-50/70 font-bold">
+                <td className="sticky left-0 bg-slate-50/70 border border-slate-200/60 px-2 py-1.5 text-slate-600 z-10" colSpan="1">—</td>
+                <td className="sticky left-14 bg-slate-50/70 border border-slate-200/60 px-2 py-1.5 text-slate-900 z-10" colSpan="1">Vacation (1 ou 2)</td>
+                <td className="hidden sm:table-cell border border-slate-200/60 px-2 py-1.5"></td>
+                {planning.days.map((day, i) => {
+                  // Étiquette V1/V2 du jour pour ce bloc fixe — bascule ensemble
+                  // pour tout le groupe (jamais calculée pour un conducteur
+                  // absent, planningEngine.js), d'où la recherche du 1er présent.
+                  const withVacation = drivers
+                    .map(driver => day.assignments.find(x => x.driverId === driver.id))
+                    .find(a => a && a.vacation);
+                  const label = withVacation ? String(withVacation.vacation).replace(/^V/i, "") : "";
+                  return <td key={day.iso} className={`border border-slate-200/60 text-center text-[11px] text-slate-900 px-1 py-1.5 ${weekFrameCls(i)}`}>{label}</td>;
+                })}
+              </tr>
             </tbody>
           </table>
         </div>
