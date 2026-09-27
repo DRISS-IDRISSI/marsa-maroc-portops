@@ -1480,6 +1480,211 @@ async function downloadXLSX(filename, headers, rows, sheetName) {
   }
 }
 
+// Export Excel "mise en forme riche" (Planning mensuel uniquement) — reproduit
+// le canevas du fichier "PLANNING DE REPOS" que l'exploitant tient déjà à la
+// main par équipe (bannière titre, colonnes de dates groupées par SHIFT,
+// cases colorées par statut, ligne de synthèse, légende) : SheetJS (§ci-dessus)
+// ne permet PAS d'écrire de mise en forme (couleurs/fusions) dans sa version
+// gratuite — vérifié en pratique (styles silencieusement ignorés à l'écriture)
+// — d'où une bibliothèque distincte (ExcelJS, même principe de chargement à
+// la demande) réservée à cet export précis.
+let _exceljsLoadPromise = null;
+function loadExcelJsLib() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if (_exceljsLoadPromise) return _exceljsLoadPromise;
+  _exceljsLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js";
+    script.onload = () => resolve(window.ExcelJS);
+    script.onerror = () => reject(new Error("Impossible de charger la bibliothèque de génération Excel (connexion internet requise)."));
+    document.head.appendChild(script);
+  });
+  return _exceljsLoadPromise;
+}
+
+function hexToArgb(hex) {
+  return "FF" + String(hex || "").replace("#", "").toUpperCase();
+}
+
+function downloadArrayBuffer(buf, filename) {
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+const MOIS_ABBR3 = ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"];
+const PLANNING_XLSX_BORDER = { style: "thin", color: { argb: "FF94A3B8" } };
+const PLANNING_XLSX_BORDER_ALL = { top: PLANNING_XLSX_BORDER, left: PLANNING_XLSX_BORDER, bottom: PLANNING_XLSX_BORDER, right: PLANNING_XLSX_BORDER };
+
+// Une feuille par équipe (même quand "Toutes les équipes" est sélectionné à
+// l'écran) : le canevas de référence (bannière + groupement SHIFT) n'a de
+// sens que pour une équipe à la fois, chaque équipe suivant sa PROPRE
+// rotation S1/S2/S3 (ShiftRotationEngine.getTeamShiftForDate est par équipe).
+function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year, config) {
+  const days = planning.days;
+  const N = days.length;
+  const firstDayCol = 4; // 1=Mat, 2=Nom, 3=Prénom
+  const totalCol = firstDayCol + N;
+  const shiftRow = 2, dateRow = 3, firstDriverRow = 4;
+
+  ws.getColumn(1).width = 10;
+  ws.getColumn(2).width = 16;
+  ws.getColumn(3).width = 16;
+  for (let c = 0; c < N; c++) ws.getColumn(firstDayCol + c).width = 7;
+  ws.getColumn(totalCol).width = 11;
+
+  ws.mergeCells(1, 1, 1, totalCol);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = `PLANNING MENSUEL RTG — ${RAPPORT_MOIS_LABELS_P[month - 1].toUpperCase()} ${year} / ${(team.nom || "").toUpperCase()}`;
+  titleCell.font = { bold: true, size: 13 };
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+  titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: hexToArgb("#bdd7ee") } };
+  ws.getRow(1).height = 22;
+
+  ["Mat", "Nom", "Prénom"].forEach((label, i) => {
+    ws.mergeCells(shiftRow, i + 1, dateRow, i + 1);
+    const c = ws.getCell(shiftRow, i + 1);
+    c.value = label;
+    c.font = { bold: true };
+    c.alignment = { horizontal: "center", vertical: "middle" };
+    c.border = PLANNING_XLSX_BORDER_ALL;
+  });
+  ws.mergeCells(shiftRow, totalCol, dateRow, totalCol);
+  const totalHeaderCell = ws.getCell(shiftRow, totalCol);
+  totalHeaderCell.value = "Total Repos";
+  totalHeaderCell.font = { bold: true };
+  totalHeaderCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  totalHeaderCell.border = PLANNING_XLSX_BORDER_ALL;
+
+  // Fusionne les colonnes de dates par bloc de jours consécutifs partageant
+  // le même shift d'équipe ("SHIFT 1", "SHIFT 3", ...), comme le fichier de
+  // référence — jamais un bloc par jour isolé.
+  let blockStart = 0;
+  for (let i = 1; i <= N; i++) {
+    const prevShift = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, days[i - 1].day), config);
+    const curShift = i < N ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, days[i].day), config) : null;
+    if (i === N || curShift !== prevShift) {
+      const col1 = firstDayCol + blockStart, col2 = firstDayCol + i - 1;
+      if (col2 > col1) ws.mergeCells(shiftRow, col1, shiftRow, col2);
+      const cell = ws.getCell(shiftRow, col1);
+      cell.value = "SHIFT " + String(prevShift || "").replace("S", "");
+      cell.font = { bold: true };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      for (let cc = col1; cc <= col2; cc++) ws.getCell(shiftRow, cc).border = PLANNING_XLSX_BORDER_ALL;
+      blockStart = i;
+    }
+  }
+
+  days.forEach((d, i) => {
+    const cell = ws.getCell(dateRow, firstDayCol + i);
+    cell.value = String(d.day).padStart(2, "0") + "-" + MOIS_ABBR3[month - 1];
+    cell.font = { bold: true, size: 9 };
+    cell.alignment = { horizontal: "center" };
+    cell.border = PLANNING_XLSX_BORDER_ALL;
+  });
+
+  const statusesUsed = new Set();
+  teamDrivers.forEach((driver, rIdx) => {
+    const row = firstDriverRow + rIdx;
+    ws.getCell(row, 1).value = driver.matricule;
+    ws.getCell(row, 2).value = driver.nom;
+    ws.getCell(row, 3).value = driver.prenom;
+    for (let c = 1; c <= 3; c++) ws.getCell(row, c).border = PLANNING_XLSX_BORDER_ALL;
+    let reposCount = 0;
+    days.forEach((d, i) => {
+      const a = d.assignments.find(x => x.driverId === driver.id);
+      const cell = ws.getCell(row, firstDayCol + i);
+      cell.border = PLANNING_XLSX_BORDER_ALL;
+      cell.alignment = { horizontal: "center" };
+      if (!a) return;
+      const meta = RTG_STATUS_META[a.status] || { code: a.status };
+      if (a.status === "PRESENT") {
+        cell.value = [a.vacation, a.zone].filter(Boolean).join("-") || meta.code;
+      } else {
+        cell.value = meta.code;
+        statusesUsed.add(a.status);
+        const bg = PRINT_STATUS_BG[a.status];
+        if (bg) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: hexToArgb(bg) } };
+        if (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") reposCount++;
+      }
+    });
+    const totalCell = ws.getCell(row, totalCol);
+    totalCell.value = reposCount;
+    totalCell.alignment = { horizontal: "center" };
+    totalCell.border = PLANNING_XLSX_BORDER_ALL;
+  });
+
+  const summaryRow = firstDriverRow + teamDrivers.length;
+  ws.getCell(summaryRow, 2).value = "NOMBRE DE PRÉSENTS";
+  ws.getCell(summaryRow, 2).font = { bold: true, color: { argb: "FFB45309" } };
+  for (let c = 1; c <= 3; c++) ws.getCell(summaryRow, c).border = PLANNING_XLSX_BORDER_ALL;
+  days.forEach((d, i) => {
+    const count = teamDrivers.reduce((s, driver) => {
+      const a = d.assignments.find(x => x.driverId === driver.id);
+      return s + (a && a.status === "PRESENT" ? 1 : 0);
+    }, 0);
+    const cell = ws.getCell(summaryRow, firstDayCol + i);
+    cell.value = count;
+    cell.font = { bold: true };
+    cell.alignment = { horizontal: "center" };
+    cell.border = PLANNING_XLSX_BORDER_ALL;
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
+  });
+
+  let legendRow = summaryRow + 2;
+  ws.getCell(legendRow, 1).value = "LÉGENDE";
+  ws.getCell(legendRow, 1).font = { bold: true, underline: true };
+  legendRow++;
+  ws.getCell(legendRow, 1).value = "(case vide)";
+  ws.getCell(legendRow, 2).value = "Conducteur présent";
+  legendRow++;
+  Object.keys(RTG_STATUS_META).forEach(status => {
+    if (status === "PRESENT" || !statusesUsed.has(status)) return;
+    const meta = RTG_STATUS_META[status];
+    const swatch = ws.getCell(legendRow, 1);
+    swatch.value = meta.code;
+    swatch.alignment = { horizontal: "center" };
+    swatch.border = PLANNING_XLSX_BORDER_ALL;
+    const bg = PRINT_STATUS_BG[status];
+    if (bg) swatch.fill = { type: "pattern", pattern: "solid", fgColor: { argb: hexToArgb(bg) } };
+    ws.getCell(legendRow, 2).value = meta.label;
+    legendRow++;
+  });
+
+  ws.views = [{ state: "frozen", xSplit: 3, ySplit: dateRow }];
+}
+
+async function downloadPlanningMensuelXLSX(filename, planning, drivers, teams, month, year, config) {
+  try {
+    const ExcelJS = await loadExcelJsLib();
+    const wb = new ExcelJS.Workbook();
+    const teamIdsInOrder = [];
+    drivers.forEach(d => { if (teamIdsInOrder.indexOf(d.teamId) === -1) teamIdsInOrder.push(d.teamId); });
+    const usedSheetNames = new Set();
+    teamIdsInOrder.forEach(tid => {
+      const team = teams.find(t => t.id === tid);
+      const teamDrivers = drivers.filter(d => d.teamId === tid);
+      if (!team || teamDrivers.length === 0) return;
+      const base = (team.nom || tid).replace(/[\\/?*[\]:]/g, " ").trim().slice(0, 28) || tid;
+      let uniqueName = base, n = 2;
+      while (usedSheetNames.has(uniqueName)) { uniqueName = base + " " + n; n++; }
+      usedSheetNames.add(uniqueName);
+      const ws = wb.addWorksheet(uniqueName);
+      buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year, config);
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    downloadArrayBuffer(buf, filename);
+  } catch (e) {
+    alert("Erreur d'export Excel : " + (e && e.message ? e.message : "réessayez."));
+  }
+}
+
 function ExportExcelButton({ onClick }) {
   return (
     <button onClick={onClick} className="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
@@ -2828,18 +3033,10 @@ function PlanningMensuel() {
     : planning.validation;
 
   const exportExcel = () => {
-    const headers = ["Mat", "Nom", "Prénom", "Équipe", ...planning.days.map(day => String(day.day).padStart(2, "0"))];
-    const rows = drivers.map(driver => {
-      const cells = planning.days.map(day => {
-        const a = day.assignments.find(x => x.driverId === driver.id);
-        if (!a) return "";
-        const meta = RTG_STATUS_META[a.status] || { code: a.status };
-        if (a.status === "PRESENT") return [a.vacation, a.zone].filter(Boolean).join("-") || meta.code;
-        return meta.code;
-      });
-      return [driver.matricule, driver.nom, driver.prenom, driver.teamId, ...cells];
-    });
-    downloadXLSX(`planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.xlsx`, headers, rows, "Planning");
+    downloadPlanningMensuelXLSX(
+      `planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.xlsx`,
+      planning, drivers, state.teams, month, year, state.config
+    );
   };
 
   const printRef = useRef(null);
