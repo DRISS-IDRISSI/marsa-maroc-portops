@@ -74,6 +74,19 @@ import * as XLSX from "npm:xlsx@0.18.5";
 
 const SUBJECT_FILTER = "DRIVER MOVES PER SHIFT";
 
+// Seuls S1/S2/S3 existent réellement sur ce terminal (3 vacations/jour) — un
+// "S4" (ou toute autre valeur) déjà rencontré dans le rapport TOS vient
+// systématiquement d'une erreur de frappe côté saisie TOS, jamais d'une
+// vraie 4ème vacation. Comme "shift" fait partie de la clé anti-doublon
+// (login_tos, date_travail, shift, engin), une correction manuelle a
+// posteriori du fichier Excel (S4 -> S3) puis un renvoi n'écrase PAS la
+// ligne S4 déjà importée — elle AJOUTE une ligne S3 à côté, et les deux se
+// cumulent dans les totaux affichés (mouvement fantôme constaté en
+// pratique sur ABOU EL FATH). On empêche donc toute ligne à shift invalide
+// d'entrer en base dès l'import, et on nettoie celles déjà présentes à
+// chaque exécution (même logique que mouvements_tos_logins_ignores).
+const VALID_SHIFTS = new Set(["S1", "S2", "S3"]);
+
 // Un onglet par flotte : nom de l'onglet dans le .xls, valeur attendue de la
 // colonne TYPE_ENGIN sur ses lignes, et flotte correspondante côté
 // application (teams.type_engin) pour restreindre le rattachement — voir
@@ -213,6 +226,16 @@ Deno.serve(async _req => {
     ignoredRowsDeleted = (deleted || []).length;
   }
 
+  // Auto-nettoyage des lignes à shift invalide déjà en base (voir VALID_SHIFTS
+  // ci-dessus) — couvre à la fois l'historique déjà importé avant ce correctif
+  // et toute ligne qui aurait pu se glisser par un autre chemin.
+  const { data: invalidShiftDeleted } = await admin
+    .from("mouvements_tos")
+    .delete()
+    .not("shift", "in", `(${Array.from(VALID_SHIFTS).join(",")})`)
+    .select("id");
+  const invalidShiftRowsDeleted = (invalidShiftDeleted || []).length;
+
   // Auto-réparation : des lignes déjà en base non rattachées (driver_id null,
   // ex. importées avant qu'un "Login TOS" correctif soit renseigné sur la
   // fiche conducteur) sont retentées à chaque exécution — sans ça, une
@@ -289,6 +312,8 @@ Deno.serve(async _req => {
   let importedRows = 0;
   let skippedNoAttachment = 0;
   let skippedAlreadyImported = 0;
+  let skippedInvalidShift = 0;
+  const invalidShiftSamples = new Set<string>();
   const unmatchedLogins = new Set<string>();
   const errors: string[] = [];
 
@@ -354,6 +379,13 @@ Deno.serve(async _req => {
                 const dateTravail = excelDateToIso(row.DATE_TRAVAIL);
                 if (!dateTravail) continue;
 
+                const shift = String(row.SHIFT || "").trim().toUpperCase();
+                if (!VALID_SHIFTS.has(shift)) {
+                  skippedInvalidShift++;
+                  invalidShiftSamples.add(`${rawLogin} ${dateTravail} shift="${shift}"`);
+                  continue;
+                }
+
                 const matches = loginMap.get(rawLogin) || [];
                 let driverId: string | null = null;
                 let matchNote: string | null = null;
@@ -383,7 +415,7 @@ Deno.serve(async _req => {
                   // conducteur) — constaté en pratique : un conducteur dont
                   // le rapport corrigé montrait exactement le double de ses
                   // vrais mouvements.
-                  shift: String(row.SHIFT || "").trim().toUpperCase(),
+                  shift,
                   engin: String(row.ENGIN || "").trim().toUpperCase(),
                   facility: row.FACILITY ? String(row.FACILITY) : null,
                   nombre_in: toInt(row.NOMBRE_IN),
@@ -446,9 +478,12 @@ Deno.serve(async _req => {
     processedEmails,
     skippedNoAttachment,
     skippedAlreadyImported,
+    skippedInvalidShift,
+    invalidShiftSamples: Array.from(invalidShiftSamples),
     importedRows,
     reconciledRows,
     ignoredRowsDeleted,
+    invalidShiftRowsDeleted,
     unmatchedLogins: Array.from(unmatchedLogins),
     errors
   }), { headers: { "Content-Type": "application/json" } });
