@@ -148,9 +148,18 @@ const PlanningEngine = {
       // Plutôt qu'une case vide, le poste par défaut affiché est PARC — au
       // responsable de shift de le remplacer par le poste réel, jour après
       // jour. Seuls les jours PASSÉS (< aujourd'hui) gardent la valeur AUTO
-      // telle quelle, comme registre historique déjà vérifié.
+      // telle quelle, comme registre historique déjà vérifié — mais cette
+      // restriction ne vaut QUE pour une équipe avec une vraie rotation
+      // automatique (b.zone y reflète un historique déjà simulé). Une équipe
+      // stagiaire (isNoRotationTeam) n'a JAMAIS de zone automatique, à
+      // aucune date (b.zone y est toujours null, cf. Passe 1) : sans ce
+      // filet, une case vide/blanche apparaissait (au lieu de "PARC") dès
+      // que la date de l'affectation (import ou jour même) tombait avant
+      // "aujourd'hui" par calcul (ex. shift de nuit à cheval sur minuit) —
+      // demande explicite de l'exploitant : "je veux que ça soit
+      // automatique d'affecter les stagiaires au PARC par défaut".
       const zoneManuallySet = !!(override && override.zone !== undefined && !zoneFromImport);
-      if (!zoneManuallySet && finalStatus === "PRESENT" && isCcContext && isoDate >= todayIso) {
+      if (!zoneManuallySet && finalStatus === "PRESENT" && isCcContext && (b.isNoRotationTeam || isoDate >= todayIso)) {
         zone = "PARC";
       }
 
