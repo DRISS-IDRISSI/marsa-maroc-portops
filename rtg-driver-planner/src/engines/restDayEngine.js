@@ -35,8 +35,10 @@
 //
 // Deux repos consécutifs pour un même conducteur sont évités (le choix d'un
 // jour candidat écarte systématiquement les jours immédiatement adjacents à
-// un repos déjà retenu ce mois-ci), sauf repli extrême si aucune autre
-// option n'est disponible.
+// un repos déjà retenu ce mois-ci, y compris à cheval sur la frontière des
+// mois) — JAMAIS relâché, même en tout dernier recours (voir Phase C) :
+// mieux vaut exceptionnellement UN repos de moins que le quota mensuel
+// plutôt que deux repos consécutifs.
 //
 // Le quota mensuel de chaque conducteur est réparti par ANTICIPATION entre les
 // semaines où son équipe est sur Shift 1, Shift 2 et Shift 3, proportionnellement
@@ -779,10 +781,15 @@ const RestDayEngine = {
       // par la rotation par bucket (plafonds trop serrés à l'échelle d'un
       // seul bucket) — replacé sur l'ensemble des jours candidats encore
       // libres de CE conducteur, tout le mois confondu, où la marge de
-      // manœuvre est bien plus grande. Trois niveaux, comme avant : d'abord
-      // en respectant non-adjacence + plafond du bloc, puis en relâchant le
-      // plafond du bloc, puis (tout dernier recours) la non-adjacence — le
-      // plafond global de l'équipe n'est en revanche JAMAIS dépassé.
+      // manœuvre est bien plus grande. La non-adjacence (jamais 2 repos
+      // consécutifs, y compris à cheval sur la frontière des mois via le
+      // "jour 0 virtuel" ci-dessus) n'est JAMAIS relâchée, même en tout
+      // dernier recours — demande explicite de l'exploitant après un cas
+      // réel observé (BENHICHAM, 30 septembre / 1er octobre) : mieux vaut
+      // exceptionnellement UN repos de moins que le quota mensuel plutôt que
+      // deux repos consécutifs. Seul le plafond du bloc est relâché en
+      // dernier recours ; le plafond global de l'équipe n'est en revanche
+      // jamais dépassé.
       // ------------------------------------------------------------------
       teamDrivers.forEach(driver => {
         const st = driverState[driver.id];
@@ -814,6 +821,7 @@ const RestDayEngine = {
           for (const day of candidates) {
             if (need <= 0) break;
             if (st.used.has(day)) continue;
+            if (blockedByAdjacency(st.used, day)) continue;
             if (usageAt(group, day) >= capForGroup(group, day)) continue;
             place(day);
           }
