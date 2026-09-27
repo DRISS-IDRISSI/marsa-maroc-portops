@@ -371,8 +371,20 @@ Deno.serve(async _req => {
                   driver_id: driverId,
                   login_tos: rawLogin,
                   date_travail: dateTravail,
-                  shift: String(row.SHIFT || ""),
-                  engin: String(row.ENGIN || ""),
+                  // trim + majuscules — même normalisation que rawLogin
+                  // ci-dessus. Sans ça, une différence d'espace ou de casse
+                  // entre deux générations du même rapport TOS (ex. "RTG01"
+                  // vs "RTG01 ", ou "S3" vs "s3") fait échouer la contrainte
+                  // unique (login_tos, date_travail, shift, engin) : au lieu
+                  // de METTRE À JOUR la ligne existante, l'upsert en crée une
+                  // SECONDE, invisible en tant que doublon (chaque ligne a
+                  // l'air normale isolément) mais dont les valeurs sont
+                  // ADDITIONNÉES au moment de l'affichage (regroupement par
+                  // conducteur) — constaté en pratique : un conducteur dont
+                  // le rapport corrigé montrait exactement le double de ses
+                  // vrais mouvements.
+                  shift: String(row.SHIFT || "").trim().toUpperCase(),
+                  engin: String(row.ENGIN || "").trim().toUpperCase(),
                   facility: row.FACILITY ? String(row.FACILITY) : null,
                   nombre_in: toInt(row.NOMBRE_IN),
                   nombre_out: toInt(row.NOMBRE_OUT),
