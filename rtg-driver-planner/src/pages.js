@@ -1526,12 +1526,95 @@ const PLANNING_XLSX_BORDER_ALL = { top: PLANNING_XLSX_BORDER, left: PLANNING_XLS
 // l'écran) : le canevas de référence (bannière + groupement SHIFT) n'a de
 // sens que pour une équipe à la fois, chaque équipe suivant sa PROPRE
 // rotation S1/S2/S3 (ShiftRotationEngine.getTeamShiftForDate est par équipe).
+// Une équipe "stagiaires" (pas de rotation fixe, cf. isNoRotationTeam dans
+// planningEngine.js) n'a ni shift/vacation/zone calculés automatiquement —
+// un seul groupe "Effectif", jamais de split Vacation 1/Vacation 2, ni de
+// groupement d'en-tête par SHIFT (qui n'a pas de sens pour elle).
+function isNoRotationTeam(team) {
+  return !team || !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire/i.test(team.nom || "");
+}
+
+// Une des deux moitiés fixes de l'équipe (Vacation 1 / Vacation 2, cf.
+// driver.initialVacation) — jamais l'étiquette V1/V2 du jour (qui bascule
+// quotidiennement pour tout le bloc, voir la ligne "VACATION (1 OU 2)"
+// ci-dessous) : deux tableaux empilés dans la même feuille, comme le fichier
+// de référence de l'exploitant. Retourne la ligne libre suivante.
+function buildVacationGroupRows(ws, startRow, groupDrivers, days, firstDayCol, totalCol, statusesUsed) {
+  if (groupDrivers.length === 0) return startRow;
+  groupDrivers.forEach((driver, rIdx) => {
+    const row = startRow + rIdx;
+    ws.getCell(row, 1).value = driver.matricule;
+    ws.getCell(row, 2).value = driver.nom;
+    ws.getCell(row, 3).value = driver.prenom;
+    for (let c = 1; c <= 3; c++) ws.getCell(row, c).border = PLANNING_XLSX_BORDER_ALL;
+    let reposCount = 0;
+    days.forEach((d, i) => {
+      const a = d.assignments.find(x => x.driverId === driver.id);
+      const cell = ws.getCell(row, firstDayCol + i);
+      cell.border = PLANNING_XLSX_BORDER_ALL;
+      cell.alignment = { horizontal: "center" };
+      // Case vide = conducteur présent (même convention que le fichier de
+      // référence et le rapport imprimable existant) : seuls les statuts
+      // autres que PRESENT affichent un code, avec sa couleur.
+      if (!a || a.status === "PRESENT") return;
+      const meta = RTG_STATUS_META[a.status] || { code: a.status };
+      cell.value = meta.code;
+      statusesUsed.add(a.status);
+      const bg = PRINT_STATUS_BG[a.status];
+      if (bg) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: hexToArgb(bg) } };
+      if (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") reposCount++;
+    });
+    const totalCell = ws.getCell(row, totalCol);
+    totalCell.value = reposCount;
+    totalCell.alignment = { horizontal: "center" };
+    totalCell.border = PLANNING_XLSX_BORDER_ALL;
+  });
+
+  const presentsRow = startRow + groupDrivers.length;
+  ws.getCell(presentsRow, 2).value = "NOMBRE DE PRÉSENTS";
+  ws.getCell(presentsRow, 2).font = { bold: true, color: { argb: "FFB45309" } };
+  for (let c = 1; c <= 3; c++) ws.getCell(presentsRow, c).border = PLANNING_XLSX_BORDER_ALL;
+  days.forEach((d, i) => {
+    const count = groupDrivers.reduce((s, driver) => {
+      const a = d.assignments.find(x => x.driverId === driver.id);
+      return s + (a && a.status === "PRESENT" ? 1 : 0);
+    }, 0);
+    const cell = ws.getCell(presentsRow, firstDayCol + i);
+    cell.value = count;
+    cell.font = { bold: true };
+    cell.alignment = { horizontal: "center" };
+    cell.border = PLANNING_XLSX_BORDER_ALL;
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
+  });
+
+  // "VACATION (1 OU 2)" : l'étiquette V1/V2 du jour pour ce bloc fixe — bascule
+  // ensemble pour tout le groupe (cf. VacationRotationEngine), donc identique
+  // pour chaque conducteur présent ce jour-là ; jamais calculée pour un
+  // conducteur absent (planningEngine.js), d'où la recherche du 1er présent.
+  const vacationRow = presentsRow + 1;
+  ws.getCell(vacationRow, 2).value = "VACATION (1 OU 2)";
+  ws.getCell(vacationRow, 2).font = { bold: true };
+  for (let c = 1; c <= 3; c++) ws.getCell(vacationRow, c).border = PLANNING_XLSX_BORDER_ALL;
+  days.forEach((d, i) => {
+    const withVacation = groupDrivers
+      .map(driver => d.assignments.find(x => x.driverId === driver.id))
+      .find(a => a && a.vacation);
+    const cell = ws.getCell(vacationRow, firstDayCol + i);
+    if (withVacation) cell.value = String(withVacation.vacation).replace(/^V/i, "");
+    cell.alignment = { horizontal: "center" };
+    cell.border = PLANNING_XLSX_BORDER_ALL;
+  });
+
+  return vacationRow + 1;
+}
+
 function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year, config) {
   const days = planning.days;
   const N = days.length;
   const firstDayCol = 4; // 1=Mat, 2=Nom, 3=Prénom
   const totalCol = firstDayCol + N;
   const shiftRow = 2, dateRow = 3, firstDriverRow = 4;
+  const noRotation = isNoRotationTeam(team);
 
   ws.getColumn(1).width = 10;
   ws.getColumn(2).width = 16;
@@ -1564,20 +1647,23 @@ function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year,
 
   // Fusionne les colonnes de dates par bloc de jours consécutifs partageant
   // le même shift d'équipe ("SHIFT 1", "SHIFT 3", ...), comme le fichier de
-  // référence — jamais un bloc par jour isolé.
-  let blockStart = 0;
-  for (let i = 1; i <= N; i++) {
-    const prevShift = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, days[i - 1].day), config);
-    const curShift = i < N ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, days[i].day), config) : null;
-    if (i === N || curShift !== prevShift) {
-      const col1 = firstDayCol + blockStart, col2 = firstDayCol + i - 1;
-      if (col2 > col1) ws.mergeCells(shiftRow, col1, shiftRow, col2);
-      const cell = ws.getCell(shiftRow, col1);
-      cell.value = "SHIFT " + String(prevShift || "").replace("S", "");
-      cell.font = { bold: true };
-      cell.alignment = { horizontal: "center", vertical: "middle" };
-      for (let cc = col1; cc <= col2; cc++) ws.getCell(shiftRow, cc).border = PLANNING_XLSX_BORDER_ALL;
-      blockStart = i;
+  // référence — jamais un bloc par jour isolé. Sans objet pour une équipe
+  // sans rotation fixe (stagiaires) — cf. isNoRotationTeam.
+  if (!noRotation) {
+    let blockStart = 0;
+    for (let i = 1; i <= N; i++) {
+      const prevShift = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, days[i - 1].day), config);
+      const curShift = i < N ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.makeDate(year, month, days[i].day), config) : null;
+      if (i === N || curShift !== prevShift) {
+        const col1 = firstDayCol + blockStart, col2 = firstDayCol + i - 1;
+        if (col2 > col1) ws.mergeCells(shiftRow, col1, shiftRow, col2);
+        const cell = ws.getCell(shiftRow, col1);
+        cell.value = "SHIFT " + String(prevShift || "").replace("S", "");
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        for (let cc = col1; cc <= col2; cc++) ws.getCell(shiftRow, cc).border = PLANNING_XLSX_BORDER_ALL;
+        blockStart = i;
+      }
     }
   }
 
@@ -1590,54 +1676,18 @@ function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year,
   });
 
   const statusesUsed = new Set();
-  teamDrivers.forEach((driver, rIdx) => {
-    const row = firstDriverRow + rIdx;
-    ws.getCell(row, 1).value = driver.matricule;
-    ws.getCell(row, 2).value = driver.nom;
-    ws.getCell(row, 3).value = driver.prenom;
-    for (let c = 1; c <= 3; c++) ws.getCell(row, c).border = PLANNING_XLSX_BORDER_ALL;
-    let reposCount = 0;
-    days.forEach((d, i) => {
-      const a = d.assignments.find(x => x.driverId === driver.id);
-      const cell = ws.getCell(row, firstDayCol + i);
-      cell.border = PLANNING_XLSX_BORDER_ALL;
-      cell.alignment = { horizontal: "center" };
-      if (!a) return;
-      const meta = RTG_STATUS_META[a.status] || { code: a.status };
-      if (a.status === "PRESENT") {
-        cell.value = [a.vacation, a.zone].filter(Boolean).join("-") || meta.code;
-      } else {
-        cell.value = meta.code;
-        statusesUsed.add(a.status);
-        const bg = PRINT_STATUS_BG[a.status];
-        if (bg) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: hexToArgb(bg) } };
-        if (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") reposCount++;
-      }
-    });
-    const totalCell = ws.getCell(row, totalCol);
-    totalCell.value = reposCount;
-    totalCell.alignment = { horizontal: "center" };
-    totalCell.border = PLANNING_XLSX_BORDER_ALL;
-  });
+  let nextRow = firstDriverRow;
+  if (noRotation) {
+    nextRow = buildVacationGroupRows(ws, nextRow, teamDrivers, days, firstDayCol, totalCol, statusesUsed);
+  } else {
+    const group1 = teamDrivers.filter(d => d.initialVacation !== "V2");
+    const group2 = teamDrivers.filter(d => d.initialVacation === "V2");
+    nextRow = buildVacationGroupRows(ws, nextRow, group1, days, firstDayCol, totalCol, statusesUsed);
+    if (group1.length > 0 && group2.length > 0) nextRow += 1; // ligne vide de séparation entre les deux tableaux
+    nextRow = buildVacationGroupRows(ws, nextRow, group2, days, firstDayCol, totalCol, statusesUsed);
+  }
 
-  const summaryRow = firstDriverRow + teamDrivers.length;
-  ws.getCell(summaryRow, 2).value = "NOMBRE DE PRÉSENTS";
-  ws.getCell(summaryRow, 2).font = { bold: true, color: { argb: "FFB45309" } };
-  for (let c = 1; c <= 3; c++) ws.getCell(summaryRow, c).border = PLANNING_XLSX_BORDER_ALL;
-  days.forEach((d, i) => {
-    const count = teamDrivers.reduce((s, driver) => {
-      const a = d.assignments.find(x => x.driverId === driver.id);
-      return s + (a && a.status === "PRESENT" ? 1 : 0);
-    }, 0);
-    const cell = ws.getCell(summaryRow, firstDayCol + i);
-    cell.value = count;
-    cell.font = { bold: true };
-    cell.alignment = { horizontal: "center" };
-    cell.border = PLANNING_XLSX_BORDER_ALL;
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
-  });
-
-  let legendRow = summaryRow + 2;
+  let legendRow = nextRow + 1;
   ws.getCell(legendRow, 1).value = "LÉGENDE";
   ws.getCell(legendRow, 1).font = { bold: true, underline: true };
   legendRow++;
