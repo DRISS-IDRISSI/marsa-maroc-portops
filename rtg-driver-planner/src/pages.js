@@ -3073,26 +3073,12 @@ function isCcQuaiZone(zone) {
   return !!zone && CC_GENERIC_ZONES.indexOf(zone.toUpperCase()) === -1;
 }
 
-// Regroupe les lignes (déjà triées dans l'ordre de la file, cf. byCcRank)
-// en segments : les conducteurs PRESENT consécutifs affectés au MÊME poste
-// QUAI physique (capacité > 1, ex. P71) partagent une seule case fusionnée
-// (rowSpan), exactement comme sur le document papier — repos/congé/PARC
-// restent des cases individuelles (jamais fusionnées, PARC n'est pas un
-// poste physique unique mais une réserve).
+// Une case Poste PAR conducteur, jamais fusionnée entre plusieurs
+// conducteurs au même poste physique (demande explicite de l'exploitant :
+// chaque conducteur doit voir son poste inscrit sur SA propre ligne, comme
+// sur le document papier rempli à la main).
 function buildCcPosteSegments(rows) {
-  const segments = [];
-  let i = 0;
-  while (i < rows.length) {
-    const a = rows[i];
-    const isQuai = a.status === "PRESENT" && isCcQuaiZone(a.zone);
-    let j = i + 1;
-    if (isQuai) {
-      while (j < rows.length && rows[j].status === "PRESENT" && rows[j].zone === a.zone) j++;
-    }
-    segments.push({ zone: isQuai ? a.zone : null, rows: rows.slice(i, j) });
-    i = j;
-  }
-  return segments;
+  return rows.map(a => ({ zone: (a.status === "PRESENT" && isCcQuaiZone(a.zone)) ? a.zone : null, rows: [a] }));
 }
 
 function ccPosteCellLabel(a, isQuaiZone) {
@@ -3109,26 +3095,23 @@ function ccPosteCellLabel(a, isQuaiZone) {
   return (RTG_STATUS_META[a.status] || {}).label || a.status;
 }
 
-// "Aplatit" les segments en une ligne par conducteur, avec l'info de fusion
-// (isStart/span) nécessaire pour poser le rowSpan au bon endroit dans le
-// <table> (une seule ligne par groupe porte la case Poste).
+// "Aplatit" les segments en une ligne par conducteur — une case Poste par
+// ligne (jamais fusionnée, cf. buildCcPosteSegments ci-dessus).
 function flattenCcPosteRows(rows) {
   const flat = [];
   buildCcPosteSegments(rows).forEach(seg => {
     const isQuaiZone = seg.zone !== null;
-    seg.rows.forEach((a, idx) => {
-      flat.push({ a: a, isStart: idx === 0, span: seg.rows.length, label: ccPosteCellLabel(a, isQuaiZone), isQuaiZone: isQuaiZone });
+    seg.rows.forEach(a => {
+      flat.push({ a: a, label: ccPosteCellLabel(a, isQuaiZone), isQuaiZone: isQuaiZone });
     });
   });
   return flat;
 }
 
 // Les 2 cellules (Poste / Conducteur affecté) d'UN côté (Vacation A ou B)
-// pour la ligne rowIndex — la case Poste n'est rendue que sur la première
-// ligne d'un groupe fusionné (rowSpan couvre les suivantes). Colonne
-// Émargement retirée (demande explicite de l'exploitant) : ce rapport
-// numérique n'est pas destiné à être signé à la main comme le document
-// papier d'origine.
+// pour la ligne rowIndex. Colonne Émargement retirée (demande explicite de
+// l'exploitant) : ce rapport numérique n'est pas destiné à être signé à la
+// main comme le document papier d'origine.
 // Sur CE rapport uniquement (demande explicite de l'exploitant) : repos et
 // repos compensatoire (RC) partagent la même couleur JAUNE plutôt que le
 // rose/fuchsia utilisés partout ailleurs dans l'appli (Planning mensuel,
@@ -3142,7 +3125,7 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
   const bg = r.a.status !== "PRESENT" ? CC_POSTE_STATUS_BG[r.a.status] : undefined;
   return (
     <React.Fragment>
-      {r.isStart && <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
+      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>
       <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.isQuaiZone ? "🚢 " : ""}{r.a.nom}</td>
     </React.Fragment>
   );
@@ -3165,24 +3148,29 @@ function CcStagiairesPrintable({ rows }) {
     <table className="w-full text-[11px] border-collapse border border-slate-400 mt-2" style={{ tableLayout: "fixed" }}>
       <thead>
         <tr>
-          <th className={PRINT_TH_XS + " text-center"} colSpan="3">Stagiaires — {list.length}</th>
+          <th className={PRINT_TH_XS + " text-center"} colSpan="4">Stagiaires — {list.length}</th>
         </tr>
         <tr>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "20%" }}>Mat</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "40%" }}>Nom</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "40%" }}>Prénom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Mat</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "20%" }}>Poste</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "32.5%" }}>Nom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "32.5%" }}>Prénom</th>
         </tr>
       </thead>
       <tbody>
         {list.length === 0 ? (
-          <tr style={{ height: "22px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="3">Aucun stagiaire ce jour</td></tr>
-        ) : list.map(r => (
-          <tr key={r.driverId} style={{ height: "22px" }}>
-            <td className={PRINT_TD_XS}>{r.matricule}</td>
-            <td className={PRINT_TD_XS}>{r.nom}</td>
-            <td className={PRINT_TD_XS}>{r.prenom}</td>
-          </tr>
-        ))}
+          <tr style={{ height: "22px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="4">Aucun stagiaire ce jour</td></tr>
+        ) : list.map(r => {
+          const isQuaiZone = isCcQuaiZone(r.zone);
+          return (
+            <tr key={r.driverId} style={{ height: "22px" }}>
+              <td className={PRINT_TD_XS}>{r.matricule}</td>
+              <td className={PRINT_TD_XS + " text-center font-semibold"}>{isQuaiZone ? "🚢 " : ""}{ccPosteCellLabel(r, isQuaiZone)}</td>
+              <td className={PRINT_TD_XS}>{r.nom}</td>
+              <td className={PRINT_TD_XS}>{r.prenom}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
