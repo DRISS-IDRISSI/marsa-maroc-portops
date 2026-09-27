@@ -113,7 +113,20 @@ const ZoneRotationEngine = {
       });
       this._cascadeNaturalIndex[iso] = naturalForDay;
 
+      // Une correction manuelle du jour (zone RÉELLEMENT reçue, cf. en-tête du
+      // fichier) prime sur la zone "naturelle" calculée par la simulation —
+      // elle n'entre donc PAS dans le lot réparti par assignZonesForSlot (sa
+      // zone est déjà fixée), et c'est ELLE (pas la valeur automatique
+      // invisible que la simulation aurait calculée) qui fait avancer le
+      // pointeur de cascade du conducteur pour son prochain jour PRÉSENT.
+      // Avant ce correctif, une correction manuelle n'était jamais reportée
+      // dans la simulation interne : celle-ci continuait, en coulisses, sur
+      // sa propre valeur automatique (jamais affichée), et le jour suivant
+      // enchaînait sur cette valeur fantôme plutôt que sur la zone
+      // réellement affichée la veille — donnant l'impression que la
+      // rotation "sautait" après une correction manuelle.
       const groups = {};
+      const overriddenToday = {};
       rtgDrivers.forEach(driver => {
         if (driver.actif === false) return;
         const team = teams.find(t => t.id === driver.teamId);
@@ -122,11 +135,23 @@ const ZoneRotationEngine = {
         const shift = ShiftRotationEngine.getTeamShiftForDate(team, cursor, state.config);
         const vacation = VacationRotationEngine.getVacationForDate(driver, cursor, state, team);
         if (!shift || !vacation) return;
+        const override = state.manualOverrides[iso + "_" + driver.id];
+        if (override && override.zone !== undefined && override.zone !== null) {
+          overriddenToday[driver.id] = override.zone;
+          return;
+        }
         const key = shift + "_" + vacation;
         (groups[key] = groups[key] || []).push({ driverId: driver.id, zone: zones[naturalForDay[driver.id]] });
       });
 
       const dayResult = {};
+      Object.keys(overriddenToday).forEach(driverId => {
+        const zoneStr = overriddenToday[driverId];
+        dayResult[driverId] = zoneStr;
+        const parsed = this._parseZoneStr(zoneStr);
+        const letterIdx = Math.max(0, zones.indexOf(parsed.letter));
+        this._cascadeIndex[driverId] = (letterIdx + parsed.slot) % zones.length;
+      });
       Object.keys(groups).forEach(key => {
         const entries = groups[key];
         ZoneBalancingEngine.assignZonesForSlot(entries, zones);
