@@ -3054,18 +3054,30 @@ function ccPosteDisplayLabel(zone) {
   return prefix + "/PARC";
 }
 
+// Est-ce un poste QUAI physique (par opposition à PARC/AUTORISE, une
+// réserve) ? N'importe quel poste de zonesByFleet.CC en dehors de
+// PARC/AUTORISE compte, quelle que soit l'équipe qui l'occupe (demande
+// explicite de l'exploitant : "TOUS LES SHIFTS ONT LE MEME PRINCIPE
+// D'AFFECTATION DES POSTES", l'affectation n'est pas exclusive à une
+// équipe) — ne PAS restreindre à state.config.ccQuaiPosts, qui ne sert
+// qu'à la capacité THÉORIQUE de la simulation automatique (cf.
+// ccPosteRotationEngine.js), pas à la liste des postes physiques réels.
+function isCcQuaiZone(zone) {
+  return !!zone && CC_GENERIC_ZONES.indexOf(zone.toUpperCase()) === -1;
+}
+
 // Regroupe les lignes (déjà triées dans l'ordre de la file, cf. byCcRank)
 // en segments : les conducteurs PRESENT consécutifs affectés au MÊME poste
 // QUAI physique (capacité > 1, ex. P71) partagent une seule case fusionnée
 // (rowSpan), exactement comme sur le document papier — repos/congé/PARC
 // restent des cases individuelles (jamais fusionnées, PARC n'est pas un
 // poste physique unique mais une réserve).
-function buildCcPosteSegments(rows, quaiPostIds) {
+function buildCcPosteSegments(rows) {
   const segments = [];
   let i = 0;
   while (i < rows.length) {
     const a = rows[i];
-    const isQuai = a.status === "PRESENT" && a.zone && quaiPostIds.has(a.zone);
+    const isQuai = a.status === "PRESENT" && isCcQuaiZone(a.zone);
     let j = i + 1;
     if (isQuai) {
       while (j < rows.length && rows[j].status === "PRESENT" && rows[j].zone === a.zone) j++;
@@ -3093,9 +3105,9 @@ function ccPosteCellLabel(a, isQuaiZone) {
 // "Aplatit" les segments en une ligne par conducteur, avec l'info de fusion
 // (isStart/span) nécessaire pour poser le rowSpan au bon endroit dans le
 // <table> (une seule ligne par groupe porte la case Poste).
-function flattenCcPosteRows(rows, quaiPostIds) {
+function flattenCcPosteRows(rows) {
   const flat = [];
-  buildCcPosteSegments(rows, quaiPostIds).forEach(seg => {
+  buildCcPosteSegments(rows).forEach(seg => {
     const isQuaiZone = seg.zone !== null;
     seg.rows.forEach((a, idx) => {
       flat.push({ a: a, isStart: idx === 0, span: seg.rows.length, label: ccPosteCellLabel(a, isQuaiZone), isQuaiZone: isQuaiZone });
@@ -3169,10 +3181,10 @@ function CcStagiairesPrintable({ rows }) {
   );
 }
 
-function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB, stagiaireRows, quaiPostIds }) {
+function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB, stagiaireRows }) {
   const dateFmt = dateStr.split("-").reverse().join("/");
-  const flatA = flattenCcPosteRows(sideA.rows, quaiPostIds);
-  const flatB = flattenCcPosteRows(sideB.rows, quaiPostIds);
+  const flatA = flattenCcPosteRows(sideA.rows);
+  const flatB = flattenCcPosteRows(sideB.rows);
   const maxRows = Math.max(flatA.length, flatB.length);
   const rowIdxs = Array.from({ length: maxRows }, (_, i) => i);
   return (
@@ -3395,12 +3407,6 @@ function AffectationDuJour() {
   const displayedFleet = shiftRestricted && rawState.teams.find(t => t.id === ownTeamId)
     ? (rawState.teams.find(t => t.id === ownTeamId).typeEngin || "RTG")
     : rawState.currentFleet;
-  // Postes QUAI physiques (P71/P74/DTV...) pour le rapport imprimable
-  // "presque identique" au document terrain (CcAffectationTerrainPrintable
-  // ci-dessous) — distingue un poste QUAI réel (fusionnable, capacité > 1)
-  // d'un PARC/AUTORISE (jamais fusionné, case vide comme sur le papier).
-  const ccQuaiPostIds = useMemo(() => new Set((state.config.ccQuaiPosts || []).map(p => p.id)), [state.config.ccQuaiPosts]);
-
   const assignments = useMemo(() => {
     try {
       const all = PlanningEngine.generateDailyAssignments(dateStr, state);
@@ -3788,7 +3794,7 @@ function AffectationDuJour() {
                 <CcAffectationTerrainPrintable
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
                   dateStr={dateStr} sideA={nonStagGroups[0]} sideB={nonStagGroups[1]}
-                  stagiaireRows={stagGroup ? stagGroup.rows : []} quaiPostIds={ccQuaiPostIds}
+                  stagiaireRows={stagGroup ? stagGroup.rows : []}
                 />
                 {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} fleet={displayedFleet} />}
                 <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
