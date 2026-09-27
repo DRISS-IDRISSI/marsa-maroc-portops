@@ -519,13 +519,23 @@ function parseStagiairePlanningExcel(workbook, drivers, month, year, teamNom) {
 // la saisie réelle prime sur la simulation.
 //
 // Structure attendue (une par bloc, répétée pour chaque équipe) :
-//   ligne "VACATION A" (ou B)      <- ouvre le bloc
+//   ligne "VACATION A" (ou B)      <- ouvre le bloc, si présente (facultatif,
+//                                     voir note ci-dessous)
 //   lignes conducteurs (matricule, nom, prénom, R/C/vide par jour...)
 //   ligne "NBR DE PRESENT"         <- ignorée ici
 //   ligne "VACATION 1 OU 2"        <- ferme le bloc, "1" ou "2" par jour
 // Tout ce qui suit la dernière ligne "VACATION 1 OU 2" (ex. le mini-tableau
 // des stagiaires cavaliers, dupliqué sur chaque feuille) est hors bloc et
 // ignoré, puisqu'aucun bloc n'est plus "ouvert" à ce stade du parcours.
+//
+// L'étiquette "VACATION A"/"VACATION B" n'est PAS toujours présente — certains
+// fichiers réels (constaté en pratique, GR BAKKALI) ne délimitent les deux
+// blocs QUE par la ligne "VACATION 1 OU 2" qui ferme le précédent, sans aucune
+// étiquette d'ouverture : la toute première ligne conducteur rencontrée après
+// l'en-tête (ou juste après la fermeture du bloc précédent) ouvre alors
+// silencieusement un nouveau bloc IMPLICITE. Sans cette bascule, ce fichier
+// ne produisait aucun bloc détecté ("0 bloc(s) détecté(s)") et n'appliquait
+// donc jamais aucune correction.
 function parseVacationLabelExcel(workbook, drivers, month, year, teamNom) {
   const XLSX = window.XLSX;
   const sheetName = selectShiftSheet(workbook, teamNom);
@@ -554,7 +564,7 @@ function parseVacationLabelExcel(workbook, drivers, month, year, teamNom) {
       blocks.push(currentBlock);
       continue;
     }
-    if (/VACATION\s*1\s*OU\s*2/i.test(label)) {
+    if (/VACATION\s*\(?\s*1\s*OU\s*2\s*\)?/i.test(label)) {
       if (currentBlock) {
         dayColumns.forEach(({ day, colIdx }) => {
           const v = row[colIdx];
@@ -564,9 +574,15 @@ function parseVacationLabelExcel(workbook, drivers, month, year, teamNom) {
       }
       continue;
     }
-    if (!currentBlock) continue;
     const matCell = row[0];
     if (matCell === null || matCell === undefined || !MATRICULE_PATTERN.test(String(matCell).trim())) continue;
+    // Bloc implicite (voir note ci-dessus) : aucune étiquette "VACATION A/B"
+    // n'a ouvert de bloc — la première ligne conducteur rencontrée en ouvre
+    // un silencieusement.
+    if (!currentBlock) {
+      currentBlock = { driverIds: [], vacationByDay: {} };
+      blocks.push(currentBlock);
+    }
     const found = matchDriver(matCell, row[1], row[2]);
     if (found) currentBlock.driverIds.push(found.driver.id);
   }
