@@ -35,9 +35,19 @@ const RTG_CONFIG = {
   // l'ensemble des postes possibles pour toutes les équipes CC — d'autres
   // équipes/terminaux (ex. GR BAKKALI, TC3) utilisent bien ces postes,
   // le sélecteur manuel doit donc les proposer.
+  // "74/Parc", "DTV/Parc", "80/Parc" retirés de la liste (redondants) : une
+  // fois affichés via ccPosteDisplayLabel (pages.js), ils donnent EXACTEMENT
+  // le même libellé que "P74"/"DTV"/"P80" respectivement ("P74/PARC",
+  // "DTV/PARC", "P80/PARC") — deux entrées différentes dans le sélecteur
+  // manuel pour un seul et même poste physique, source de confusion
+  // (demande explicite de l'exploitant : "redondance des postes"). Une
+  // valeur déjà enregistrée sous l'ancienne forme continue de s'afficher
+  // normalement (ccPosteDisplayLabel normalise à l'affichage quelle que
+  // soit la forme stockée) — seule la liste de SÉLECTION est nettoyée.
+  // "Roro/Parc" n'a pas d'équivalent "P"-préfixé dans la liste : conservé.
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "74/Parc", "Roro/Parc", "DTV/Parc", "80/Parc", "PARC", "AUTORISE"]
+    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "Roro/Parc", "PARC", "AUTORISE"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
   // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle
