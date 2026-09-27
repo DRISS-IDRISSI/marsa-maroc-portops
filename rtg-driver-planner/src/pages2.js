@@ -2650,8 +2650,6 @@ function MonPlanningPage() {
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}{team ? " — " + team.nom : ""}</p>
       </div>
 
-      <RendementLeaderboard fleet={team ? (team.typeEngin || "RTG") : "RTG"} teams={team ? [team] : []} />
-
       <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
           <label className={LABEL_CLS}>Mois</label>
