@@ -3098,7 +3098,7 @@ function flattenCcPosteRows(rows, quaiPostIds) {
   buildCcPosteSegments(rows, quaiPostIds).forEach(seg => {
     const isQuaiZone = seg.zone !== null;
     seg.rows.forEach((a, idx) => {
-      flat.push({ a: a, isStart: idx === 0, span: seg.rows.length, label: ccPosteCellLabel(a, isQuaiZone) });
+      flat.push({ a: a, isStart: idx === 0, span: seg.rows.length, label: ccPosteCellLabel(a, isQuaiZone), isQuaiZone: isQuaiZone });
     });
   });
   return flat;
@@ -3115,7 +3115,7 @@ function flattenCcPosteRows(rows, quaiPostIds) {
 // rose/fuchsia utilisés partout ailleurs dans l'appli (Planning mensuel,
 // etc.) — override LOCAL, PRINT_STATUS_BG global inchangé pour ne pas
 // perdre cette distinction là où elle sert.
-const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fde047", REPOS_COMPENSATOIRE: "#fde047" });
+const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3", REPOS_COMPENSATOIRE: "#fef9c3" });
 
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
@@ -3124,7 +3124,7 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
   return (
     <React.Fragment>
       {r.isStart && <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} rowSpan={r.span} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>}
-      <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.nom}</td>
+      <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.isQuaiZone ? "🚢 " : ""}{r.a.nom}</td>
     </React.Fragment>
   );
 }
