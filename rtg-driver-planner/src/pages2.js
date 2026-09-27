@@ -1716,7 +1716,7 @@ function RapportRHPage() {
           .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key]))
           .concat([g.totalMvmt]);
       });
-      downloadCSV(`mouvements-rtg-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.csv`, headers, rows);
+      downloadXLSX(`mouvements-rtg-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.xlsx`, headers, rows, "Mouvements");
       return;
     }
     if (tab === "feries") {
@@ -1727,7 +1727,7 @@ function RapportRHPage() {
         r.record.type === "FERIE_TRAVAILLE" ? (r.mouvements != null ? r.mouvements : "") : "",
         r.record.type === "FERIE_TRAVAILLE" ? (r.mouvementCommentaire || r.record.commentaire || "") : (r.record.commentaire || "")
       ]);
-      downloadCSV(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
+      downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés");
       return;
     }
     const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)"];
@@ -1735,7 +1735,7 @@ function RapportRHPage() {
       r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.PRESENT, r.counts.REPOS, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE, r.counts.FORMATION,
       r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures
     ]);
-    downloadCSV(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.csv`, headers, rows);
+    downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH");
   };
 
   const printRef = useRef(null);
@@ -2214,8 +2214,8 @@ function ConducteurAccountsPanel({ state }) {
   };
 
   const downloadCsv = () => {
-    downloadCSV("comptes-conducteurs.csv", ["Matricule", "Nom", "Prénom", "Identifiant", "Mot de passe"],
-      results.map(r => [r.matricule, r.nom, r.prenom, r.username, r.password]));
+    downloadXLSX("comptes-conducteurs.xlsx", ["Matricule", "Nom", "Prénom", "Identifiant", "Mot de passe"],
+      results.map(r => [r.matricule, r.nom, r.prenom, r.username, r.password]), "Comptes");
   };
 
   const sendOne = async r => {
@@ -3580,7 +3580,7 @@ function MouvementsRtgPage() {
         .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key]))
         .concat([g.totalMvmt]);
     });
-    downloadCSV(`mouvements-rtg-total-${dateDebut}-${dateFin}.csv`, headers, dataRows);
+    downloadXLSX(`mouvements-rtg-total-${dateDebut}-${dateFin}.xlsx`, headers, dataRows, "Mouvements");
   };
 
   // Regroupe par journée (la plus récente en premier), puis par conducteur —

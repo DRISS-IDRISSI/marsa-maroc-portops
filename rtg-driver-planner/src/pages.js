@@ -1459,25 +1459,25 @@ const PRINT_TD_XS_CENTER = PRINT_TD_XS + " text-center";
 const PRINT_TD_XS_WRAP = "border border-slate-300 px-1 py-1 break-words align-middle";
 const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
-// Export Excel des rapports — CSV avec séparateur ";" (convention Excel FR,
-// où "," est le séparateur décimal) et BOM UTF-8 pour que les accents
-// s'affichent correctement à l'ouverture dans Excel.
-function downloadCSV(filename, headers, rows) {
-  const escape = v => {
-    const s = v == null ? "" : String(v);
-    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
-  const lines = [headers, ...rows].map(r => r.map(escape).join(";"));
-  const csv = "﻿" + lines.join("\r\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+// Export Excel des rapports — vrai classeur .xlsx (pas un CSV renommé) via
+// SheetJS, déjà chargée à la demande ailleurs dans l'appli (import planning) —
+// même bibliothèque, réutilisée ici pour l'écriture. Largeurs de colonnes
+// ajustées au contenu le plus long de chaque colonne pour rester lisible à
+// l'ouverture, sans réglage manuel côté utilisateur.
+async function downloadXLSX(filename, headers, rows, sheetName) {
+  try {
+    const XLSX = await loadXlsxLib();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws["!cols"] = headers.map((h, i) => {
+      const maxLen = rows.reduce((m, r) => Math.max(m, r[i] == null ? 0 : String(r[i]).length), String(h == null ? "" : h).length);
+      return { wch: Math.min(Math.max(maxLen + 2, 8), 40) };
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, (sheetName || "Feuille1").slice(0, 31));
+    XLSX.writeFile(wb, filename);
+  } catch (e) {
+    alert("Erreur d'export Excel : " + (e && e.message ? e.message : "réessayez."));
+  }
 }
 
 function ExportExcelButton({ onClick }) {
@@ -2839,7 +2839,7 @@ function PlanningMensuel() {
       });
       return [driver.matricule, driver.nom, driver.prenom, driver.teamId, ...cells];
     });
-    downloadCSV(`planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.csv`, headers, rows);
+    downloadXLSX(`planning-mensuel-${RAPPORT_MOIS_LABELS_P[month - 1]}-${year}.xlsx`, headers, rows, "Planning");
   };
 
   const printRef = useRef(null);
@@ -3599,7 +3599,7 @@ function AffectationDuJour() {
         const rec = RTGStore.getFerieMouvements(dateStr, a.driverId);
         return [a.matricule, a.nom, a.prenom, a.teamNom, rec ? rec.mouvements : "", rec ? rec.commentaire || "" : ""];
       });
-      downloadCSV(`affectation-${dateStr}-jour-ferie.csv`, headers, rows);
+      downloadXLSX(`affectation-${dateStr}-jour-ferie.xlsx`, headers, rows, "Affectation");
       return;
     }
     const headers = ["Shift", "Vacation", "Mat", "Nom", "Prénom", "Équipe", "Horaire", "Zone", "Statut"];
@@ -3618,7 +3618,7 @@ function AffectationDuJour() {
     if (offRows.length > 0 && (effectiveShiftFilter === "all" || effectiveShiftFilter === "S3")) {
       offRows.forEach(a => rows.push(["Shift 3", "", a.matricule, a.nom, a.prenom, a.teamNom, "", "", "OFF"]));
     }
-    downloadCSV(`affectation-${dateStr}${suffix}.csv`, headers, rows);
+    downloadXLSX(`affectation-${dateStr}${suffix}.xlsx`, headers, rows, "Affectation");
   };
 
   // Un conteneur "papier" DISTINCT par shift (au lieu d'un seul bloc pour
