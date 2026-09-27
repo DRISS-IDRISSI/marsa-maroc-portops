@@ -3110,12 +3110,12 @@ function flattenCcPosteRows(rows, quaiPostIds) {
 // Émargement retirée (demande explicite de l'exploitant) : ce rapport
 // numérique n'est pas destiné à être signé à la main comme le document
 // papier d'origine.
-// Sur CE rapport uniquement (demande explicite de l'exploitant) : le repos
-// compensatoire (RC) partage la couleur du repos normal plutôt que sa
-// couleur fuchsia distincte utilisée partout ailleurs dans l'appli
-// (Planning mensuel, etc.) — override LOCAL, PRINT_STATUS_BG global
-// inchangé pour ne pas perdre cette distinction là où elle sert.
-const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS_COMPENSATOIRE: PRINT_STATUS_BG.REPOS });
+// Sur CE rapport uniquement (demande explicite de l'exploitant) : repos et
+// repos compensatoire (RC) partagent la même couleur JAUNE plutôt que le
+// rose/fuchsia utilisés partout ailleurs dans l'appli (Planning mensuel,
+// etc.) — override LOCAL, PRINT_STATUS_BG global inchangé pour ne pas
+// perdre cette distinction là où elle sert.
+const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fde047", REPOS_COMPENSATOIRE: "#fde047" });
 
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
@@ -3136,21 +3136,28 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
 // stagiaires, gaspillant l'essentiel de la feuille). Ici sa hauteur ne
 // dépend que du nombre réel de stagiaires.
 function CcStagiairesPrintable({ rows }) {
-  if (!rows || rows.length === 0) return null;
+  const list = rows || [];
+  // Le bandeau "Stagiaires" reste toujours visible, même à 0 (au lieu de
+  // disparaître entièrement) — demande explicite de l'exploitant : une
+  // section qui apparaît/disparaît d'un jour à l'autre selon l'effectif du
+  // jour donnait l'impression que les stagiaires avaient "disparu" du
+  // rapport plutôt que d'être simplement absents ce jour-là.
   return (
     <table className="w-full text-[11px] border-collapse border border-slate-400 mt-2" style={{ tableLayout: "fixed" }}>
       <thead>
         <tr>
-          <th className={PRINT_TH_XS + " text-center"} colSpan="3">Stagiaires — {rows.length}</th>
+          <th className={PRINT_TH_XS + " text-center"} colSpan="3">Stagiaires — {list.length}</th>
         </tr>
         <tr>
-          <th className={PRINT_TH_XS} style={{ width: "20%" }}>Mat</th>
-          <th className={PRINT_TH_XS} style={{ width: "40%" }}>Nom</th>
-          <th className={PRINT_TH_XS} style={{ width: "40%" }}>Prénom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "20%" }}>Mat</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "40%" }}>Nom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "40%" }}>Prénom</th>
         </tr>
       </thead>
       <tbody>
-        {rows.map(r => (
+        {list.length === 0 ? (
+          <tr style={{ height: "22px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="3">Aucun stagiaire ce jour</td></tr>
+        ) : list.map(r => (
           <tr key={r.driverId} style={{ height: "22px" }}>
             <td className={PRINT_TD_XS}>{r.matricule}</td>
             <td className={PRINT_TD_XS}>{r.nom}</td>
@@ -3185,10 +3192,10 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
             <th className={PRINT_TH_XS + " text-center"} colSpan="2">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
           </tr>
           <tr>
-            <th className={PRINT_TH_XS} style={{ width: "15%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "35%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS} style={{ width: "15%" }}>Poste</th>
-            <th className={PRINT_TH_XS} style={{ width: "35%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Poste</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "35%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Poste</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "35%" }}>Conducteur affecté</th>
           </tr>
         </thead>
         <tbody>
