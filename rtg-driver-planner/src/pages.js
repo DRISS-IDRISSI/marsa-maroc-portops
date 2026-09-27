@@ -3108,10 +3108,11 @@ function flattenCcPosteRows(rows) {
   return flat;
 }
 
-// Les 2 cellules (Poste / Conducteur affecté) d'UN côté (Vacation A ou B)
-// pour la ligne rowIndex. Colonne Émargement retirée (demande explicite de
-// l'exploitant) : ce rapport numérique n'est pas destiné à être signé à la
-// main comme le document papier d'origine.
+// Les 3 cellules (Mat / Nom / Poste, dans cet ordre — demande explicite de
+// l'exploitant) d'UN côté (Vacation A ou B) pour la ligne rowIndex. Colonne
+// Émargement retirée (demande explicite de l'exploitant) : ce rapport
+// numérique n'est pas destiné à être signé à la main comme le document
+// papier d'origine.
 // Sur CE rapport uniquement (demande explicite de l'exploitant) : repos et
 // repos compensatoire (RC) partagent la même couleur JAUNE plutôt que le
 // rose/fuchsia utilisés partout ailleurs dans l'appli (Planning mensuel,
@@ -3121,12 +3122,13 @@ const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3"
 
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
-  if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
+  if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
   const bg = r.a.status !== "PRESENT" ? CC_POSTE_STATUS_BG[r.a.status] : undefined;
   return (
     <React.Fragment>
+      <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.matricule}</td>
+      <td className={PRINT_TD_XS_WRAP} style={bg ? { backgroundColor: bg } : undefined}>{r.isQuaiZone ? "🚢 " : ""}{r.a.nom}</td>
       <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>
-      <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.isQuaiZone ? "🚢 " : ""}{r.a.nom}</td>
     </React.Fragment>
   );
 }
@@ -3152,9 +3154,9 @@ function CcStagiairesPrintable({ rows }) {
         </tr>
         <tr>
           <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Mat</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "20%" }}>Poste</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "32.5%" }}>Nom</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "32.5%" }}>Prénom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Nom</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Poste</th>
+          <th className={PRINT_TH_XS + " text-center"} style={{ width: "30%" }}>Prénom</th>
         </tr>
       </thead>
       <tbody>
@@ -3165,8 +3167,8 @@ function CcStagiairesPrintable({ rows }) {
           return (
             <tr key={r.driverId} style={{ height: "22px" }}>
               <td className={PRINT_TD_XS}>{r.matricule}</td>
-              <td className={PRINT_TD_XS + " text-center font-semibold"}>{isQuaiZone ? "🚢 " : ""}{ccPosteCellLabel(r, isQuaiZone)}</td>
               <td className={PRINT_TD_XS}>{r.nom}</td>
+              <td className={PRINT_TD_XS + " text-center font-semibold"}>{isQuaiZone ? "🚢 " : ""}{ccPosteCellLabel(r, isQuaiZone)}</td>
               <td className={PRINT_TD_XS}>{r.prenom}</td>
             </tr>
           );
@@ -3195,14 +3197,16 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
       <table className="w-full text-[11px] border-collapse border border-slate-400" style={{ tableLayout: "fixed" }}>
         <thead>
           <tr>
-            <th className={PRINT_TH_XS + " text-center"} colSpan="2">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
-            <th className={PRINT_TH_XS + " text-center"} colSpan="2">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
+            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
+            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
           </tr>
           <tr>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Poste</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "35%" }}>Conducteur affecté</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Poste</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "35%" }}>Conducteur affecté</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "8%" }}>Mat</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "18%" }}>Poste</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "8%" }}>Mat</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "18%" }}>Poste</th>
           </tr>
         </thead>
         <tbody>
