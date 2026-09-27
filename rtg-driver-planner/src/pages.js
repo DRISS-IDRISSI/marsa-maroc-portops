@@ -1210,7 +1210,17 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
             </details>
             <p><span className="text-slate-900 font-semibold">{orderCorrectionsToApply.length}</span> conducteur(s) seront réordonnés dans le Planning mensuel pour correspondre à l'ordre des lignes du fichier.</p>
             <div className="flex gap-2 pt-2">
-              <button onClick={applyRest} disabled={reposToApply.length === 0 && presenceCorrectionsToApply.length === 0 && orderCorrectionsToApply.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">Appliquer</button>
+              {/* Jamais désactivé, même à 0/0/0 (repos/congés déjà tous
+                  corrects ce mois-ci) : sans ce clic, applyRest() ne
+                  s'exécute jamais, step ne passe jamais à "done", et le
+                  bouton "Continuer vers les blocs et vacations (V1/V2)"
+                  (qui n'apparaît qu'à l'étape "done") ne s'affiche donc
+                  jamais — impasse constatée en pratique (GR BAKKALI, import
+                  sans aucun repos/congé à corriger). Les 3 boucles de
+                  applyRest sont sans effet quand les 3 listes sont vides. */}
+              <button onClick={applyRest} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+                {reposToApply.length === 0 && presenceCorrectionsToApply.length === 0 && orderCorrectionsToApply.length === 0 ? "Continuer" : "Appliquer"}
+              </button>
               <button onClick={onClose} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Annuler</button>
             </div>
           </div>
