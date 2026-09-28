@@ -4078,11 +4078,19 @@ function AffectationDuJour() {
           <div>
             <p className="font-semibold">Postes non encore décidés</p>
             <p className="mt-0.5 text-amber-700">
-              Le tableau ci-dessous prévoit la vacation (A/B) de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
-              mais la colonne Zone affiche encore PARC par défaut pour tout le monde : c'est au responsable de shift d'affecter au poste
-              réel les conducteurs réellement au quai ce jour-là (leur nombre dépend de l'exploitation, pas d'un chiffre fixe). Dès la
-              première affectation réelle saisie pour une vacation, ce message disparaît pour elle — les autres conducteurs restant au
-              PARC n'ont pas besoin d'être ressaisis.
+              {displayedFleet === "CER" ? (
+                <>Le tableau ci-dessous prévoit le shift de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
+                mais la colonne Zone affiche encore PARC par défaut pour tout le monde : c'est au responsable de shift d'affecter au poste
+                réel les conducteurs réellement au quai ce jour-là (leur nombre dépend de l'exploitation, pas d'un chiffre fixe). Dès la
+                première affectation réelle saisie pour une équipe, ce message disparaît pour elle — les autres conducteurs restant au
+                PARC n'ont pas besoin d'être ressaisis.</>
+              ) : (
+                <>Le tableau ci-dessous prévoit la vacation (A/B) de chaque conducteur pour le {RTGDate.formatFr(RTGDate.parseISO(dateStr))},
+                mais la colonne Zone affiche encore PARC par défaut pour tout le monde : c'est au responsable de shift d'affecter au poste
+                réel les conducteurs réellement au quai ce jour-là (leur nombre dépend de l'exploitation, pas d'un chiffre fixe). Dès la
+                première affectation réelle saisie pour une vacation, ce message disparaît pour elle — les autres conducteurs restant au
+                PARC n'ont pas besoin d'être ressaisis.</>
+              )}
             </p>
           </div>
         </div>
