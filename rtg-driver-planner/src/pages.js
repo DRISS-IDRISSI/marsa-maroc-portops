@@ -3460,6 +3460,14 @@ function CcPosteBadge({ label, isQuaiZone }) {
   );
 }
 
+// Même principe que CcPosteBadge (cadre coloré arrondi), un seul ton ici
+// (pas de segment PARC à distinguer) — remplace l'ancien préfixe emoji 🚢
+// devant le nom, jugé moins lisible que le cadre.
+function CcNomBadge({ nom, isQuaiZone }) {
+  if (!isQuaiZone) return nom;
+  return <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { borderRadius: 6, border: "1px solid #E67E22", background: "#FDF2E9", color: "#7A3000" })}>{nom}</span>;
+}
+
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
   if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
@@ -3467,7 +3475,7 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
   return (
     <React.Fragment>
       <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.matricule}</td>
-      <td className={PRINT_TD_XS_WRAP} style={bg ? { backgroundColor: bg } : undefined}>{r.isQuaiZone ? "🚢 " : ""}{r.a.nom}</td>
+      <td className={PRINT_TD_XS_WRAP + " text-center"} style={bg ? { backgroundColor: bg } : undefined}><CcNomBadge nom={r.a.nom} isQuaiZone={r.isQuaiZone} /></td>
       <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={bg ? { backgroundColor: bg } : undefined}><CcPosteBadge label={r.label} isQuaiZone={r.isQuaiZone} /></td>
     </React.Fragment>
   );
