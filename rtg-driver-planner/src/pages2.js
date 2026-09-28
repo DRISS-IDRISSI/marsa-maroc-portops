@@ -120,12 +120,14 @@ function DriverForm({ state, initial, editingId, onCancel, onSaved, lockedTeamId
             {zonesForFleet(state.config, ((state.teams.find(t => t.id === (lockedTeamId || form.teamId)) || {}).typeEngin) || "RTG").map(z => <option key={z} value={z}>{z}</option>)}
           </select>
         </div>
+        {fleetHasVacation(((state.teams.find(t => t.id === (lockedTeamId || form.teamId)) || {}).typeEngin) || "RTG") && (
         <div>
           <label className={LABEL_CLS}>Bloc de vacation (au 01/08/2026)</label>
           <select className={FIELD_CLS} value={form.initialVacation} onChange={e => setForm(f => Object.assign({}, f, { initialVacation: e.target.value }))}>
             {state.config.vacationCycle.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
+        )}
         <div><label className={LABEL_CLS}>Date d'entrée</label><input type="date" className={FIELD_CLS} value={form.dateEntree} onChange={e => setForm(f => Object.assign({}, f, { dateEntree: e.target.value }))} /></div>
         <div className="sm:col-span-2"><label className={LABEL_CLS}>Observation</label><input className={FIELD_CLS} value={form.observation} onChange={e => setForm(f => Object.assign({}, f, { observation: e.target.value }))} /></div>
       </div>

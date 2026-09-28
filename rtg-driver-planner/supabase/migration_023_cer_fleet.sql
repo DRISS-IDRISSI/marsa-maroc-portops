@@ -42,56 +42,59 @@ insert into teams (id, nom, shift_cycle, type_engin) values
 on conflict (id) do nothing;
 
 -- ---------- Conducteurs — GR BAKKALI-HADDAZI (titulaires, shift initial S3) ----------
-insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, statut, date_entree, actif) values
-  ('CER_GR_BAKKALI_HADDAZI_C07220', 'C07220', 'DAOUDI', 'MUSTAPHA', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_C07789', 'C07789', 'JAADI', 'YASSINE', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_C07846', 'C07846', 'TAMDY', 'OTHMAN', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_C07847', 'C07847', 'ZIRARI', 'ADIL', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_TC0084', 'TC0084', 'JAAOUANI', 'SOUFIANE', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_TCI026', 'TCI026', 'JAWBALY', 'FAHD', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_TCI028', 'TCI028', 'SAHBANI', 'AYOUB', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_TCI032', 'TCI032', 'MABROUK', 'MUSTAPHA', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_BAKKALI_HADDAZI_TCI035', 'TCI035', 'FAKIRI', 'MOHAMED', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'PRESENT', '2026-09-01', true)
+-- initial_vacation = 'V1' pour TOUS (bloc interne unique, jamais affiché —
+-- § migration_024 : requis par restDayEngine.js pour plafonner/répartir
+-- correctement les repos, même en l'absence de vraie notion de vacation).
+insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, initial_vacation, statut, date_entree, actif) values
+  ('CER_GR_BAKKALI_HADDAZI_C07220', 'C07220', 'DAOUDI', 'MUSTAPHA', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_C07789', 'C07789', 'JAADI', 'YASSINE', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_C07846', 'C07846', 'TAMDY', 'OTHMAN', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_C07847', 'C07847', 'ZIRARI', 'ADIL', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_TC0084', 'TC0084', 'JAAOUANI', 'SOUFIANE', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_TCI026', 'TCI026', 'JAWBALY', 'FAHD', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_TCI028', 'TCI028', 'SAHBANI', 'AYOUB', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_TCI032', 'TCI032', 'MABROUK', 'MUSTAPHA', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_BAKKALI_HADDAZI_TCI035', 'TCI035', 'FAKIRI', 'MOHAMED', 'CER_GR_BAKKALI_HADDAZI', 'S3', 'PARC', 'V1', 'PRESENT', '2026-09-01', true)
 on conflict (id) do nothing;
 
 -- ---------- Conducteurs — GR EDDAOUIDI-HOUSSAM (titulaires, shift initial S2) ----------
-insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, statut, date_entree, actif) values
-  ('CER_GR_EDDAOUIDI_HOUSSAM_TCI022', 'TCI022', 'HADIQ', 'HICHAM', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_EDDAOUIDI_HOUSSAM_C07783', 'C07783', 'KHAIRALLAH', 'BOUCHAIB', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_EDDAOUIDI_HOUSSAM_TCI037', 'TCI037', 'MOUFAKIR', 'FAKHREDDINE', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_EDDAOUIDI_HOUSSAM_C07845', 'C07845', 'QUASSID', 'ALI', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_EDDAOUIDI_HOUSSAM_C07402', 'C07402', 'ABADA', 'ABDELILLAH', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_EDDAOUIDI_HOUSSAM_TCI031', 'TCI031', 'AZZAM', 'MOHAMED', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_EDDAOUIDI_HOUSSAM_TC0081', 'TC0081', 'TABII', 'MOUNIR', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_EDDAOUIDI_HOUSSAM_C07803', 'C07803', 'FITAH', 'MUSTAPHA', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'PRESENT', '2026-09-01', true)
+insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, initial_vacation, statut, date_entree, actif) values
+  ('CER_GR_EDDAOUIDI_HOUSSAM_TCI022', 'TCI022', 'HADIQ', 'HICHAM', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_EDDAOUIDI_HOUSSAM_C07783', 'C07783', 'KHAIRALLAH', 'BOUCHAIB', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_EDDAOUIDI_HOUSSAM_TCI037', 'TCI037', 'MOUFAKIR', 'FAKHREDDINE', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_EDDAOUIDI_HOUSSAM_C07845', 'C07845', 'QUASSID', 'ALI', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_EDDAOUIDI_HOUSSAM_C07402', 'C07402', 'ABADA', 'ABDELILLAH', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_EDDAOUIDI_HOUSSAM_TCI031', 'TCI031', 'AZZAM', 'MOHAMED', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_EDDAOUIDI_HOUSSAM_TC0081', 'TC0081', 'TABII', 'MOUNIR', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_EDDAOUIDI_HOUSSAM_C07803', 'C07803', 'FITAH', 'MUSTAPHA', 'CER_GR_EDDAOUIDI_HOUSSAM', 'S2', 'PARC', 'V1', 'PRESENT', '2026-09-01', true)
 on conflict (id) do nothing;
 
 -- ---------- Conducteurs — GR AZZAM-BAHOUS (titulaires, shift initial S1) ----------
-insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, statut, date_entree, actif) values
-  ('CER_GR_AZZAM_BAHOUS_TC0075', 'TC0075', 'MAHTOUCH', 'ABDERRAHMAN', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TC0082', 'TC0082', 'CHAMKHA', 'AYOUB', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TC0085', 'TC0085', 'WADIF', 'MOHAMED', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TC0087', 'TC0087', 'CHAHSOURIER', 'MOHAMED', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TC0090', 'TC0090', 'EL IDRISSI', 'ANOUAR', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TCI027', 'TCI027', 'SABIR', 'MOHAMED ALI', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TCI033', 'TCI033', 'EL BAKHTI', 'JAMALEDDINE', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TCI040', 'TCI040', 'LAOURCH', 'AYOUB', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_AZZAM_BAHOUS_TC0072', 'TC0072', 'ETTAM', 'AZIZ', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'PRESENT', '2026-09-01', true)
+insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, initial_vacation, statut, date_entree, actif) values
+  ('CER_GR_AZZAM_BAHOUS_TC0075', 'TC0075', 'MAHTOUCH', 'ABDERRAHMAN', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TC0082', 'TC0082', 'CHAMKHA', 'AYOUB', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TC0085', 'TC0085', 'WADIF', 'MOHAMED', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TC0087', 'TC0087', 'CHAHSOURIER', 'MOHAMED', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TC0090', 'TC0090', 'EL IDRISSI', 'ANOUAR', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TCI027', 'TCI027', 'SABIR', 'MOHAMED ALI', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TCI033', 'TCI033', 'EL BAKHTI', 'JAMALEDDINE', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TCI040', 'TCI040', 'LAOURCH', 'AYOUB', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_AZZAM_BAHOUS_TC0072', 'TC0072', 'ETTAM', 'AZIZ', 'CER_GR_AZZAM_BAHOUS', 'S1', 'PARC', 'V1', 'PRESENT', '2026-09-01', true)
 on conflict (id) do nothing;
 
 -- ---------- Conducteurs CDI — GR CDI (pas de shift/rotation automatique) ----------
-insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, statut, date_entree, actif) values
-  ('CER_GR_CDI_TCI055', 'TCI055', 'BENADIF', 'ABDELKRIM', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI046', 'TCI046', 'BENHERREF', 'SAFOUANE', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI041', 'TCI041', 'EL BOURANI', 'MOHAMED', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI054', 'TCI054', 'GHARBI', 'AMINE', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI060', 'TCI060', 'GOURAGUINE', 'DRISS', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI052', 'TCI052', 'HALLAL', 'OMAR', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI059', 'TCI059', 'MASRAR', 'NOUR-EDDINE', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI048', 'TCI048', 'NAIM', 'AMINE', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI053', 'TCI053', 'NOUHAIR', 'ADNANE', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI047', 'TCI047', 'OUALJI', 'ABDERRAHMANE', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true),
-  ('CER_GR_CDI_TCI051', 'TCI051', 'OUARDHANI', 'ABDELHAMID', 'CER_GR_CDI', null, 'PARC', 'PRESENT', '2026-09-01', true)
+insert into drivers (id, matricule, nom, prenom, team_id, initial_shift, initial_zone, initial_vacation, statut, date_entree, actif) values
+  ('CER_GR_CDI_TCI055', 'TCI055', 'BENADIF', 'ABDELKRIM', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI046', 'TCI046', 'BENHERREF', 'SAFOUANE', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI041', 'TCI041', 'EL BOURANI', 'MOHAMED', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI054', 'TCI054', 'GHARBI', 'AMINE', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI060', 'TCI060', 'GOURAGUINE', 'DRISS', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI052', 'TCI052', 'HALLAL', 'OMAR', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI059', 'TCI059', 'MASRAR', 'NOUR-EDDINE', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI048', 'TCI048', 'NAIM', 'AMINE', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI053', 'TCI053', 'NOUHAIR', 'ADNANE', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI047', 'TCI047', 'OUALJI', 'ABDERRAHMANE', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true),
+  ('CER_GR_CDI_TCI051', 'TCI051', 'OUARDHANI', 'ABDELHAMID', 'CER_GR_CDI', null, 'PARC', 'V1', 'PRESENT', '2026-09-01', true)
 on conflict (id) do nothing;
 
 -- Vérification.
