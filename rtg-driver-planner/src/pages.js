@@ -3445,27 +3445,46 @@ const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3"
 // même ligne de base que le navigateur) — le texte se centre tout seul via
 // un padding vertical symétrique (la boîte prend sa hauteur du contenu),
 // et vertical-align:middle aligne les 2 segments entre eux.
-const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", verticalAlign: "middle", textAlign: "center", padding: "1px 8px 5px" };
-function CcPosteBadge({ label, isQuaiZone }) {
-  if (!isQuaiZone) return label;
-  const slashIdx = label.indexOf("/");
-  if (slashIdx === -1) return label;
-  const posteText = label.slice(0, slashIdx);
-  const parcText = label.slice(slashIdx + 1);
-  return (
-    <span style={{ display: "inline-block", borderRadius: 6, overflow: "hidden", border: "1px solid #E67E22", verticalAlign: "middle" }}>
-      <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { background: "#FDF2E9", color: "#7A3000" })}>{posteText}</span>
-      <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { background: "#eef2f7", color: "#475569", borderLeft: "1px solid #E67E22", fontWeight: 500 })}>{parcText}</span>
-    </span>
-  );
+// Badge "bloc" (display:block, PAS inline-block) large de 94% de la case —
+// demande explicite de l'exploitant : occuper le maximum de l'espace de la
+// case plutôt qu'un badge resserré autour du texte.
+const CC_BADGE_OUTER_STYLE = { display: "block", width: "94%", margin: "0 auto", borderRadius: 6, overflow: "hidden" };
+// Segment à largeur fixe (50%) plutôt que flex : le badge poste quai a
+// toujours 2 segments (poste réel + PARC) de largeur égale, quel que soit
+// le texte — pas de table/flex ici non plus, mêmes raisons qu'au-dessus.
+const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", width: "50%", boxSizing: "border-box", verticalAlign: "middle", textAlign: "center", padding: "1px 4px 5px" };
+// Couleur "PARC" commune aux 2 badges (poste PARC seul, segment PARC du
+// badge poste quai) — demande explicite : même couleur de PARC partout.
+const CC_BADGE_PARC_COLORS = { background: "#eef2f7", color: "#475569" };
+function CcPosteBadge({ label, isQuaiZone, isPresent }) {
+  if (isQuaiZone) {
+    const slashIdx = label.indexOf("/");
+    if (slashIdx !== -1) {
+      const posteText = label.slice(0, slashIdx);
+      const parcText = label.slice(slashIdx + 1);
+      return (
+        <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, { border: "1px solid #E67E22" })}>
+          <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { background: "#FDF2E9", color: "#7A3000" })}>{posteText}</span>
+          <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, CC_BADGE_PARC_COLORS, { borderLeft: "1px solid #E67E22", fontWeight: 500 })}>{parcText}</span>
+        </span>
+      );
+    }
+  }
+  // PARC/AUTORISE seul (pas de poste quai réel, mais conducteur présent) :
+  // même badge, même couleur "PARC" que le segment ci-dessus, cadre gris
+  // plutôt qu'orange (ce n'est pas un vrai poste).
+  if (isPresent) {
+    return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_PARC_COLORS, { border: "1px solid #94a3b8", padding: "1px 8px 5px", fontWeight: 500 })}>{label}</span>;
+  }
+  return label;
 }
 
-// Même principe que CcPosteBadge (cadre coloré arrondi), un seul ton ici
-// (pas de segment PARC à distinguer) — remplace l'ancien préfixe emoji 🚢
-// devant le nom, jugé moins lisible que le cadre.
+// Même principe que CcPosteBadge (cadre coloré arrondi, pleine largeur), un
+// seul ton ici (pas de segment PARC à distinguer) — remplace l'ancien
+// préfixe emoji 🚢 devant le nom, jugé moins lisible que le cadre.
 function CcNomBadge({ nom, isQuaiZone }) {
   if (!isQuaiZone) return nom;
-  return <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { borderRadius: 6, border: "1px solid #E67E22", background: "#FDF2E9", color: "#7A3000" })}>{nom}</span>;
+  return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, { border: "1px solid #E67E22", background: "#FDF2E9", color: "#7A3000", padding: "1px 8px 5px" })}>{nom}</span>;
 }
 
 function CcPosteTableHalf({ flatRows, rowIndex }) {
@@ -3475,8 +3494,8 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
   return (
     <React.Fragment>
       <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.matricule}</td>
-      <td className={PRINT_TD_XS_WRAP + " text-center"} style={bg ? { backgroundColor: bg } : undefined}><CcNomBadge nom={r.a.nom} isQuaiZone={r.isQuaiZone} /></td>
-      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={bg ? { backgroundColor: bg } : undefined}><CcPosteBadge label={r.label} isQuaiZone={r.isQuaiZone} /></td>
+      <td className={PRINT_TD_XS_WRAP + " text-center"} style={Object.assign({ textTransform: "uppercase" }, bg ? { backgroundColor: bg } : null)}><CcNomBadge nom={r.a.nom} isQuaiZone={r.isQuaiZone} /></td>
+      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={Object.assign({ textTransform: "uppercase" }, bg ? { backgroundColor: bg } : null)}><CcPosteBadge label={r.label} isQuaiZone={r.isQuaiZone} isPresent={r.a.status === "PRESENT"} /></td>
     </React.Fragment>
   );
 }
