@@ -307,22 +307,25 @@ function Sidebar() {
 // ==========================================
 // Topbar
 // ==========================================
-// Décalage FIXE du Maroc (UTC+1, permanent depuis 2018 — sauf pendant le
-// Ramadan, sans conséquence ici) calculé À LA MAIN à partir de l'horodatage
-// UTC absolu (Date.now(), TOUJOURS correct quel que soit le fuseau ou
-// l'horloge du navigateur), puis affiché en zone "UTC" (aucune table de
-// fuseau à consulter, donc aucun bug de données possible sur ce nom de
-// zone précis). Ne PAS se contenter de préciser `timeZone: "Africa/
-// Casablanca"` à Intl/toLocaleTimeString : certaines versions de Chrome/
-// WebView Android ont des données de fuseau horaire obsolètes pour cette
-// zone précise (règles de changement d'heure particulières du Maroc) et
-// calculent alors un décalage erroné MÊME quand la zone est explicitement
-// nommée — constaté en pratique (horloge de l'appli décalée d'1h malgré
-// l'horloge système correcte, persistant après un premier correctif qui se
-// contentait de nommer la zone). Ce calcul manuel ne dépend d'AUCUNE table
-// de fuseau horaire, seulement d'une constante et de "UTC" (zéro offset,
-// par définition toujours correct).
-const RTG_CASABLANCA_OFFSET_MS = 60 * 60 * 1000;
+// Décalage FIXE du Maroc calculé À LA MAIN à partir de l'horodatage UTC
+// absolu (Date.now(), TOUJOURS correct quel que soit le fuseau ou l'horloge
+// du navigateur), puis affiché en zone "UTC" (aucune table de fuseau à
+// consulter, donc aucun bug de données possible). Ne PAS se contenter de
+// préciser `timeZone: "Africa/Casablanca"` à Intl/toLocaleTimeString :
+// certaines versions de Chrome/WebView Android ont des données de fuseau
+// horaire obsolètes pour cette zone précise (règles de changement d'heure
+// particulières du Maroc) et calculent alors un décalage erroné MÊME quand
+// la zone est explicitement nommée — constaté en pratique. Ce calcul manuel
+// ne dépend d'AUCUNE table de fuseau horaire, seulement de cette constante
+// et de "UTC" (zéro offset, par définition toujours correct).
+//
+// VALEUR ACTUELLE = 0 (confirmée en pratique le 28/09/2026, contre l'heure
+// système réelle d'un téléphone) — PAS +1h comme le laisserait supposer la
+// règle générale ("Maroc = UTC+1 fixe depuis 2018, sauf pendant le
+// Ramadan") : sans plus d'information, à corriger de nouveau ici le jour où
+// l'exploitant signale à nouveau un décalage (ex. sortie du Ramadan,
+// changement de règle).
+const RTG_CASABLANCA_OFFSET_MS = 0;
 function rtgNowInCasablanca() {
   return new Date(Date.now() + RTG_CASABLANCA_OFFSET_MS);
 }
