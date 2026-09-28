@@ -449,7 +449,25 @@ const RTGStore = (function () {
     if (error) { console.error(error); throw error; }
     const record = mapCongeRow(data);
     set(s => Object.assign({}, s, { conges: [...s.conges, record] }));
-    addAuditEntry({ driverId: input.driverId, matricule: (state.drivers.find(d => d.id === input.driverId) || {}).matricule || "", action: "Demande de congé (en attente)", details: input.dateDebut + " → " + input.dateFin });
+    const requestingDriver = state.drivers.find(d => d.id === input.driverId);
+    addAuditEntry({ driverId: input.driverId, matricule: requestingDriver ? requestingDriver.matricule : "", action: "Demande de congé (en attente)", details: input.dateDebut + " → " + input.dateFin });
+    // Notification push (best-effort) vers les comptes qui peuvent valider
+    // cette demande (ADMIN/RESPONSABLE + Responsable de Shift de l'équipe
+    // concernée) — le calcul des destinataires se fait côté Edge Function
+    // (service role) : un compte CONDUCTEUR n'a lui-même aucun droit de
+    // lire la liste des Responsables (RLS), donc impossible à faire ici.
+    try {
+      await sb.functions.invoke("send-push-notification", {
+        body: {
+          target: "conge_reviewers", teamId: requestingDriver ? requestingDriver.teamId : null,
+          title: "Nouvelle demande de congé",
+          body: (requestingDriver ? requestingDriver.nom + " " + requestingDriver.prenom : "Un conducteur") + " — " + input.dateDebut + " au " + input.dateFin,
+          url: "./", tag: "conge-" + record.id
+        }
+      });
+    } catch (e) {
+      console.warn("RTGStore: notification push (nouvelle demande) impossible.", e);
+    }
     return record;
   }
 
@@ -485,6 +503,21 @@ const RTGStore = (function () {
       } catch (e) {
         console.warn("RTGStore: envoi de l'email de confirmation de congé impossible.", e);
       }
+    }
+    // Notification push (best-effort, comme l'email ci-dessus) vers le
+    // compte CONDUCTEUR du conducteur concerné, s'il a activé les
+    // notifications sur au moins un appareil (voir subscribeToPush).
+    try {
+      await sb.functions.invoke("send-push-notification", {
+        body: {
+          target: "driver", driverId: updated.driverId,
+          title: decision === "VALIDE" ? "Congé validé" : decision === "REFUSE" ? "Congé refusé" : "Congé à refaire",
+          body: updated.dateDebut + " au " + updated.dateFin + (motifRefus ? " — " + motifRefus : ""),
+          url: "./", tag: "conge-" + id
+        }
+      });
+    } catch (e) {
+      console.warn("RTGStore: notification push (réponse congé) impossible.", e);
     }
     return updated;
   }
@@ -953,6 +986,69 @@ const RTGStore = (function () {
     }
   }
 
+  // ---------- Notifications push (PWA) : congés à valider + réponse ----------
+  // Clé publique VAPID — safe à exposer côté client (seule la clé PRIVÉE,
+  // gardée exclusivement dans les secrets de l'Edge Function
+  // "send-push-notification", signe réellement les envois). Même paire que
+  // VAPID_PUBLIC_KEY côté Edge Function — voir son en-tête pour le
+  // déploiement complet (table, fonction, secrets).
+  const RTG_PUSH_VAPID_PUBLIC_KEY = "BA23Hl0N-aEDLoilsFAHQcLjnxGA-vG4C1RL9fHyjo6dudAB0e6i6F_Gy7AeBUp0KhZSFV44QMA3Ng6le-Fbx40";
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
+  }
+
+  function pushSupported() {
+    return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  }
+
+  // État courant (pour afficher le bon libellé/icône du bouton "Activer les
+  // notifications") — jamais mis en cache dans `state` : reflète l'appareil/
+  // navigateur courant, pas une donnée partagée entre appareils.
+  async function getPushSubscriptionState() {
+    if (!pushSupported()) return { supported: false, permission: "unsupported", subscribed: false };
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return { supported: true, permission: Notification.permission, subscribed: !!sub };
+  }
+
+  async function subscribeToPush() {
+    if (!pushSupported()) throw new Error("Les notifications ne sont pas prises en charge par ce navigateur.");
+    if (!state.currentUserId) throw new Error("Connexion requise.");
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") throw new Error("Notifications refusées.");
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(RTG_PUSH_VAPID_PUBLIC_KEY) });
+    }
+    const json = sub.toJSON();
+    // upsert sur "endpoint" (unique) : le même appareil/navigateur peut se
+    // réabonner (ex. après avoir révoqué puis réaccepté) sans dupliquer sa
+    // ligne — et sans lien fixe à un seul compte si l'appareil est partagé
+    // (le endpoint change alors de propriétaire, plutôt que d'échouer).
+    const { error } = await sb.from("push_subscriptions").upsert({
+      user_id: state.currentUserId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth_key: json.keys.auth
+    }, { onConflict: "endpoint" });
+    if (error) { console.error(error); throw error; }
+    return true;
+  }
+
+  async function unsubscribeFromPush() {
+    if (!pushSupported()) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+    const endpoint = sub.endpoint;
+    try { await sub.unsubscribe(); } catch (e) { console.warn("RTGStore: désabonnement push (navigateur) impossible.", e); }
+    try { await sb.from("push_subscriptions").delete().eq("endpoint", endpoint); } catch (e) { console.warn("RTGStore: suppression de l'abonnement push impossible.", e); }
+  }
+
   return {
     get, set, subscribe, addAuditEntry, resetToSeed, refreshAll,
     isMatriculeTaken, addDriver, updateDriver, setDriverActive,
@@ -966,6 +1062,7 @@ const RTGStore = (function () {
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,
     addTeam, updateTeam, setCurrentFleet,
     getFerieMouvements, setFerieMouvements,
-    fetchMouvementsTos, fetchRendementLeaderboard, addMouvementManuel, deleteMouvementManuel, ignoreTosLogin
+    fetchMouvementsTos, fetchRendementLeaderboard, addMouvementManuel, deleteMouvementManuel, ignoreTosLogin,
+    getPushSubscriptionState, subscribeToPush, unsubscribeFromPush
   };
 })();

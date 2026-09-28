@@ -71,3 +71,41 @@ self.addEventListener("fetch", event => {
     }).catch(() => caches.match(event.request))
   );
 });
+
+// ==========================================
+// Notifications push (PWA) — congés à valider / réponse (validé/refusé)
+// ==========================================
+// L'Edge Function "send-push-notification" envoie un payload JSON
+// {title, body, url, tag} — affiché ici sous forme de notification système.
+// "tag" regroupe les envois répétés pour un même événement (ex. plusieurs
+// tentatives) en une seule notification visible plutôt que d'en empiler
+// plusieurs identiques.
+self.addEventListener("push", event => {
+  let data = { title: "CES Driver Planner", body: "" };
+  try { if (event.data) data = Object.assign({}, data, event.data.json()); } catch (e) { /* payload non-JSON, garde les valeurs par défaut */ }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      tag: data.tag,
+      data: { url: data.url || "./" }
+    })
+  );
+});
+
+// Clic sur la notification : ramène au premier onglet déjà ouvert de
+// l'appli s'il y en a un (plutôt que d'en ouvrir un nouveau à chaque fois),
+// sinon en ouvre un nouveau sur l'URL cible.
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || "./";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsList => {
+      for (const client of clientsList) {
+        if ("focus" in client) { client.navigate(targetUrl).catch(() => {}); return client.focus(); }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
+  );
+});

@@ -333,6 +333,63 @@ function Topbar() {
 // currentUserId" -> sb.auth.updateUser({password})), jusqu'ici uniquement
 // atteignable via la page Utilisateurs réservée à l'ADMIN.
 // ==========================================
+// Notifications push (PWA) — congés à valider (Responsables) / réponse à sa
+// propre demande (Conducteur) : voir RTGStore.subscribeToPush (store.js) et
+// l'Edge Function "send-push-notification" pour l'envoi côté serveur.
+// Placée dans "Mon compte" — accessible à TOUS les rôles, contrairement aux
+// pages réservées à l'ADMIN, et c'est un réglage propre à CET APPAREIL
+// (jamais partagé entre appareils, ni stocké dans `state`).
+function PushNotificationsPanel() {
+  const [pushState, setPushState] = useState({ supported: false, permission: "default", subscribed: false });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const refresh = () => RTGStore.getPushSubscriptionState().then(setPushState).catch(() => {});
+  useEffect(() => { refresh(); }, []);
+
+  const enable = async () => {
+    setBusy(true); setError("");
+    try { await RTGStore.subscribeToPush(); await refresh(); }
+    catch (e) { setError(e && e.message ? e.message : "Impossible d'activer les notifications."); }
+    setBusy(false);
+  };
+  const disable = async () => {
+    setBusy(true); setError("");
+    try { await RTGStore.unsubscribeFromPush(); await refresh(); }
+    catch (e) { setError(e && e.message ? e.message : "Impossible de désactiver les notifications."); }
+    setBusy(false);
+  };
+
+  if (!pushState.supported) {
+    return (
+      <Panel title="Notifications" icon="fa-bell">
+        <p className="text-xs text-slate-500">Les notifications ne sont pas prises en charge par ce navigateur/appareil.</p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title="Notifications" icon="fa-bell">
+      <div className="space-y-3">
+        <p className="text-xs text-slate-500">Recevez une notification sur cet appareil pour les demandes de congé (nouvelle demande à valider, ou réponse à votre propre demande).</p>
+        {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
+        {pushState.permission === "denied" ? (
+          <p className="text-xs text-amber-500"><i className="fas fa-triangle-exclamation mr-1.5"></i>Notifications bloquées dans les réglages de ce navigateur/appareil — réactivez-les manuellement puis rechargez la page.</p>
+        ) : pushState.subscribed ? (
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-emerald-500"><i className="fas fa-circle-check mr-1.5"></i>Notifications activées sur cet appareil.</span>
+            <button onClick={disable} disabled={busy} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white disabled:opacity-60">Désactiver</button>
+          </div>
+        ) : (
+          <button onClick={enable} disabled={busy} className="px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60">
+            {busy ? "Activation..." : "Activer les notifications sur cet appareil"}
+          </button>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function ChangePasswordPage() {
   const currentUser = useCurrentUser();
   const [password, setPassword] = useState("");
@@ -380,6 +437,7 @@ function ChangePasswordPage() {
           </button>
         </form>
       </Panel>
+      <PushNotificationsPanel />
     </div>
   );
 }
