@@ -3445,7 +3445,7 @@ const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3"
 // même ligne de base que le navigateur) — le texte se centre tout seul via
 // un padding vertical symétrique (la boîte prend sa hauteur du contenu),
 // et vertical-align:middle aligne les 2 segments entre eux.
-const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", verticalAlign: "middle", textAlign: "center", padding: "3px 8px 2px" };
+const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", verticalAlign: "middle", textAlign: "center", padding: "1px 8px 5px" };
 function CcPosteBadge({ label, isQuaiZone }) {
   if (!isQuaiZone) return label;
   const slashIdx = label.indexOf("/");
