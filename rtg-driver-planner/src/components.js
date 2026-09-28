@@ -307,18 +307,29 @@ function Sidebar() {
 // ==========================================
 // Topbar
 // ==========================================
-// Fuseau horaire FIXE du terminal (Casablanca, Maroc) — jamais celui du
-// téléphone/navigateur de l'utilisateur : un appareil mal configuré (mauvais
-// fuseau système, ou bug de fuseau du navigateur, ex. données de fuseau
-// horaire obsolètes sur certains Chrome/WebView Android pour le Maroc,
-// constaté en pratique — décalage d'une heure malgré une horloge système
-// correcte) ne doit jamais faire dériver l'horloge affichée dans l'appli,
-// utilisée en contexte professionnel sur un site physique fixe.
-const RTG_TERMINAL_TIMEZONE = "Africa/Casablanca";
+// Décalage FIXE du Maroc (UTC+1, permanent depuis 2018 — sauf pendant le
+// Ramadan, sans conséquence ici) calculé À LA MAIN à partir de l'horodatage
+// UTC absolu (Date.now(), TOUJOURS correct quel que soit le fuseau ou
+// l'horloge du navigateur), puis affiché en zone "UTC" (aucune table de
+// fuseau à consulter, donc aucun bug de données possible sur ce nom de
+// zone précis). Ne PAS se contenter de préciser `timeZone: "Africa/
+// Casablanca"` à Intl/toLocaleTimeString : certaines versions de Chrome/
+// WebView Android ont des données de fuseau horaire obsolètes pour cette
+// zone précise (règles de changement d'heure particulières du Maroc) et
+// calculent alors un décalage erroné MÊME quand la zone est explicitement
+// nommée — constaté en pratique (horloge de l'appli décalée d'1h malgré
+// l'horloge système correcte, persistant après un premier correctif qui se
+// contentait de nommer la zone). Ce calcul manuel ne dépend d'AUCUNE table
+// de fuseau horaire, seulement d'une constante et de "UTC" (zéro offset,
+// par définition toujours correct).
+const RTG_CASABLANCA_OFFSET_MS = 60 * 60 * 1000;
+function rtgNowInCasablanca() {
+  return new Date(Date.now() + RTG_CASABLANCA_OFFSET_MS);
+}
 
 function Topbar() {
-  const [time, setTime] = useState(new Date());
-  useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
+  const [time, setTime] = useState(rtgNowInCasablanca());
+  useEffect(() => { const t = setInterval(() => setTime(rtgNowInCasablanca()), 1000); return () => clearInterval(t); }, []);
   return (
     <header className="print:hidden h-14 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between pl-16 pr-3 lg:px-6 sticky top-0 z-30">
       <div className="flex items-center gap-4 min-w-0">
@@ -327,8 +338,8 @@ function Topbar() {
         <span className="hidden lg:inline text-xs text-slate-500">Gestion des conducteurs</span>
       </div>
       <div className="flex items-center gap-2 sm:gap-4 text-sm text-slate-500 ml-auto">
-        <span className="hidden md:inline"><i className="far fa-calendar mr-1.5"></i>{time.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',timeZone:RTG_TERMINAL_TIMEZONE})}</span>
-        <span><i className="far fa-clock mr-1.5"></i>{time.toLocaleTimeString('fr-FR',{timeZone:RTG_TERMINAL_TIMEZONE})}</span>
+        <span className="hidden md:inline"><i className="far fa-calendar mr-1.5"></i>{time.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'})}</span>
+        <span><i className="far fa-clock mr-1.5"></i>{time.toLocaleTimeString('fr-FR',{timeZone:'UTC'})}</span>
         <span className="flex items-center gap-1.5 text-xs"><span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span><span className="hidden sm:inline">En ligne</span></span>
       </div>
     </header>

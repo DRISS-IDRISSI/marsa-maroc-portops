@@ -1958,7 +1958,7 @@ function ExportPdfButton({ onClick, busy }) {
 }
 
 function PrintHeader({ subtitle, count, countLabel, fleet }) {
-  const generatedAt = new Date();
+  const generatedAt = rtgNowInCasablanca();
   // Logo par flotte (demande explicite de l'exploitant) : Marsa Maroc pour
   // les Chariots Cavaliers, TC3PC (déjà le logo historique du terminal) pour
   // les RTG — jamais l'inverse, malgré TC3PC = filiale de Marsa Maroc.
@@ -1978,7 +1978,7 @@ function PrintHeader({ subtitle, count, countLabel, fleet }) {
         </div>
       </div>
       <div className="sm:text-right text-xs text-slate-500 shrink-0">
-        <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "Africa/Casablanca" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "Africa/Casablanca" })}</div>
+        <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
         {count != null && <div>{count} {countLabel}{count > 1 ? "s" : ""}</div>}
       </div>
     </div>
@@ -3508,7 +3508,7 @@ function CcAffectationHeader({ generatedAt }) {
         <div className="text-base font-bold uppercase">État d'affectation des conducteurs</div>
       </div>
       <div className="text-right text-[10px] text-slate-500 shrink-0">
-        <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "Africa/Casablanca" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "Africa/Casablanca" })}</div>
+        <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
       </div>
     </div>
   );
@@ -4073,7 +4073,7 @@ function AffectationDuJour() {
             const stagGroup = (grouped[s.id] || []).find(g => g.vacation.id === "V1+V2");
             return (
               <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
-                <CcAffectationHeader generatedAt={new Date()} />
+                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} />
                 <CcAffectationTerrainPrintable
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
                   dateStr={dateStr} sideA={nonStagGroups[0]} sideB={nonStagGroups[1]}
