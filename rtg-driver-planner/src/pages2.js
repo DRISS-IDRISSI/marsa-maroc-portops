@@ -2116,9 +2116,9 @@ function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
             <label className={LABEL_CLS}>Équipe tertiaire (optionnel — 3ème flotte, ex. CER)</label>
             <select className={FIELD_CLS} value={form.teamId3} onChange={e => setForm(f => Object.assign({}, f, { teamId3: e.target.value }))}>
               <option value="">— Aucune —</option>
-              {(allTeams || state.teams).filter(t => t.id !== form.teamId && t.id !== form.teamId2).map(t => <option key={t.id} value={t.id}>{t.nom} ({t.typeEngin || "RTG"})</option>)}
+              {(allTeams || state.teams).filter(t => t.typeEngin === "CER" && !/\bcdi\b/i.test(t.nom) && t.id !== form.teamId && t.id !== form.teamId2).map(t => <option key={t.id} value={t.id}>{t.nom} ({t.typeEngin || "RTG"})</option>)}
             </select>
-            <p className="text-[11px] text-slate-500 mt-1">Quand les 2 premières équipes couvrent déjà 2 flottes et qu'il en faut une 3ème (ex. CER en plus de RTG+CC) — laisser vide sinon.</p>
+            <p className="text-[11px] text-slate-500 mt-1">Le shift CER du binôme (les 3 équipes CER de shift uniquement — GR CDI n'est pas un shift et n'apparaît pas ici). Laisser vide sinon.</p>
           </div>
         )}
         {form.role !== "CONDUCTEUR" && (
