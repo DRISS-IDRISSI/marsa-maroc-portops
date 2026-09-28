@@ -2111,7 +2111,7 @@ function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
             <p className="text-[11px] text-slate-500 mt-1">Pour un binôme de responsables couvrant RTG ET CC sur le même shift (ex. BAHOUS/AZZAM) — laisser vide sinon.</p>
           </div>
         )}
-        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && form.teamId2 && (
+        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (form.teamId2 || form.teamId3) && (
           <div>
             <label className={LABEL_CLS}>Équipe tertiaire (optionnel — 3ème flotte, ex. CER)</label>
             <select className={FIELD_CLS} value={form.teamId3} onChange={e => setForm(f => Object.assign({}, f, { teamId3: e.target.value }))}>
