@@ -3658,11 +3658,15 @@ function ReposCongesPrintable({ rows, showTeamColumn = true }) {
 // gauche/en premier, B = à droite/en second), pas lié à l'id V1/V2 réel, qui
 // reste inchangé partout ailleurs (Planning mensuel, export CSV, etc.).
 function vacationGroupTitle(vacation, displayIndex, fleet) {
+  if (vacation.teamNom) {
+    // CER (§ data.js, fleetHasVacation) : un groupe "journée complète" PAR
+    // ÉQUIPE (jamais fusionné, même flotte/même shift) — les CDI (équipe
+    // "GR CDI") suivent le même principe que les stagiaires CC : toujours
+    // affichés à part des titulaires d'une autre équipe, jamais mélangés.
+    return `${vacation.teamNom} · ${vacation.start} → ${vacation.end}`;
+  }
   if (vacation.id === "V1+V2") {
-    // CER (§ data.js, fleetHasVacation) : ce groupe "journée complète"
-    // contient les conducteurs TITULAIRES (vraie rotation d'équipe, pas des
-    // stagiaires) autant que les CDI — jamais "Stagiaires" pour cette flotte.
-    return fleet === "CER" ? `Effectif · ${vacation.start} → ${vacation.end}` : `Stagiaires · ${vacation.start} → ${vacation.end}`;
+    return `Stagiaires · ${vacation.start} → ${vacation.end}`;
   }
   const label = displayIndex === 0 ? "A" : displayIndex === 1 ? "B" : vacation.id;
   return `Vacation ${label} · ${vacation.start} → ${vacation.end}`;
@@ -3892,15 +3896,24 @@ function AffectationDuJour() {
     // rattachés au shift via teamShiftMap comme pour absentByShift ci-dessus
     // — sans ça ils retombaient dans les tableaux Vacation A/B des
     // titulaires (mélangés, alors qu'ils n'ont pas de vraie vacation A/B).
+    // Un groupe PAR ÉQUIPE (pas un seul groupe fourre-tout par shift) —
+    // demande explicite de l'exploitant : les CDI (équipe "GR CDI") ne
+    // doivent jamais être mélangés aux titulaires d'une autre équipe, même
+    // quand ils sont affectés au même shift le même jour.
     const fullDayRows = assignments.filter(a => a.shift === s.id && a.vacation === "V1+V2" && a.status === "PRESENT")
-      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noVacationOrRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id))
-      .sort(byOrdreAffichage);
-    if (fullDayRows.length > 0) {
+      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noVacationOrRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id));
+    const fullDayRowsByTeam = {};
+    fullDayRows.forEach(a => { (fullDayRowsByTeam[a.teamId] = fullDayRowsByTeam[a.teamId] || []).push(a); });
+    Object.keys(fullDayRowsByTeam).sort((t1, t2) => {
+      const n1 = (teams.find(t => t.id === t1) || {}).nom || t1, n2 = (teams.find(t => t.id === t2) || {}).nom || t2;
+      return n1.localeCompare(n2);
+    }).forEach(teamId => {
+      const teamNom = (teams.find(t => t.id === teamId) || {}).nom || teamId;
       grouped[s.id].push({
-        vacation: { id: "V1+V2", start: vacDefs.length ? vacDefs[0].start : "", end: vacDefs.length ? vacDefs[vacDefs.length - 1].end : "" },
-        rows: fullDayRows
+        vacation: { id: "V1+V2_" + teamId, start: vacDefs.length ? vacDefs[0].start : "", end: vacDefs.length ? vacDefs[vacDefs.length - 1].end : "", teamNom: teamNom },
+        rows: fullDayRowsByTeam[teamId].sort(byOrdreAffichage)
       });
-    }
+    });
   });
   const offRows = assignments.filter(a => a.status === "OFF").sort(byOrdreAffichage);
 
@@ -4065,7 +4078,7 @@ function AffectationDuJour() {
             <h2 className="text-sm font-bold text-orange-400 uppercase tracking-wider">{s.label} <span className="text-slate-500 font-normal">({s.start} → {s.end})</span></h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {vacationGroupsForDisplay(s.id).map(({ vacation, rows }, idx) => (
-                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation, idx, displayedFleet)} icon={vacation.id === "V1+V2" && displayedFleet !== "CER" ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} fleet={displayedFleet} />
+                <ShiftBlock key={vacation.id} title={vacationGroupTitle(vacation, idx, displayedFleet)} icon={vacation.id.indexOf("V1+V2") === 0 && !vacation.teamNom ? "fa-user-graduate" : "fa-clock"} rows={rows} onEditRow={onEditRow} vacationLetter={idx === 0 ? "A" : idx === 1 ? "B" : null} fleet={displayedFleet} />
               ))}
             </div>
           </div>
@@ -4109,8 +4122,8 @@ function AffectationDuJour() {
           // CcAffectationTerrainPrintable) plutôt que le tableau générique
           // Mat/Nom/Prénom/Vacation/Zone utilisé pour RTG.
           if (displayedFleet === "CC") {
-            const nonStagGroups = vacationGroupsForDisplay(s.id).filter(g => g.vacation.id !== "V1+V2");
-            const stagGroup = (grouped[s.id] || []).find(g => g.vacation.id === "V1+V2");
+            const nonStagGroups = vacationGroupsForDisplay(s.id).filter(g => g.vacation.id.indexOf("V1+V2") !== 0);
+            const stagGroup = (grouped[s.id] || []).find(g => g.vacation.id.indexOf("V1+V2") === 0);
             return (
               <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
                 <CcAffectationHeader generatedAt={rtgNowInCasablanca()} />
