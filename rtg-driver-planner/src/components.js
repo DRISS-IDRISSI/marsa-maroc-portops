@@ -225,7 +225,7 @@ function Sidebar() {
   // l'exploitant, ex. BAHOUS/AZZAM), qui doit pouvoir basculer entre ses
   // deux équipes (une par flotte) pour les pages qui n'affichent qu'une
   // flotte à la fois (Planning/Affectation/Conducteurs/Rapports).
-  const showFleetSwitch = currentUser && (currentUser.role === "ADMIN" || currentUser.role === "RESPONSABLE" || !!currentUser.teamId2);
+  const showFleetSwitch = currentUser && (currentUser.role === "ADMIN" || currentUser.role === "RESPONSABLE" || !!currentUser.teamId2 || !!currentUser.teamId3);
 
   const sidebarContent = (
     <>
@@ -266,7 +266,7 @@ function Sidebar() {
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-white truncate">{currentUser ? currentUser.nom : "—"}</div>
-              <div className="text-[10px] text-slate-500 truncate">{currentUser ? (ROLE_LABELS[currentUser.role] || currentUser.role) + (currentUser.teamId ? " — " + [currentUser.teamId, currentUser.teamId2].filter(Boolean).map(id => (state.teams.find(t => t.id === id) || {}).nom).filter(Boolean).join(" / ") : "") : ""}</div>
+              <div className="text-[10px] text-slate-500 truncate">{currentUser ? (ROLE_LABELS[currentUser.role] || currentUser.role) + (currentUser.teamId ? " — " + [currentUser.teamId, currentUser.teamId2, currentUser.teamId3].filter(Boolean).map(id => (state.teams.find(t => t.id === id) || {}).nom).filter(Boolean).join(" / ") : "") : ""}</div>
             </div>
           )}
           {!collapsed && (

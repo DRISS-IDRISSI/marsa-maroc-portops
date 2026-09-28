@@ -1364,14 +1364,16 @@ function isTeamRestricted(user) {
   return isShiftRestricted(user) || isDriverRestricted(user);
 }
 
-// Équipe(s) effective(s) pour ce filtrage : team_id (+ team_id2 éventuel,
-// l'autre flotte) pour RESPONSABLE_SHIFT/CHEF_ESCALE, déduite de la fiche
+// Équipe(s) effective(s) pour ce filtrage : team_id (+ team_id2/team_id3
+// éventuels) pour RESPONSABLE_SHIFT/CHEF_ESCALE, déduite de la fiche
 // conducteur liée pour CONDUCTEUR. Un binôme de responsables (ex. BAHOUS
 // affecté à GR BAHOUS-RTG + AZZAM affecté à GR AZZAM-CC) peut avoir besoin
 // d'accéder aux DEUX équipes de son shift (demande explicite de
 // l'exploitant) — teamId2 porte cette 2ème équipe, dans l'autre flotte.
+// teamId3 : 3ème équipe, pour un binôme RTG+CC déjà complet qui a en plus
+// besoin d'une équipe CER (§ migration_026_team_id_3.sql).
 function restrictedTeamIds(user, state) {
-  if (isShiftRestricted(user)) return [user.teamId, user.teamId2].filter(Boolean);
+  if (isShiftRestricted(user)) return [user.teamId, user.teamId2, user.teamId3].filter(Boolean);
   if (isDriverRestricted(user)) {
     const driver = state.drivers.find(d => d.id === user.driverId);
     return driver ? [driver.teamId] : [];

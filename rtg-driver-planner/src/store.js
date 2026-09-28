@@ -102,7 +102,7 @@ const RTGStore = (function () {
     };
   }
   function mapTeamRow(r) { return { id: r.id, nom: r.nom, shiftCycle: r.shift_cycle, typeEngin: r.type_engin || "RTG" }; }
-  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, teamId2: r.team_id_2 || null, driverId: r.driver_id, actif: r.actif, email: r.email || "", credentialsSentAt: r.credentials_sent_at || null }; }
+  function mapProfileRow(r) { return { id: r.id, username: r.username, nom: r.nom, role: r.role, teamId: r.team_id, teamId2: r.team_id_2 || null, teamId3: r.team_id_3 || null, driverId: r.driver_id, actif: r.actif, email: r.email || "", credentialsSentAt: r.credentials_sent_at || null }; }
   function mapRecordRow(r) { return { id: r.id, driverId: r.driver_id, dateDebut: r.date_debut, dateFin: r.date_fin, type: r.type, commentaire: r.commentaire || "", utilisateur: r.utilisateur, createdAt: r.created_at }; }
   // Congés uniquement (§38) : mêmes champs de base + le workflow de demande
   // en libre-service (statut / justificatif / refus / validation). Un congé
@@ -839,6 +839,10 @@ const RTGStore = (function () {
       // flotte, pour un binôme de responsables couvrant RTG ET CC sur le
       // même shift (ex. BAHOUS/AZZAM) — voir migration_020_team_id2.sql.
       team_id_2: (input.role === "RESPONSABLE_SHIFT" || input.role === "CHEF_ESCALE") ? (input.teamId2 || null) : null,
+      // team_id_3 : 3ème équipe, pour un binôme RTG+CC déjà complet (team_id
+      // + team_id_2 occupés) qui a en plus besoin d'une équipe CER — voir
+      // migration_026_team_id_3.sql.
+      team_id_3: (input.role === "RESPONSABLE_SHIFT" || input.role === "CHEF_ESCALE") ? (input.teamId3 || null) : null,
       driver_id: input.role === "CONDUCTEUR" ? input.driverId : null,
       email: input.role === "CONDUCTEUR" ? null : (input.email || null),
       actif: true
@@ -858,6 +862,7 @@ const RTGStore = (function () {
     if ("role" in patch) dbPatch.role = patch.role;
     if ("teamId" in patch) dbPatch.team_id = patch.teamId;
     if ("teamId2" in patch) dbPatch.team_id_2 = patch.teamId2;
+    if ("teamId3" in patch) dbPatch.team_id_3 = patch.teamId3;
     if ("driverId" in patch) dbPatch.driver_id = patch.driverId;
     if ("actif" in patch) dbPatch.actif = patch.actif;
     if ("email" in patch) dbPatch.email = patch.email || null;

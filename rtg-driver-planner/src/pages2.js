@@ -2031,7 +2031,7 @@ const ROLE_OPTIONS = [
 const ROLE_NEEDS_TEAM = ["RESPONSABLE_SHIFT", "CHEF_ESCALE"];
 
 function emptyUserForm(defaultTeamId) {
-  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: defaultTeamId || "", teamId2: "", driverId: "", email: "" };
+  return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: defaultTeamId || "", teamId2: "", teamId3: "", driverId: "", email: "" };
 }
 
 function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
@@ -2045,6 +2045,7 @@ function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
     if (RTGStore.isUsernameTaken(form.username.trim(), editingId)) { setError("Cet identifiant est déjà utilisé."); return; }
     if (ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && !form.teamId) { setError("Sélectionnez l'équipe pour ce rôle."); return; }
     if (form.teamId2 && form.teamId2 === form.teamId) { setError("L'équipe secondaire doit être différente de l'équipe principale."); return; }
+    if (form.teamId3 && (form.teamId3 === form.teamId || form.teamId3 === form.teamId2)) { setError("L'équipe tertiaire doit être différente des deux autres équipes."); return; }
     if (form.role === "CONDUCTEUR") {
       if (!form.driverId) { setError("Sélectionnez le conducteur rattaché à ce compte."); return; }
       const already = state.users.find(u => u.driverId === form.driverId && u.id !== editingId);
@@ -2055,6 +2056,7 @@ function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
       nom: form.nom.trim(), username: form.username.trim(), role: form.role,
       teamId: ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 ? form.teamId : null,
       teamId2: ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 ? (form.teamId2 || null) : null,
+      teamId3: ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 ? (form.teamId3 || null) : null,
       driverId: form.role === "CONDUCTEUR" ? form.driverId : null,
       email: form.role === "CONDUCTEUR" ? null : (form.email || "").trim()
     };
@@ -2107,6 +2109,16 @@ function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
               {(allTeams || state.teams).filter(t => t.id !== form.teamId).map(t => <option key={t.id} value={t.id}>{t.nom} ({t.typeEngin || "RTG"})</option>)}
             </select>
             <p className="text-[11px] text-slate-500 mt-1">Pour un binôme de responsables couvrant RTG ET CC sur le même shift (ex. BAHOUS/AZZAM) — laisser vide sinon.</p>
+          </div>
+        )}
+        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && form.teamId2 && (
+          <div>
+            <label className={LABEL_CLS}>Équipe tertiaire (optionnel — 3ème flotte, ex. CER)</label>
+            <select className={FIELD_CLS} value={form.teamId3} onChange={e => setForm(f => Object.assign({}, f, { teamId3: e.target.value }))}>
+              <option value="">— Aucune —</option>
+              {(allTeams || state.teams).filter(t => t.id !== form.teamId && t.id !== form.teamId2).map(t => <option key={t.id} value={t.id}>{t.nom} ({t.typeEngin || "RTG"})</option>)}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1">Quand les 2 premières équipes couvrent déjà 2 flottes et qu'il en faut une 3ème (ex. CER en plus de RTG+CC) — laisser vide sinon.</p>
           </div>
         )}
         {form.role !== "CONDUCTEUR" && (
@@ -2329,9 +2341,11 @@ function UsersPage() {
     if (u.teamId) {
       const t = state.teams.find(t2 => t2.id === u.teamId);
       const t2 = u.teamId2 ? state.teams.find(t3 => t3.id === u.teamId2) : null;
+      const t3 = u.teamId3 ? state.teams.find(t4 => t4.id === u.teamId3) : null;
       const matchesPrimary = t ? (t.typeEngin || "RTG") === state.currentFleet : true;
       const matchesSecondary = t2 ? (t2.typeEngin || "RTG") === state.currentFleet : false;
-      return matchesPrimary || matchesSecondary;
+      const matchesTertiary = t3 ? (t3.typeEngin || "RTG") === state.currentFleet : false;
+      return matchesPrimary || matchesSecondary || matchesTertiary;
     }
     if (u.driverId) {
       const d = state.drivers.find(d2 => d2.id === u.driverId);
@@ -2410,7 +2424,7 @@ function UsersPage() {
       {showForm && (
         <Panel title={editingId ? "Modifier l'utilisateur" : "Nouvel utilisateur"} icon="fa-user-shield">
           <UserForm state={formState} allTeams={state.teams} editingId={editingId}
-            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || (formState.teams[0] ? formState.teams[0].id : ""), teamId2: editingUser.teamId2 || "", driverId: editingUser.driverId || "", email: editingUser.email || "" } : emptyUserForm(formState.teams[0] ? formState.teams[0].id : "")}
+            initial={editingUser ? { nom: editingUser.nom, username: editingUser.username, password: "", role: editingUser.role, teamId: editingUser.teamId || (formState.teams[0] ? formState.teams[0].id : ""), teamId2: editingUser.teamId2 || "", teamId3: editingUser.teamId3 || "", driverId: editingUser.driverId || "", email: editingUser.email || "" } : emptyUserForm(formState.teams[0] ? formState.teams[0].id : "")}
             onCancel={() => { setShowForm(false); setEditingId(null); }} onSaved={() => { setShowForm(false); setEditingId(null); }} />
         </Panel>
       )}
@@ -2427,6 +2441,7 @@ function UsersPage() {
             {visibleUsers.map(u => {
               const team = u.teamId ? state.teams.find(t => t.id === u.teamId) : null;
               const team2 = u.teamId2 ? state.teams.find(t => t.id === u.teamId2) : null;
+              const team3 = u.teamId3 ? state.teams.find(t => t.id === u.teamId3) : null;
               const driver = u.driverId ? state.drivers.find(d => d.id === u.driverId) : null;
               const isSelf = currentUser.id === u.id;
               const targetEmail = driver ? driver.email : u.email;
@@ -2436,7 +2451,7 @@ function UsersPage() {
                   <td className="px-3 py-2 text-slate-900 font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
                   <td className="px-3 py-2 text-slate-600">{u.username}</td>
                   <td className="px-3 py-2 text-slate-400">{ROLE_LABELS[u.role] || u.role}</td>
-                  <td className="px-3 py-2 text-slate-400">{team ? team.nom + (team2 ? " / " + team2.nom : "") : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
+                  <td className="px-3 py-2 text-slate-400">{team ? team.nom + (team2 ? " / " + team2.nom : "") + (team3 ? " / " + team3.nom : "") : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
                   <td className="px-3 py-2">
                     {u.actif !== false
                       ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700">Actif</span>
