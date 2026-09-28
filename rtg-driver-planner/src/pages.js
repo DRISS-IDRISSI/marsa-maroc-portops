@@ -3430,6 +3430,25 @@ function flattenCcPosteRows(rows) {
 // perdre cette distinction là où elle sert.
 const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3", REPOS_COMPENSATOIRE: "#fef9c3" });
 
+// Badge coloré pour un poste QUAI réel (ex. "P74/PARC") : le poste ("P74")
+// en accent terra, "PARC" accolé en gris dans le même cadre arrondi —
+// validé par l'exploitant sur une maquette avant implémentation (3 variantes
+// proposées, celle-ci choisie). Les autres libellés (repos/congé/PARC seul)
+// restent du texte simple, inchangés.
+function CcPosteBadge({ label, isQuaiZone }) {
+  if (!isQuaiZone) return label;
+  const slashIdx = label.indexOf("/");
+  if (slashIdx === -1) return label;
+  const posteText = label.slice(0, slashIdx);
+  const parcText = label.slice(slashIdx + 1);
+  return (
+    <span style={{ display: "inline-flex", borderRadius: 6, overflow: "hidden", border: "1px solid #E67E22" }}>
+      <span style={{ background: "#FDF2E9", color: "#7A3000", padding: "1px 7px" }}>{posteText}</span>
+      <span style={{ background: "#eef2f7", color: "#475569", padding: "1px 7px", borderLeft: "1px solid #E67E22", fontWeight: 500 }}>{parcText}</span>
+    </span>
+  );
+}
+
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
   if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
@@ -3438,7 +3457,7 @@ function CcPosteTableHalf({ flatRows, rowIndex }) {
     <React.Fragment>
       <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.matricule}</td>
       <td className={PRINT_TD_XS_WRAP} style={bg ? { backgroundColor: bg } : undefined}>{r.isQuaiZone ? "🚢 " : ""}{r.a.nom}</td>
-      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={bg ? { backgroundColor: bg } : undefined}>{r.label}</td>
+      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={bg ? { backgroundColor: bg } : undefined}><CcPosteBadge label={r.label} isQuaiZone={r.isQuaiZone} /></td>
     </React.Fragment>
   );
 }
