@@ -2441,7 +2441,6 @@ function UsersPage() {
             {visibleUsers.map(u => {
               const team = u.teamId ? state.teams.find(t => t.id === u.teamId) : null;
               const team2 = u.teamId2 ? state.teams.find(t => t.id === u.teamId2) : null;
-              const team3 = u.teamId3 ? state.teams.find(t => t.id === u.teamId3) : null;
               const driver = u.driverId ? state.drivers.find(d => d.id === u.driverId) : null;
               const isSelf = currentUser.id === u.id;
               const targetEmail = driver ? driver.email : u.email;
@@ -2451,7 +2450,7 @@ function UsersPage() {
                   <td className="px-3 py-2 text-slate-900 font-medium">{u.nom}{isSelf ? <span className="text-slate-500"> (vous)</span> : ""}</td>
                   <td className="px-3 py-2 text-slate-600">{u.username}</td>
                   <td className="px-3 py-2 text-slate-400">{ROLE_LABELS[u.role] || u.role}</td>
-                  <td className="px-3 py-2 text-slate-400">{team ? team.nom + (team2 ? " / " + team2.nom : "") + (team3 ? " / " + team3.nom : "") : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
+                  <td className="px-3 py-2 text-slate-400">{team ? team.nom + (team2 ? " / " + team2.nom : "") : (driver ? driver.matricule + " — " + driver.nom + " " + driver.prenom : "—")}</td>
                   <td className="px-3 py-2">
                     {u.actif !== false
                       ? <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700">Actif</span>
