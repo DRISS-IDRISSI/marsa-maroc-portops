@@ -3423,12 +3423,12 @@ function flattenCcPosteRows(rows) {
 // Émargement retirée (demande explicite de l'exploitant) : ce rapport
 // numérique n'est pas destiné à être signé à la main comme le document
 // papier d'origine.
-// Sur CE rapport uniquement (demande explicite de l'exploitant) : repos et
-// repos compensatoire (RC) partagent la même couleur JAUNE plutôt que le
-// rose/fuchsia utilisés partout ailleurs dans l'appli (Planning mensuel,
-// etc.) — override LOCAL, PRINT_STATUS_BG global inchangé pour ne pas
-// perdre cette distinction là où elle sert.
-const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3", REPOS_COMPENSATOIRE: "#fef9c3" });
+// Repos et repos compensatoire (RC) n'ont plus de fond de ligne jaune
+// (demande explicite de l'exploitant) : la couleur passe désormais sur le
+// badge Nom/Poste (variante "REPOS", cf. CcPosteBadge/CcNomBadge), au même
+// titre que les badges "QUAI" (orange) et "PARC" (gris) — ces 2 statuts
+// sont donc exclus du calcul de `bg` dans CcPosteTableHalf.
+const CC_POSTE_STATUS_BG = PRINT_STATUS_BG;
 
 // Badge coloré pour un poste QUAI réel (ex. "P74/PARC") : le poste ("P74")
 // en accent terra, "PARC" accolé en gris dans le même cadre arrondi —
@@ -3453,28 +3453,47 @@ const CC_BADGE_OUTER_STYLE = { display: "block", width: "94%", margin: "0 auto",
 // toujours 2 segments (poste réel + PARC) de largeur égale, quel que soit
 // le texte — pas de table/flex ici non plus, mêmes raisons qu'au-dessus.
 const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", width: "50%", boxSizing: "border-box", verticalAlign: "middle", textAlign: "center", padding: "1px 4px 5px" };
-// Couleur "PARC" commune aux 2 badges (poste PARC seul, segment PARC du
-// badge poste quai) — demande explicite : même couleur de PARC partout.
-const CC_BADGE_PARC_COLORS = { background: "#eef2f7", color: "#475569" };
-function CcPosteBadge({ label, isQuaiZone, isPresent }) {
-  if (isQuaiZone) {
+// 3 couleurs de badge (fond + texte), un cadre (border) assorti par
+// variante — QUAI (poste quai réel, orange), PARC (réserve, gris), REPOS
+// (repos + repos compensatoire, jaune, demande explicite de l'exploitant).
+const CC_BADGE_QUAI_FILL = { background: "#FDF2E9", color: "#7A3000" };
+const CC_BADGE_QUAI_BORDER = "#E67E22";
+const CC_BADGE_PARC_FILL = { background: "#eef2f7", color: "#475569" };
+const CC_BADGE_PARC_BORDER = "#94a3b8";
+const CC_BADGE_REPOS_FILL = { background: "#FEF9C3", color: "#854D0E" };
+const CC_BADGE_REPOS_BORDER = "#D97706";
+
+// Quelle variante de badge pour cette affectation (partagée entre Nom et
+// Poste, pour que les 2 colonnes soient toujours assorties sur une même
+// ligne) : QUAI (poste quai réel) > PARC (présent, en réserve) > REPOS
+// (repos/RC) > null (congé/maladie/absence/formation : texte simple,
+// inchangé — pas demandé).
+function ccBadgeVariant(a, isQuaiZone) {
+  if (isQuaiZone) return "QUAI";
+  if (a.status === "PRESENT") return "PARC";
+  if (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") return "REPOS";
+  return null;
+}
+
+function CcPosteBadge({ label, variant }) {
+  if (variant === "QUAI") {
     const slashIdx = label.indexOf("/");
     if (slashIdx !== -1) {
       const posteText = label.slice(0, slashIdx);
       const parcText = label.slice(slashIdx + 1);
       return (
-        <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, { border: "1px solid #E67E22" })}>
-          <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { background: "#FDF2E9", color: "#7A3000" })}>{posteText}</span>
-          <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, CC_BADGE_PARC_COLORS, { borderLeft: "1px solid #E67E22", fontWeight: 500 })}>{parcText}</span>
+        <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, { border: "1px solid " + CC_BADGE_QUAI_BORDER })}>
+          <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, CC_BADGE_QUAI_FILL)}>{posteText}</span>
+          <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, CC_BADGE_PARC_FILL, { borderLeft: "1px solid " + CC_BADGE_QUAI_BORDER, fontWeight: 500 })}>{parcText}</span>
         </span>
       );
     }
   }
-  // PARC/AUTORISE seul (pas de poste quai réel, mais conducteur présent) :
-  // même badge, même couleur "PARC" que le segment ci-dessus, cadre gris
-  // plutôt qu'orange (ce n'est pas un vrai poste).
-  if (isPresent) {
-    return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_PARC_COLORS, { border: "1px solid #94a3b8", padding: "1px 8px 5px", fontWeight: 500 })}>{label}</span>;
+  if (variant === "PARC") {
+    return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_PARC_FILL, { border: "1px solid " + CC_BADGE_PARC_BORDER, padding: "1px 8px 5px", fontWeight: 500 })}>{label}</span>;
+  }
+  if (variant === "REPOS") {
+    return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_REPOS_FILL, { border: "1px solid " + CC_BADGE_REPOS_BORDER, padding: "1px 8px 5px", fontWeight: 600 })}>{label}</span>;
   }
   return label;
 }
@@ -3482,20 +3501,23 @@ function CcPosteBadge({ label, isQuaiZone, isPresent }) {
 // Même principe que CcPosteBadge (cadre coloré arrondi, pleine largeur), un
 // seul ton ici (pas de segment PARC à distinguer) — remplace l'ancien
 // préfixe emoji 🚢 devant le nom, jugé moins lisible que le cadre.
-function CcNomBadge({ nom, isQuaiZone }) {
-  if (!isQuaiZone) return nom;
-  return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, { border: "1px solid #E67E22", background: "#FDF2E9", color: "#7A3000", padding: "1px 8px 5px" })}>{nom}</span>;
+function CcNomBadge({ nom, variant }) {
+  if (variant === "QUAI") return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_QUAI_FILL, { border: "1px solid " + CC_BADGE_QUAI_BORDER, padding: "1px 8px 5px" })}>{nom}</span>;
+  if (variant === "PARC") return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_PARC_FILL, { border: "1px solid " + CC_BADGE_PARC_BORDER, padding: "1px 8px 5px", fontWeight: 500 })}>{nom}</span>;
+  if (variant === "REPOS") return <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_REPOS_FILL, { border: "1px solid " + CC_BADGE_REPOS_BORDER, padding: "1px 8px 5px", fontWeight: 600 })}>{nom}</span>;
+  return nom;
 }
 
 function CcPosteTableHalf({ flatRows, rowIndex }) {
   const r = flatRows[rowIndex];
   if (!r) return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
-  const bg = r.a.status !== "PRESENT" ? CC_POSTE_STATUS_BG[r.a.status] : undefined;
+  const variant = ccBadgeVariant(r.a, r.isQuaiZone);
+  const bg = (variant === null) ? CC_POSTE_STATUS_BG[r.a.status] : undefined;
   return (
     <React.Fragment>
       <td className={PRINT_TD_XS} style={bg ? { backgroundColor: bg } : undefined}>{r.a.matricule}</td>
-      <td className={PRINT_TD_XS_WRAP + " text-center"} style={Object.assign({ textTransform: "uppercase" }, bg ? { backgroundColor: bg } : null)}><CcNomBadge nom={r.a.nom} isQuaiZone={r.isQuaiZone} /></td>
-      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={Object.assign({ textTransform: "uppercase" }, bg ? { backgroundColor: bg } : null)}><CcPosteBadge label={r.label} isQuaiZone={r.isQuaiZone} isPresent={r.a.status === "PRESENT"} /></td>
+      <td className={PRINT_TD_XS_WRAP + " text-center"} style={Object.assign({ textTransform: "uppercase" }, bg ? { backgroundColor: bg } : null)}><CcNomBadge nom={r.a.nom} variant={variant} /></td>
+      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={Object.assign({ textTransform: "uppercase" }, bg ? { backgroundColor: bg } : null)}><CcPosteBadge label={r.label} variant={variant} /></td>
     </React.Fragment>
   );
 }
