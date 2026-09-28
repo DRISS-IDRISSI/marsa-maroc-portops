@@ -31,12 +31,12 @@
 
 const CER_FROZEN_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
 
-// PARC (réserve) se décompose en 3 zones nommées d'après les lignes/
-// terminaux desservis (MAERS, MSC, COSCO — confirmé par l'exploitant) :
-// aucune de ces 3 n'est un poste physique QUAI, au même titre que le
-// générique "PARC" — un conducteur qui y était hier n'est jamais compté
-// "était au quai" pour l'escalier de la file d'attente.
-const CER_NON_PHYSICAL_ZONES = ["PARC", "AUTORISE", "MAERS", "MSC", "COSCO"];
+// PARC (réserve) se décompose en 3 zones nommées d'après les lignes
+// desservies (MAERSK, MSC, COSCO — confirmé par l'exploitant) : aucune de
+// ces 3 n'est un poste physique QUAI, au même titre que le générique
+// "PARC" — un conducteur qui y était hier n'est jamais compté "était au
+// quai" pour l'escalier de la file d'attente.
+const CER_NON_PHYSICAL_ZONES = ["PARC", "AUTORISE", "MAERSK", "MSC", "COSCO"];
 
 function cerBlockKey(driver) {
   return driver.teamId;

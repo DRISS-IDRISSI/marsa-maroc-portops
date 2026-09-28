@@ -48,14 +48,15 @@ const RTG_CONFIG = {
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
     CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "Roro/Parc", "PARC", "AUTORISE"],
-    // CER (Conducteurs Engin Roulant) : mêmes postes physiques QUAI que CC
-    // (P71/P74/DTV — confirmé explicitement par l'exploitant, "les postes
-    // de travail sont les mêmes que les conducteurs cavaliers"), plus une
+    // CER (Conducteurs Engin Roulant) : mêmes postes QUAI que CC (confirmé
+    // explicitement par l'exploitant, "les postes de travail sont les mêmes
+    // que les conducteurs cavaliers" — même liste complète que CC ci-dessus,
+    // y compris P72/P80/P82/P83/Roro proposés au sélecteur manuel), plus une
     // particularité propre à CER : le PARC (réserve) se décompose en 3
-    // zones d'affectation nommées d'après les lignes/terminaux desservis
-    // (MAERS, MSC, COSCO) — jamais un simple "PARC" générique pour CER une
-    // fois la zone réelle du jour saisie par le responsable.
-    CER: ["P71", "P74", "DTV", "PARC", "MAERS", "MSC", "COSCO", "AUTORISE"]
+    // zones d'affectation nommées d'après les lignes desservies (MAERSK,
+    // MSC, COSCO) — jamais un simple "PARC" générique une fois la zone
+    // réelle du jour saisie par le responsable.
+    CER: ["P70", "P71", "P72", "P74", "P80", "P82", "P83", "DTV", "Roro/Parc", "PARC", "MAERSK", "MSC", "COSCO", "AUTORISE"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
   // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle
