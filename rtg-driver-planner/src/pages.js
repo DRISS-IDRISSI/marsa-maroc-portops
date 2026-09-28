@@ -3921,10 +3921,10 @@ function AffectationDuJour() {
     const fullDayRowsByTeam = {};
     fullDayRows.forEach(a => { (fullDayRowsByTeam[a.teamId] = fullDayRowsByTeam[a.teamId] || []).push(a); });
     Object.keys(fullDayRowsByTeam).sort((t1, t2) => {
-      const n1 = (teams.find(t => t.id === t1) || {}).nom || t1, n2 = (teams.find(t => t.id === t2) || {}).nom || t2;
+      const n1 = (state.teams.find(t => t.id === t1) || {}).nom || t1, n2 = (state.teams.find(t => t.id === t2) || {}).nom || t2;
       return n1.localeCompare(n2);
     }).forEach(teamId => {
-      const teamNom = (teams.find(t => t.id === teamId) || {}).nom || teamId;
+      const teamNom = (state.teams.find(t => t.id === teamId) || {}).nom || teamId;
       grouped[s.id].push({
         vacation: { id: "V1+V2_" + teamId, start: vacDefs.length ? vacDefs[0].start : "", end: vacDefs.length ? vacDefs[vacDefs.length - 1].end : "", teamNom: teamNom },
         rows: fullDayRowsByTeam[teamId].sort(byOrdreAffichage)
