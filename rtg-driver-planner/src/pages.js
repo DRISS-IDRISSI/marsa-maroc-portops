@@ -3435,6 +3435,14 @@ const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3"
 // validé par l'exploitant sur une maquette avant implémentation (3 variantes
 // proposées, celle-ci choisie). Les autres libellés (repos/congé/PARC seul)
 // restent du texte simple, inchangés.
+//
+// PAS de display:flex/inline-flex ici : ce badge est capturé par
+// html2canvas au moment de l'export PDF (cf. exportPdf/exportNodesAsPdf
+// plus haut), qui rend le flexbox de façon peu fiable (constaté : le
+// rendu PDF généré ne ressemblait plus du tout à l'aperçu écran). Centrage
+// via inline-block + hauteur/line-height fixes + text-align, qu'html2canvas
+// restitue à l'identique de l'écran.
+const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", textAlign: "center", height: 16, lineHeight: "16px", padding: "0 8px" };
 function CcPosteBadge({ label, isQuaiZone }) {
   if (!isQuaiZone) return label;
   const slashIdx = label.indexOf("/");
@@ -3442,9 +3450,9 @@ function CcPosteBadge({ label, isQuaiZone }) {
   const posteText = label.slice(0, slashIdx);
   const parcText = label.slice(slashIdx + 1);
   return (
-    <span style={{ display: "inline-flex", alignItems: "stretch", borderRadius: 6, overflow: "hidden", border: "1px solid #E67E22", lineHeight: 1.6, verticalAlign: "middle" }}>
-      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#FDF2E9", color: "#7A3000", padding: "2px 8px" }}>{posteText}</span>
-      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#eef2f7", color: "#475569", padding: "2px 8px", borderLeft: "1px solid #E67E22", fontWeight: 500 }}>{parcText}</span>
+    <span style={{ display: "inline-block", borderRadius: 6, overflow: "hidden", border: "1px solid #E67E22", verticalAlign: "middle" }}>
+      <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { background: "#FDF2E9", color: "#7A3000" })}>{posteText}</span>
+      <span style={Object.assign({}, CC_POSTE_BADGE_SEG_STYLE, { background: "#eef2f7", color: "#475569", borderLeft: "1px solid #E67E22", fontWeight: 500 })}>{parcText}</span>
     </span>
   );
 }
