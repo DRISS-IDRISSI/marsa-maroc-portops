@@ -3442,9 +3442,9 @@ function CcPosteBadge({ label, isQuaiZone }) {
   const posteText = label.slice(0, slashIdx);
   const parcText = label.slice(slashIdx + 1);
   return (
-    <span style={{ display: "inline-flex", borderRadius: 6, overflow: "hidden", border: "1px solid #E67E22" }}>
-      <span style={{ background: "#FDF2E9", color: "#7A3000", padding: "1px 7px" }}>{posteText}</span>
-      <span style={{ background: "#eef2f7", color: "#475569", padding: "1px 7px", borderLeft: "1px solid #E67E22", fontWeight: 500 }}>{parcText}</span>
+    <span style={{ display: "inline-flex", alignItems: "stretch", borderRadius: 6, overflow: "hidden", border: "1px solid #E67E22", lineHeight: 1.6, verticalAlign: "middle" }}>
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#FDF2E9", color: "#7A3000", padding: "2px 8px" }}>{posteText}</span>
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#eef2f7", color: "#475569", padding: "2px 8px", borderLeft: "1px solid #E67E22", fontWeight: 500 }}>{parcText}</span>
     </span>
   );
 }
