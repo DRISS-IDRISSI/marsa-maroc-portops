@@ -3439,10 +3439,13 @@ const CC_POSTE_STATUS_BG = Object.assign({}, PRINT_STATUS_BG, { REPOS: "#fef9c3"
 // PAS de display:flex/inline-flex ici : ce badge est capturé par
 // html2canvas au moment de l'export PDF (cf. exportPdf/exportNodesAsPdf
 // plus haut), qui rend le flexbox de façon peu fiable (constaté : le
-// rendu PDF généré ne ressemblait plus du tout à l'aperçu écran). Centrage
-// via inline-block + hauteur/line-height fixes + text-align, qu'html2canvas
-// restitue à l'identique de l'écran.
-const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", textAlign: "center", height: 16, lineHeight: "16px", padding: "0 8px" };
+// rendu PDF généré ne ressemblait plus du tout à l'aperçu écran). PAS non
+// plus de hauteur/line-height fixées en pixels (constaté aussi : décalage
+// vertical du texte entre les 2 segments, html2canvas ne calcule pas la
+// même ligne de base que le navigateur) — le texte se centre tout seul via
+// un padding vertical symétrique (la boîte prend sa hauteur du contenu),
+// et vertical-align:middle aligne les 2 segments entre eux.
+const CC_POSTE_BADGE_SEG_STYLE = { display: "inline-block", verticalAlign: "middle", textAlign: "center", padding: "3px 8px 2px" };
 function CcPosteBadge({ label, isQuaiZone }) {
   if (!isQuaiZone) return label;
   const slashIdx = label.indexOf("/");
