@@ -3872,9 +3872,14 @@ function AffectationDuJour() {
   } : undefined;
 
   const grouped = {};
+  const showVacationGroups = fleetHasVacation(displayedFleet);
   state.config.shifts.forEach(s => {
     const vacDefs = state.config.vacations[s.id] || [];
-    grouped[s.id] = vacDefs.map(v => ({
+    // Flotte sans vacation (CER, § data.js fleetHasVacation) : jamais de
+    // groupe "Vacation A"/"Vacation B" (toujours vide pour elle, puisque
+    // aucune affectation n'y porte jamais l'étiquette V1/V2) — seul le
+    // groupe "Effectif" (V1+V2, ci-dessous) doit apparaître.
+    grouped[s.id] = !showVacationGroups ? [] : vacDefs.map(v => ({
       vacation: v,
       rows: assignments.filter(a => a.shift === s.id && a.vacation === v.id && a.status === "PRESENT")
         .concat(absentByShift[s.id].filter(a => vacationLabelToday[a.driverId] === v.id))

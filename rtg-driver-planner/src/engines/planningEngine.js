@@ -131,6 +131,18 @@ const PlanningEngine = {
         source = "MANUAL";
       }
 
+      // Flotte sans vacation (CER, § data.js fleetHasVacation) : toujours
+      // "V1+V2" pour un conducteur PRESENT, quelle que soit la source
+      // (auto OU affectation manuelle/import, ex. shift S1/S2 saisi pour un
+      // CDI) — sans ce filet, une affectation manuelle qui ne renseigne pas
+      // explicitement `vacation` (cas des imports shift-only) laisse ce
+      // champ à null, et ce conducteur disparaît silencieusement du groupe
+      // "Effectif"/V1+V2 (Affectation du jour, pages.js) qui ne reconnaît
+      // que la valeur "V1+V2" — jamais null.
+      if (finalStatus === "PRESENT" && team && !fleetHasVacation(team.typeEngin || "RTG")) {
+        vacation = "V1+V2";
+      }
+
       // Un import Excel en masse (RTG_IMPORT_OVERRIDE_MOTIF) a pu figer une
       // zone CC générique (parfois reprise du mauvais modèle de postes,
       // constaté sur GR BAHOUS/GR HOUSSAM), jamais réévaluée depuis — ce
