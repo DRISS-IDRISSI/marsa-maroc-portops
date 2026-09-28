@@ -2029,6 +2029,21 @@ const ROLE_OPTIONS = [
   { value: "CONDUCTEUR", label: "Conducteur — accès à SON planning uniquement" }
 ];
 const ROLE_NEEDS_TEAM = ["RESPONSABLE_SHIFT", "CHEF_ESCALE"];
+// Un "groupe" = les 3 équipes (RTG + CC + CER) d'un même shift, réunies en
+// un seul choix pour éviter d'oublier une équipe en créant/modifiant un
+// compte Responsable de Shift / Chef d'Escale.
+const GROUPES_SHIFT = [
+  { id: "BAKKALI_HADDAZI", label: "GR BAKKALI-HADDAZI", teamId: "A", teamId2: "CC_GR_HADDAZI", teamId3: "CER_GR_BAKKALI_HADDAZI" },
+  { id: "AZZAM_BAHOUS", label: "GR AZZAM-BAHOUS", teamId: "C", teamId2: "CC_GR_BAHOUS", teamId3: "CER_GR_AZZAM_BAHOUS" },
+  { id: "EDDAOUIDI_HOUSSAM", label: "GR EDDAOUIDI-HOUSSAM", teamId: "B", teamId2: "CC_GR_HOUSSAM", teamId3: "CER_GR_EDDAOUIDI_HOUSSAM" }
+];
+function matchGroupeId(form) {
+  const ids = [form.teamId, form.teamId2, form.teamId3].filter(Boolean);
+  if (ids.length !== 3) return "";
+  const set = ids.slice().sort().join("|");
+  const found = GROUPES_SHIFT.find(g => [g.teamId, g.teamId2, g.teamId3].slice().sort().join("|") === set);
+  return found ? found.id : "";
+}
 
 function emptyUserForm(defaultTeamId) {
   return { nom: "", username: "", password: "", role: "RESPONSABLE_SHIFT", teamId: defaultTeamId || "", teamId2: "", teamId3: "", driverId: "", email: "" };
@@ -2092,6 +2107,19 @@ function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
             {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>
+        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (
+          <div>
+            <label className={LABEL_CLS}>Groupe (shift complet — RTG + CC + CER)</label>
+            <select className={FIELD_CLS} value={matchGroupeId(form)} onChange={e => {
+              const g = GROUPES_SHIFT.find(x => x.id === e.target.value);
+              if (g) setForm(f => Object.assign({}, f, { teamId: g.teamId, teamId2: g.teamId2, teamId3: g.teamId3 }));
+            }}>
+              <option value="">— Choisir un groupe (ou remplir les 3 équipes ci-dessous manuellement) —</option>
+              {GROUPES_SHIFT.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1">Remplit automatiquement les 3 équipes ci-dessous (RTG, CC, CER) pour ce shift — évite d'en oublier une.</p>
+          </div>
+        )}
         {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (
           <div>
             <label className={LABEL_CLS}>Équipe / Shift</label>
