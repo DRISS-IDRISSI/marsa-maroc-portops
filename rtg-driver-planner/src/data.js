@@ -56,7 +56,7 @@ const RTG_CONFIG = {
     // zones d'affectation nommées d'après les lignes desservies (MAERSK,
     // MSC, COSCO) — jamais un simple "PARC" générique une fois la zone
     // réelle du jour saisie par le responsable.
-    CER: ["P70", "P71", "P72", "P74", "P80", "P82", "P83", "DTV", "Roro/Parc", "PARC", "MAERSK", "MSC", "COSCO", "AUTORISE"]
+    CER: ["P70", "P71", "P72", "P74", "P80", "P82", "P83", "DTV", "PARC", "MAERSK", "MSC", "COSCO", "AUTORISE"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
   // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle
