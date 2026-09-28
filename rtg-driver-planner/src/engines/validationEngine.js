@@ -30,27 +30,28 @@ const ValidationEngine = {
     // anomalie à signaler tant qu'aucune saisie manuelle n'a été faite.
     const noRotationDriverIds = new Set();
     // Libellé de zone attendu, spécifique à la flotte du conducteur (les
-    // zones RTG sont des lettres A-H, les postes CC sont P71/P72.../DTV/PARC
-    // — voir zonesForFleet, data.js) : jamais "Zone A-H" pour un conducteur CC.
+    // zones RTG sont des lettres A-H, les postes CC/CER sont P71/P72.../
+    // DTV/PARC — voir zonesForFleet, data.js) : jamais "Zone A-H" pour un
+    // conducteur CC/CER.
     const zoneLabelByDriverId = {};
-    const ccDriverIds = new Set();
+    // Conducteurs à file d'attente (CC ou CER, même mécanique postes QUAI/
+    // PARC) — leur "jour de départ" de rotation dépend de leur flotte.
+    const queueDriverRefDateIso = {};
+    const hasVacationByDriverId = {};
     state.drivers.forEach(d => {
       const team = state.teams.find(t => t.id === d.teamId);
-      if (team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""))) {
+      if (team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire|\bcdi\b/i.test(team.nom || ""))) {
         noRotationDriverIds.add(d.id);
       }
       const fleet = (team && team.typeEngin) || "RTG";
-      if (fleet === "CC") ccDriverIds.add(d.id);
+      if (fleet === "CC") queueDriverRefDateIso[d.id] = state.config.ccRotationReferenceDate || state.config.rotationReferenceDate;
+      else if (fleet === "CER") queueDriverRefDateIso[d.id] = state.config.cerRotationReferenceDate || state.config.rotationReferenceDate;
+      hasVacationByDriverId[d.id] = fleetHasVacation(fleet);
       const zones = zonesForFleet(state.config, fleet);
       zoneLabelByDriverId[d.id] = fleet === "RTG" ? `Zone ${zones[0]}-${zones[zones.length - 1]}` : "Poste QUAI ou PARC";
     });
-    // "Jour de départ" CC (config.ccRotationReferenceDate) : avant cette
-    // date, CcPosteRotationEngine ne calcule plus AUCUNE zone (demande
-    // explicite de l'exploitant — ignorer tout avant ce point de départ),
-    // donc une affectation CC sans zone y est normale, pas une anomalie.
-    const ccRefDateIso = state.config.ccRotationReferenceDate || state.config.rotationReferenceDate;
-    // Au-delà d'aujourd'hui, le poste QUAI/PARC CC est volontairement laissé
-    // vide tant que le responsable de shift ne l'a pas saisi (voir
+    // Au-delà d'aujourd'hui, le poste QUAI/PARC CC/CER est volontairement
+    // laissé vide tant que le responsable de shift ne l'a pas saisi (voir
     // PlanningEngine.generateDailyAssignments) — ce n'est donc pas non plus
     // une anomalie à signaler.
     const todayIso = RTGDate.toISO(new Date());
@@ -65,10 +66,11 @@ const ValidationEngine = {
 
         if (a.status === "PRESENT" && !noRotationDriverIds.has(a.driverId)) {
           if (!a.shift) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans shift", attendu: "Shift défini", trouve: "—" });
-          if (!a.vacation) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans vacation", attendu: "V1 ou V2", trouve: "—" });
-          const beforeCcJourDeDepart = ccDriverIds.has(a.driverId) && day.iso < ccRefDateIso;
-          const ccZonePendingFuture = ccDriverIds.has(a.driverId) && day.iso > todayIso;
-          if (!a.zone && !beforeCcJourDeDepart && !ccZonePendingFuture) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: zoneLabelByDriverId[a.driverId] || "Zone définie", trouve: "—" });
+          if (!a.vacation && hasVacationByDriverId[a.driverId]) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Conducteur sans vacation", attendu: "V1 ou V2", trouve: "—" });
+          const queueRefDateIso = queueDriverRefDateIso[a.driverId];
+          const beforeQueueJourDeDepart = !!queueRefDateIso && day.iso < queueRefDateIso;
+          const queueZonePendingFuture = !!queueRefDateIso && day.iso > todayIso;
+          if (!a.zone && !beforeQueueJourDeDepart && !queueZonePendingFuture) anomalies.push({ date: day.iso, driverId: a.driverId, matricule: a.matricule, nom: a.nom, prenom: a.prenom, type: "Affectation sans zone", attendu: zoneLabelByDriverId[a.driverId] || "Zone définie", trouve: "—" });
         }
 
         if (a.status === "OFF" && (a.shift || a.vacation || a.zone)) {

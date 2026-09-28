@@ -239,7 +239,7 @@ function Sidebar() {
       {showFleetSwitch && !collapsed && (
         <div className="px-3 pt-3">
           <div className="flex rounded-lg border border-border overflow-hidden text-xs font-semibold">
-            {["RTG", "CC"].map(f => (
+            {["RTG", "CC", "CER"].map(f => (
               <button key={f} onClick={() => RTGStore.setCurrentFleet(f)}
                 className={`flex-1 px-3 py-1.5 transition-colors ${state.currentFleet === f ? "bg-orange-500 text-white" : "bg-surface text-slate-400 hover:text-white"}`}>
                 {f}

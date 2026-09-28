@@ -47,7 +47,13 @@ const RTG_CONFIG = {
   // "Roro/Parc" n'a pas d'équivalent "P"-préfixé dans la liste : conservé.
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
-    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "Roro/Parc", "PARC", "AUTORISE"]
+    CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "Roro/Parc", "PARC", "AUTORISE"],
+    // CER (Conducteurs Engin Roulant) : liste des postes proposée au
+    // sélecteur manuel — provisoire (aucun poste réel confirmé pour
+    // l'instant, cf. cerPostes ci-dessous), à compléter dès que
+    // l'exploitant communique les postes physiques réels. "PARC" reste la
+    // valeur par défaut (réserve), comme pour CC.
+    CER: ["PARC"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
   // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle
@@ -64,6 +70,13 @@ const RTG_CONFIG = {
     { id: "P74", capacity: 2 },
     { id: "DTV", capacity: 1 }
   ],
+  // Postes physiques pour la flotte CER (Conducteurs Engin Roulant),
+  // équivalent de ccQuaiPosts ci-dessus — vide pour l'instant (aucun poste
+  // réel confirmé par l'exploitant) : tant que cette liste est vide, tous
+  // les conducteurs CER PRESENT restent affichés "PARC" (voir
+  // cerPosteRotationEngine.js), sans bloquer le reste du module. À
+  // compléter dès que les postes réels sont communiqués.
+  cerPostes: [],
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
   // Pour chaque tranche de 5 jours de CONGÉ dans le mois, le quota de repos du
@@ -151,6 +164,10 @@ const RTG_CONFIG = {
   // DISTINCTE de rotationReferenceDate ci-dessus (zone/vacation RTG et
   // vacation CC V1/V2, jamais touchées par ce changement).
   ccRotationReferenceDate: "2026-09-24",
+  // Même principe que ccRotationReferenceDate ci-dessus, mais pour la file
+  // QUAI/PARC CER (CerPosteRotationEngine) — distincte des deux autres
+  // (RTG zone/vacation, CC QUAI/PARC), jamais touchées par ce réglage.
+  cerRotationReferenceDate: "2026-09-01",
   // Mois de DÉPART des repos mensuels — demande explicite de l'exploitant :
   // les contraintes calculées sur septembre 2026 (mois avant ce point de
   // départ, notamment le repos du dernier jour du mois qui bloquait par
@@ -192,5 +209,16 @@ const RTG_CONFIG = {
 // (§ demande explicite) reste bien la liste des zones elle-même.
 function zonesForFleet(config, fleet) {
   return (config.zonesByFleet && config.zonesByFleet[fleet]) || config.zones;
+}
+
+// La notion de VACATION (V1/V2, sous-division d'un shift) n'existe pas pour
+// la flotte CER (Conducteur Engin Roulant) — demande explicite de
+// l'exploitant : "la notion de vacation n'existe pas". Un conducteur CER
+// PRESENT travaille le shift entier (8h), jamais un bloc V1 ou V2. Utilisé
+// partout où une vacation est affichée/calculée (rotation, exports,
+// impressions) pour sauter cette logique entièrement pour CER, RTG et CC
+// restant inchangés.
+function fleetHasVacation(fleet) {
+  return fleet !== "CER";
 }
 

@@ -1557,7 +1557,7 @@ const PLANNING_XLSX_BORDER_ALL = { top: PLANNING_XLSX_BORDER, left: PLANNING_XLS
 // un seul groupe "Effectif", jamais de split Vacation 1/Vacation 2, ni de
 // groupement d'en-tête par SHIFT (qui n'a pas de sens pour elle).
 function isNoRotationTeam(team) {
-  return !team || !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire/i.test(team.nom || "");
+  return !team || !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
 }
 
 // Une des deux moitiés fixes de l'équipe (Vacation 1 / Vacation 2, cf.
@@ -1565,7 +1565,7 @@ function isNoRotationTeam(team) {
 // quotidiennement pour tout le bloc, voir la ligne "VACATION (1 OU 2)"
 // ci-dessous) : deux tableaux empilés dans la même feuille, comme le fichier
 // de référence de l'exploitant. Retourne la ligne libre suivante.
-function buildVacationGroupRows(ws, startRow, groupDrivers, days, firstDayCol, totalCol, statusesUsed) {
+function buildVacationGroupRows(ws, startRow, groupDrivers, days, firstDayCol, totalCol, statusesUsed, hasVacation) {
   if (groupDrivers.length === 0) return startRow;
   groupDrivers.forEach((driver, rIdx) => {
     const row = startRow + rIdx;
@@ -1617,6 +1617,9 @@ function buildVacationGroupRows(ws, startRow, groupDrivers, days, firstDayCol, t
   // ensemble pour tout le groupe (cf. VacationRotationEngine), donc identique
   // pour chaque conducteur présent ce jour-là ; jamais calculée pour un
   // conducteur absent (planningEngine.js), d'où la recherche du 1er présent.
+  // Absente pour une flotte sans vacation (§ data.js, fleetHasVacation — ex.
+  // CER) : une ligne toujours vide n'aurait aucun sens.
+  if (hasVacation === false) return presentsRow + 1;
   const vacationRow = presentsRow + 1;
   ws.getCell(vacationRow, 2).value = "VACATION (1 OU 2)";
   ws.getCell(vacationRow, 2).font = { bold: true };
@@ -1641,6 +1644,7 @@ function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year,
   const totalCol = firstDayCol + N;
   const shiftRow = 2, dateRow = 3, firstDriverRow = 4;
   const noRotation = isNoRotationTeam(team);
+  const hasVacation = fleetHasVacation((team && team.typeEngin) || "RTG");
 
   ws.getColumn(1).width = 10;
   ws.getColumn(2).width = 16;
@@ -1650,7 +1654,7 @@ function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year,
 
   ws.mergeCells(1, 1, 1, totalCol);
   const titleCell = ws.getCell(1, 1);
-  titleCell.value = `PLANNING MENSUEL RTG — ${RAPPORT_MOIS_LABELS_P[month - 1].toUpperCase()} ${year} / ${(team.nom || "").toUpperCase()}`;
+  titleCell.value = `PLANNING MENSUEL ${(team.typeEngin || "RTG")} — ${RAPPORT_MOIS_LABELS_P[month - 1].toUpperCase()} ${year} / ${(team.nom || "").toUpperCase()}`;
   titleCell.font = { bold: true, size: 13 };
   titleCell.alignment = { horizontal: "center", vertical: "middle" };
   titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: hexToArgb("#bdd7ee") } };
@@ -1703,14 +1707,14 @@ function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year,
 
   const statusesUsed = new Set();
   let nextRow = firstDriverRow;
-  if (noRotation) {
-    nextRow = buildVacationGroupRows(ws, nextRow, teamDrivers, days, firstDayCol, totalCol, statusesUsed);
+  if (noRotation || !hasVacation) {
+    nextRow = buildVacationGroupRows(ws, nextRow, teamDrivers, days, firstDayCol, totalCol, statusesUsed, hasVacation);
   } else {
     const group1 = teamDrivers.filter(d => d.initialVacation !== "V2");
     const group2 = teamDrivers.filter(d => d.initialVacation === "V2");
-    nextRow = buildVacationGroupRows(ws, nextRow, group1, days, firstDayCol, totalCol, statusesUsed);
+    nextRow = buildVacationGroupRows(ws, nextRow, group1, days, firstDayCol, totalCol, statusesUsed, hasVacation);
     if (group1.length > 0 && group2.length > 0) nextRow += 1; // ligne vide de séparation entre les deux tableaux
-    nextRow = buildVacationGroupRows(ws, nextRow, group2, days, firstDayCol, totalCol, statusesUsed);
+    nextRow = buildVacationGroupRows(ws, nextRow, group2, days, firstDayCol, totalCol, statusesUsed, hasVacation);
   }
 
   let legendRow = nextRow + 1;
@@ -2360,9 +2364,14 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
   // choisit lui-même, au jour le jour, sur quel shift affecter ce
   // conducteur selon le besoin réel, et il travaille la journée complète
   // (V1+V2), jamais une seule vacation.
-  const isNoRotation = !!team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""));
+  const isNoRotation = !!team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire|\bcdi\b/i.test(team.nom || ""));
+  // Flotte sans vacation (CER, § data.js fleetHasVacation) : même convention
+  // "V1+V2" (journée complète) que les stagiaires, mais le shift reste
+  // automatique (vraie rotation d'équipe) — seul le sélecteur Vacation
+  // disparaît, pas le sélecteur Shift.
+  const hasVacation = fleetHasVacation(fleet);
   const [status, setStatus] = useState(assignment.status);
-  const [vacation, setVacation] = useState(assignment.vacation || (isNoRotation ? "V1+V2" : "V1"));
+  const [vacation, setVacation] = useState(assignment.vacation || (isNoRotation || !hasVacation ? "V1+V2" : "V1"));
   // Pour la flotte CC (postes QUAI/PARC), la valeur par défaut quand aucune
   // zone n'est encore renseignée doit être PARC (réserve, jamais un poste
   // QUAI deviné) — sans ça, fleetZones[0] (le premier poste QUAI de la
@@ -2440,7 +2449,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
                     {config.shifts.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
                 </div>
-              ) : (
+              ) : !hasVacation ? null : (
                 <div className="flex-1">
                   <label className={LABEL_CLS}>Vacation</label>
                   <select className={FIELD_CLS} value={vacation} onChange={e => setVacation(e.target.value)}>
@@ -2623,16 +2632,24 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit, 
         // ils travaillent la journée complète (V1+V2) sur le shift où on les
         // affecte au jour le jour selon le besoin — demande explicite de
         // l'exploitant, un seul tableau pour toute l'équipe.
-        const isStagiaireTeam = !team || (!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || "");
+        const isStagiaireTeam = !team || (!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire|\bcdi\b/i.test(team.nom || "");
+        // Flotte CER (Conducteur Engin Roulant) : pas de notion de vacation
+        // (§ data.js, fleetHasVacation) — un seul tableau "Effectif" par
+        // équipe, comme pour les stagiaires, mais AVEC l'en-tête "Shift
+        // 1/2/3" fusionné (team passé, pas null) car l'équipe suit bien une
+        // vraie rotation de shift synchronisée, contrairement aux stagiaires.
+        const noVacationFleet = !fleetHasVacation((team && team.typeEngin) || "RTG");
         return (
           <div key={teamId} className="mb-6 last:mb-0">
             {teamIds.length > 1 && <h3 className="text-slate-900 font-semibold text-sm mb-2">{team ? team.nom : teamId}</h3>}
             {isStagiaireTeam ? (
-              // team=null : chaque stagiaire suit son propre shift au jour le
-              // jour (pas de rotation synchronisée d'équipe) — un en-tête
-              // "Shift 1/2/3" fusionné par semaine serait donc trompeur ici
-              // (même raison que isNoRotationTeam dans pages2.js).
+              // team=null : chaque stagiaire/CDI suit son propre shift au
+              // jour le jour (pas de rotation synchronisée d'équipe) — un
+              // en-tête "Shift 1/2/3" fusionné par semaine serait donc
+              // trompeur ici (même raison que isNoRotationTeam dans pages2.js).
               <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} noRotation mouvementsByKey={mouvementsByKey} />
+            ) : noVacationFleet ? (
+              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} mouvementsByKey={mouvementsByKey} />
             ) : (
               <>
                 <VacationGroupTable label="Vacation 1" drivers={teamDrivers.filter(d => d.initialVacation !== "V2")} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} mouvementsByKey={mouvementsByKey} />
@@ -3732,7 +3749,7 @@ function AffectationDuJour() {
       return stillAutoParc && !hasAnyManualQuai;
     });
   })();
-  const isCcZonePending = displayedFleet === "CC" && dateStr >= todayIso && hasPendingCcZone;
+  const isCcZonePending = (displayedFleet === "CC" || displayedFleet === "CER") && dateStr >= todayIso && hasPendingCcZone;
 
   // Un conducteur absent (repos, congé, maladie, absence, formation) reste
   // rattaché au shift de son équipe ce jour-là (le shift/vacation/zone ne
@@ -3786,10 +3803,16 @@ function AffectationDuJour() {
   // (repos/RC) — demande explicite de l'exploitant ("doivent être affichés
   // séparément"). Elles ont leur propre groupe "V1+V2" plus bas, qu'elles
   // soient présentes ou absentes ce jour-là.
-  const noRotationTeamIds = new Set(state.teams.filter(t => (!t.shiftCycle || t.shiftCycle.length === 0) || /stagiaire/i.test(t.nom || "")).map(t => t.id));
+  const noRotationTeamIds = new Set(state.teams.filter(t => (!t.shiftCycle || t.shiftCycle.length === 0) || /stagiaire|\bcdi\b/i.test(t.nom || "")).map(t => t.id));
+  // Équipes CER (§ data.js, fleetHasVacation) : même traitement "groupe
+  // V1+V2 à part" que les stagiaires, même quand l'équipe suit une vraie
+  // rotation de shift (contrairement aux stagiaires, cf. isNoRotationTeam) —
+  // simplement parce que la vacation n'existe pas pour elles.
+  const noVacationTeamIds = new Set(state.teams.filter(t => !fleetHasVacation(t.typeEngin || "RTG")).map(t => t.id));
+  const noVacationOrRotationTeamIds = new Set([...noRotationTeamIds, ...noVacationTeamIds]);
   const absentByShift = {};
   state.config.shifts.forEach(s => {
-    absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id && !noRotationTeamIds.has(a.teamId));
+    absentByShift[s.id] = assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && teamShiftMap[a.teamId] === s.id && !noVacationOrRotationTeamIds.has(a.teamId));
   });
 
   // Même ordre que le Planning Mensuel (ordreAffichage, rempli par l'import
@@ -3810,16 +3833,16 @@ function AffectationDuJour() {
   // repoussés en fin de file) apparaissent en bas, ceux qui remontent en tête
   // (repos/PARC/AUTORISE la veille) en haut, pour que le responsable affecte
   // les postes QUAI/PARC du jour simplement de haut en bas.
-  const byCcRank = (a, b) => {
+  const byQueueRank = (engine) => (a, b) => {
     const da = driverById[a.driverId], db = driverById[b.driverId];
-    const ra = da ? CcPosteRotationEngine.getRankForDate(da, dateObj, state, state.teams) : null;
-    const rb = db ? CcPosteRotationEngine.getRankForDate(db, dateObj, state, state.teams) : null;
+    const ra = da ? engine.getRankForDate(da, dateObj, state, state.teams) : null;
+    const rb = db ? engine.getRankForDate(db, dateObj, state, state.teams) : null;
     if (ra == null && rb == null) return byOrdreAffichage(a, b);
     if (ra == null) return 1;
     if (rb == null) return -1;
     return ra - rb;
   };
-  const rowSort = displayedFleet === "CC" ? byCcRank : byOrdreAffichage;
+  const rowSort = displayedFleet === "CC" ? byQueueRank(CcPosteRotationEngine) : displayedFleet === "CER" ? byQueueRank(CerPosteRotationEngine) : byOrdreAffichage;
 
   // Donner la main au responsable pour renseigner/corriger l'affectation du
   // jour même (poste QUAI/PARC pour un conducteur CC, zone pour un RTG) —
@@ -3853,7 +3876,7 @@ function AffectationDuJour() {
     // — sans ça ils retombaient dans les tableaux Vacation A/B des
     // titulaires (mélangés, alors qu'ils n'ont pas de vraie vacation A/B).
     const fullDayRows = assignments.filter(a => a.shift === s.id && a.vacation === "V1+V2" && a.status === "PRESENT")
-      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id))
+      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noVacationOrRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id))
       .sort(byOrdreAffichage);
     if (fullDayRows.length > 0) {
       grouped[s.id].push({

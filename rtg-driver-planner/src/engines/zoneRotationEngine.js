@@ -347,6 +347,8 @@ const ZoneRotationEngine = {
         const dayResult = this._cascadeDayZone[iso];
         result = (dayResult && dayResult[driver.id] !== undefined) ? dayResult[driver.id] : null;
       }
+    } else if (fleet === "CER") {
+      result = CerPosteRotationEngine.getZoneForDate(driver, date, state, teams);
     } else {
       result = CcPosteRotationEngine.getZoneForDate(driver, date, state, teams);
     }
@@ -374,6 +376,9 @@ const ZoneRotationEngine = {
       const nat = this._cascadeNaturalIndex[iso];
       const idx = (nat && nat[driver.id] !== undefined) ? nat[driver.id] : null;
       return idx !== null ? chainZones[idx] : null;
+    }
+    if (fleet === "CER") {
+      return CerPosteRotationEngine.getExpectedZoneForDate(driver, date, state, teams);
     }
     return CcPosteRotationEngine.getExpectedZoneForDate(driver, date, state, teams);
   }

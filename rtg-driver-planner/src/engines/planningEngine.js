@@ -78,16 +78,29 @@ const PlanningEngine = {
       // selon le terrain (jamais une rotation individuelle fictive). Seule
       // une correction manuelle (ou un import du planning réel) renseigne
       // ces valeurs — voir AssignmentEditModal (sélecteur de shift dédié).
-      const isNoRotationTeam = team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || ""));
+      const isNoRotationTeam = team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire|\bcdi\b/i.test(team.nom || ""));
+      const fleet = (team && team.typeEngin) || "RTG";
+      const hasVacation = fleetHasVacation(fleet);
       if (status === "PRESENT" && team && !isNoRotationTeam) {
         shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
-        vacation = VacationRotationEngine.getVacationForDate(driver, date, state, team);
         zone = ZoneRotationEngine.getZoneForDate(driver, date, state, teams);
-        const vacDefs = state.config.vacations[shift] || [];
-        const vacDef = vacDefs.find(v => v.id === vacation);
-        if (vacDef) { startTime = vacDef.start; endTime = vacDef.end; }
-        if (shift === "S1" || shift === "S3") {
-          vacationBalanceAlert = RestDayEngine.hasVacationBalanceAlert(driver, month, year, state, teams, dom);
+        if (hasVacation) {
+          vacation = VacationRotationEngine.getVacationForDate(driver, date, state, team);
+          const vacDefs = state.config.vacations[shift] || [];
+          const vacDef = vacDefs.find(v => v.id === vacation);
+          if (vacDef) { startTime = vacDef.start; endTime = vacDef.end; }
+          if (shift === "S1" || shift === "S3") {
+            vacationBalanceAlert = RestDayEngine.hasVacationBalanceAlert(driver, month, year, state, teams, dom);
+          }
+        } else {
+          // Pas de vacation (CER) : même convention "V1+V2" (journée
+          // complète) que les stagiaires, pour que ces affectations restent
+          // regroupées correctement sur Affectation du jour (bloc V1+V2 à
+          // part, pages.js) au lieu de disparaître silencieusement (elles ne
+          // correspondraient à aucune vacation V1/V2 de 4h).
+          vacation = "V1+V2";
+          const shiftDef = (state.config.shifts || []).find(s => s.id === shift);
+          if (shiftDef) { startTime = shiftDef.start; endTime = shiftDef.end; }
         }
       } else if (status === "REPOS") {
         restCorrection = RestDayEngine.isVacationBalanceCorrection(driver, month, year, state, teams, dom) ? "equilibrage_V1_V2" : null;
@@ -127,12 +140,12 @@ const PlanningEngine = {
       // reflète désormais correctement les postes propres à chaque équipe et
       // la rotation réelle jour après jour (voir aussi ccPosteRotationEngine.js,
       // qui ignore ce même import pour calculer l'ordre de la file). Les
-      // stagiaires (isNoRotationTeam) suivent la même règle même si leur
-      // équipe n'a pas typeEngin="CC" renseigné : ce sont toujours des
-      // cavaliers CC (postes QUAI/PARC), jamais des zones RTG A-H.
-      const isCcContext = !!(team && (team.typeEngin === "CC" || b.isNoRotationTeam));
+      // stagiaires/CDI (isNoRotationTeam) suivent la même règle même si leur
+      // équipe n'a pas typeEngin="CC"/"CER" renseigné : ce sont toujours des
+      // conducteurs à file d'attente (postes QUAI/PARC), jamais des zones RTG A-H.
+      const isQueueBasedContext = !!(team && (team.typeEngin === "CC" || team.typeEngin === "CER" || b.isNoRotationTeam));
       const zoneFromImport = !!(override && override.zone !== undefined && override.motif === RTG_IMPORT_OVERRIDE_MOTIF);
-      if (zoneFromImport && isCcContext) {
+      if (zoneFromImport && isQueueBasedContext) {
         zone = b.zone;
       }
 
@@ -159,7 +172,7 @@ const PlanningEngine = {
       // demande explicite de l'exploitant : "je veux que ça soit
       // automatique d'affecter les stagiaires au PARC par défaut".
       const zoneManuallySet = !!(override && override.zone !== undefined && !zoneFromImport);
-      if (!zoneManuallySet && finalStatus === "PRESENT" && isCcContext && (b.isNoRotationTeam || isoDate >= todayIso)) {
+      if (!zoneManuallySet && finalStatus === "PRESENT" && isQueueBasedContext && (b.isNoRotationTeam || isoDate >= todayIso)) {
         zone = "PARC";
       }
 
@@ -191,6 +204,7 @@ const PlanningEngine = {
     RestDayEngine.clearCache();
     ZoneRotationEngine.clearCache();
     CcPosteRotationEngine.clearCache();
+    CerPosteRotationEngine.clearCache();
     VacationRotationEngine.clearCache();
 
     const dim = RTGDate.daysInMonth(month, year);

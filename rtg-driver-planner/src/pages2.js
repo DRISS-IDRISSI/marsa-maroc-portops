@@ -215,7 +215,7 @@ function buildShiftCycleForCurrentShift(currentShift, weekIndexMod3) {
 // fixe" ait été cochée à la création). Afficher un "shift du jour" calculé
 // pour cette équipe serait donc trompeur — voir usage ci-dessous.
 function isNoRotationTeam(team) {
-  return (!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire/i.test(team.nom || "");
+  return (!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire|\bcdi\b/i.test(team.nom || "");
 }
 
 // Calcule le shiftCycle à appliquer pour que `team` soit sur `currentShift`

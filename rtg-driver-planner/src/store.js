@@ -34,7 +34,7 @@ const RTG_FLEET_STORAGE_KEY = "rtg_current_fleet";
 function readStoredFleet() {
   try {
     const v = window.localStorage.getItem(RTG_FLEET_STORAGE_KEY);
-    return v === "CC" ? "CC" : "RTG";
+    return (v === "CC" || v === "CER") ? v : "RTG";
   } catch (e) { return "RTG"; }
 }
 
@@ -78,7 +78,7 @@ const RTGStore = (function () {
   }
 
   function setCurrentFleet(fleet) {
-    const value = fleet === "CC" ? "CC" : "RTG";
+    const value = (fleet === "CC" || fleet === "CER") ? fleet : "RTG";
     try { window.localStorage.setItem(RTG_FLEET_STORAGE_KEY, value); } catch (e) {}
     set(s => Object.assign({}, s, { currentFleet: value }));
   }
