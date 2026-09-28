@@ -21,17 +21,22 @@
 //     à la main sur le shift qui a besoin de renfort ce jour-là (S1 ou S2
 //     uniquement, jamais S3, par consigne terrain).
 //
-// Contrairement à CC, il n'existe pas (encore) de file de départ réelle
-// communiquée par équipe (CC_BOOTSTRAP_ORDER) ni de postes propres par
-// équipe (CC_QUAI_POSTS_BY_TEAM) : toute équipe CER démarre triée par
-// matricule à cerRotationReferenceDate, et utilise la liste globale
-// config.cerPostes — à affiner dès que l'exploitant communique ces détails,
-// sur le même modèle que CC.
+// Postes physiques (config.cerPostes) confirmés identiques à CC : P71/P74/
+// DTV, mêmes capacités (7 places au total). Contrairement à CC, il n'existe
+// pas (encore) de file de départ réelle communiquée par équipe
+// (CC_BOOTSTRAP_ORDER) ni de postes propres par équipe
+// (CC_QUAI_POSTS_BY_TEAM) : toute équipe CER démarre triée par matricule à
+// cerRotationReferenceDate, et utilise la liste globale config.cerPostes.
 // ==========================================
 
 const CER_FROZEN_STATUSES = ["CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT"];
 
-const CER_NON_PHYSICAL_ZONES = ["PARC", "AUTORISE"];
+// PARC (réserve) se décompose en 3 zones nommées d'après les lignes/
+// terminaux desservis (MAERS, MSC, COSCO — confirmé par l'exploitant) :
+// aucune de ces 3 n'est un poste physique QUAI, au même titre que le
+// générique "PARC" — un conducteur qui y était hier n'est jamais compté
+// "était au quai" pour l'escalier de la file d'attente.
+const CER_NON_PHYSICAL_ZONES = ["PARC", "AUTORISE", "MAERS", "MSC", "COSCO"];
 
 function cerBlockKey(driver) {
   return driver.teamId;

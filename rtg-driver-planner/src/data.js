@@ -48,12 +48,14 @@ const RTG_CONFIG = {
   zonesByFleet: {
     RTG: ["A", "B", "C", "D", "E", "F", "G", "H"],
     CC: ["P71", "P72", "P74", "P80", "P82", "P83", "DTV", "Roro/Parc", "PARC", "AUTORISE"],
-    // CER (Conducteurs Engin Roulant) : liste des postes proposée au
-    // sélecteur manuel — provisoire (aucun poste réel confirmé pour
-    // l'instant, cf. cerPostes ci-dessous), à compléter dès que
-    // l'exploitant communique les postes physiques réels. "PARC" reste la
-    // valeur par défaut (réserve), comme pour CC.
-    CER: ["PARC"]
+    // CER (Conducteurs Engin Roulant) : mêmes postes physiques QUAI que CC
+    // (P71/P74/DTV — confirmé explicitement par l'exploitant, "les postes
+    // de travail sont les mêmes que les conducteurs cavaliers"), plus une
+    // particularité propre à CER : le PARC (réserve) se décompose en 3
+    // zones d'affectation nommées d'après les lignes/terminaux desservis
+    // (MAERS, MSC, COSCO) — jamais un simple "PARC" générique pour CER une
+    // fois la zone réelle du jour saisie par le responsable.
+    CER: ["P71", "P74", "DTV", "PARC", "MAERS", "MSC", "COSCO", "AUTORISE"]
   },
   // Postes QUAI proprement dits pour la flotte CC (sous-ensemble de
   // zonesByFleet.CC, sans PARC ni AUTORISE), CHACUN avec sa capacité réelle
@@ -71,12 +73,15 @@ const RTG_CONFIG = {
     { id: "DTV", capacity: 1 }
   ],
   // Postes physiques pour la flotte CER (Conducteurs Engin Roulant),
-  // équivalent de ccQuaiPosts ci-dessus — vide pour l'instant (aucun poste
-  // réel confirmé par l'exploitant) : tant que cette liste est vide, tous
-  // les conducteurs CER PRESENT restent affichés "PARC" (voir
-  // cerPosteRotationEngine.js), sans bloquer le reste du module. À
-  // compléter dès que les postes réels sont communiqués.
-  cerPostes: [],
+  // équivalent de ccQuaiPosts ci-dessus — mêmes postes que CC (confirmé
+  // explicitement par l'exploitant), donc mêmes capacités : 7 places au
+  // total (4+2+1) plafonnent le nombre de conducteurs CER affectés au
+  // QUAI un jour donné (voir cerPosteRotationEngine.js).
+  cerPostes: [
+    { id: "P71", capacity: 4 },
+    { id: "P74", capacity: 2 },
+    { id: "DTV", capacity: 1 }
+  ],
   vacationCycle: ["V1", "V2"],
   reposMensuel: 6,
   // Pour chaque tranche de 5 jours de CONGÉ dans le mois, le quota de repos du

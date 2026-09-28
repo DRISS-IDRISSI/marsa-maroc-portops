@@ -2383,7 +2383,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
   // l'ouverture, et pouvait être enregistré tel quel si le responsable ne
   // touchait pas ce champ (ex. en affectant juste le SHIFT d'un stagiaire) —
   // donnant l'impression d'un poste QUAI "affecté automatiquement".
-  const [zone, setZone] = useState(assignment.zone || (fleet === "CC" ? "PARC" : fleetZones[0]));
+  const [zone, setZone] = useState(assignment.zone || ((fleet === "CC" || fleet === "CER") ? "PARC" : fleetZones[0]));
   const [shiftChoice, setShiftChoice] = useState(assignment.shift || (config.shifts[0] && config.shifts[0].id));
   const [saving, setSaving] = useState(false);
   const isManual = assignment.source === "MANUAL";
