@@ -2109,44 +2109,17 @@ function UserForm({ state, allTeams, initial, editingId, onCancel, onSaved }) {
         </div>
         {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (
           <div>
-            <label className={LABEL_CLS}>Groupe (shift complet — RTG + CC + CER)</label>
+            <label className={LABEL_CLS}>Shift</label>
             <select className={FIELD_CLS} value={matchGroupeId(form)} onChange={e => {
               const g = GROUPES_SHIFT.find(x => x.id === e.target.value);
-              if (g) setForm(f => Object.assign({}, f, { teamId: g.teamId, teamId2: g.teamId2, teamId3: g.teamId3 }));
+              setForm(f => Object.assign({}, f, {
+                teamId: g ? g.teamId : "", teamId2: g ? g.teamId2 : "", teamId3: g ? g.teamId3 : ""
+              }));
             }}>
-              <option value="">— Choisir un groupe (ou remplir les 3 équipes ci-dessous manuellement) —</option>
+              <option value="">— Sélectionner le shift —</option>
               {GROUPES_SHIFT.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
             </select>
-            <p className="text-[11px] text-slate-500 mt-1">Remplit automatiquement les 3 équipes ci-dessous (RTG, CC, CER) pour ce shift — évite d'en oublier une.</p>
-          </div>
-        )}
-        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (
-          <div>
-            <label className={LABEL_CLS}>Équipe / Shift</label>
-            <select className={FIELD_CLS} value={form.teamId} onChange={e => setForm(f => Object.assign({}, f, { teamId: e.target.value }))}>
-              <option value="">— Sélectionner —</option>
-              {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-            </select>
-          </div>
-        )}
-        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (
-          <div>
-            <label className={LABEL_CLS}>Équipe secondaire (optionnel — autre flotte)</label>
-            <select className={FIELD_CLS} value={form.teamId2} onChange={e => setForm(f => Object.assign({}, f, { teamId2: e.target.value }))}>
-              <option value="">— Aucune —</option>
-              {(allTeams || state.teams).filter(t => t.id !== form.teamId).map(t => <option key={t.id} value={t.id}>{t.nom} ({t.typeEngin || "RTG"})</option>)}
-            </select>
-            <p className="text-[11px] text-slate-500 mt-1">Pour un binôme de responsables couvrant RTG ET CC sur le même shift (ex. BAHOUS/AZZAM) — laisser vide sinon.</p>
-          </div>
-        )}
-        {ROLE_NEEDS_TEAM.indexOf(form.role) !== -1 && (form.teamId2 || form.teamId3) && (
-          <div>
-            <label className={LABEL_CLS}>Équipe tertiaire (optionnel — 3ème flotte, ex. CER)</label>
-            <select className={FIELD_CLS} value={form.teamId3} onChange={e => setForm(f => Object.assign({}, f, { teamId3: e.target.value }))}>
-              <option value="">— Aucune —</option>
-              {(allTeams || state.teams).filter(t => t.typeEngin === "CER" && !/\bcdi\b/i.test(t.nom) && t.id !== form.teamId && t.id !== form.teamId2).map(t => <option key={t.id} value={t.id}>{t.nom} ({t.typeEngin || "RTG"})</option>)}
-            </select>
-            <p className="text-[11px] text-slate-500 mt-1">Le shift CER du binôme (les 3 équipes CER de shift uniquement — GR CDI n'est pas un shift et n'apparaît pas ici). Laisser vide sinon.</p>
+            <p className="text-[11px] text-slate-500 mt-1">Donne accès aux 3 modules (RTG, CC, CER) de ce shift, rien d'autre à choisir.</p>
           </div>
         )}
         {form.role !== "CONDUCTEUR" && (
