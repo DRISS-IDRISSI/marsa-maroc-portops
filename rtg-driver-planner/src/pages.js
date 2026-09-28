@@ -3062,8 +3062,16 @@ function PlanningMensuel() {
   const shiftRestricted = isTeamRestricted(currentUser);
   const ownTeamId = restrictedTeamId(currentUser, rawState);
   // Ne considérer que les équipes/conducteurs de la flotte sélectionnée
-  // (bascule RTG/CC) — un compte restreint reste sur sa propre équipe quelle
-  // que soit cette bascule.
+  // (bascule RTG/CC/CER) — un compte restreint reste sur sa propre équipe
+  // quelle que soit cette bascule. Un compte restreint qui n'a AUCUNE
+  // équipe dans la flotte cliquée (ex. binôme RTG+CC qui clique sur CER)
+  // retombe malgré tout sur sa propre équipe (restrictedTeamId, jamais sur
+  // les équipes d'un autre compte) — mais celle-ci appartient alors à une
+  // AUTRE flotte que celle affichée dans l'onglet actif : le bandeau
+  // ci-dessous le signale explicitement, plutôt que de laisser deviner
+  // pourquoi des conducteurs d'une autre flotte apparaissent sous cet onglet.
+  const ownTeamFleet = shiftRestricted && ownTeamId ? ((rawState.teams.find(t => t.id === ownTeamId) || {}).typeEngin || "RTG") : null;
+  const fleetMismatch = shiftRestricted && ownTeamFleet && ownTeamFleet !== rawState.currentFleet;
   const fTeams = fleetTeams(rawState, shiftRestricted ? ownTeamId : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
@@ -3184,6 +3192,12 @@ function PlanningMensuel() {
           <ExportExcelButton onClick={exportExcel} />
         </div>
       </div>
+
+      {fleetMismatch && (
+        <p className="text-[11px] text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 print:hidden">
+          <i className="fas fa-triangle-exclamation mr-1.5"></i>Vous n'avez pas d'équipe {rawState.currentFleet} — affichage de votre équipe {ownTeamFleet} ({(state.teams[0] || {}).nom}).
+        </p>
+      )}
 
       {canBulkImport && effectiveTeamId === "all" && (
         <p className="text-[11px] text-slate-500 print:hidden">Sélectionnez une équipe précise pour importer un planning réel (Repos/Congés) depuis Excel.</p>
@@ -3681,9 +3695,11 @@ function AffectationDuJour() {
   // action d'édition).
   const shiftRestricted = isTeamRestricted(currentUser);
   const ownTeamId = restrictedTeamId(currentUser, rawState);
-  // Ne considérer que les équipes/conducteurs de la flotte sélectionnée
-  // (bascule RTG/CC) — un compte restreint reste sur sa propre équipe quelle
-  // que soit cette bascule.
+  // Cf. PlanningMensuel : un compte restreint sans équipe dans la flotte
+  // cliquée retombe sur sa propre équipe, mais d'une AUTRE flotte — le
+  // bandeau ci-dessous le signale explicitement.
+  const ownTeamFleet = shiftRestricted && ownTeamId ? ((rawState.teams.find(t => t.id === ownTeamId) || {}).typeEngin || "RTG") : null;
+  const fleetMismatch = shiftRestricted && ownTeamFleet && ownTeamFleet !== rawState.currentFleet;
   const fTeams = fleetTeams(rawState, shiftRestricted ? ownTeamId : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
@@ -4013,6 +4029,12 @@ function AffectationDuJour() {
           <ExportExcelButton onClick={exportExcel} />
         </div>
       </div>
+
+      {fleetMismatch && (
+        <p className="text-[11px] text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 print:hidden">
+          <i className="fas fa-triangle-exclamation mr-1.5"></i>Vous n'avez pas d'équipe {rawState.currentFleet} — affichage de votre équipe {ownTeamFleet} ({(rawState.teams.find(t => t.id === ownTeamId) || {}).nom}).
+        </p>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-3 print:hidden">
         <div>
