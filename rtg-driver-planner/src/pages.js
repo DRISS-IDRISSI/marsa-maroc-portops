@@ -1978,7 +1978,7 @@ function PrintHeader({ subtitle, count, countLabel, fleet }) {
         </div>
       </div>
       <div className="sm:text-right text-xs text-slate-500 shrink-0">
-        <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+        <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "Africa/Casablanca" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "Africa/Casablanca" })}</div>
         {count != null && <div>{count} {countLabel}{count > 1 ? "s" : ""}</div>}
       </div>
     </div>
@@ -3508,7 +3508,7 @@ function CcAffectationHeader({ generatedAt }) {
         <div className="text-base font-bold uppercase">État d'affectation des conducteurs</div>
       </div>
       <div className="text-right text-[10px] text-slate-500 shrink-0">
-        <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+        <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "Africa/Casablanca" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "Africa/Casablanca" })}</div>
       </div>
     </div>
   );

@@ -307,6 +307,15 @@ function Sidebar() {
 // ==========================================
 // Topbar
 // ==========================================
+// Fuseau horaire FIXE du terminal (Casablanca, Maroc) — jamais celui du
+// téléphone/navigateur de l'utilisateur : un appareil mal configuré (mauvais
+// fuseau système, ou bug de fuseau du navigateur, ex. données de fuseau
+// horaire obsolètes sur certains Chrome/WebView Android pour le Maroc,
+// constaté en pratique — décalage d'une heure malgré une horloge système
+// correcte) ne doit jamais faire dériver l'horloge affichée dans l'appli,
+// utilisée en contexte professionnel sur un site physique fixe.
+const RTG_TERMINAL_TIMEZONE = "Africa/Casablanca";
+
 function Topbar() {
   const [time, setTime] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
@@ -318,8 +327,8 @@ function Topbar() {
         <span className="hidden lg:inline text-xs text-slate-500">Gestion des conducteurs</span>
       </div>
       <div className="flex items-center gap-2 sm:gap-4 text-sm text-slate-500 ml-auto">
-        <span className="hidden md:inline"><i className="far fa-calendar mr-1.5"></i>{time.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</span>
-        <span><i className="far fa-clock mr-1.5"></i>{time.toLocaleTimeString('fr-FR')}</span>
+        <span className="hidden md:inline"><i className="far fa-calendar mr-1.5"></i>{time.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',timeZone:RTG_TERMINAL_TIMEZONE})}</span>
+        <span><i className="far fa-clock mr-1.5"></i>{time.toLocaleTimeString('fr-FR',{timeZone:RTG_TERMINAL_TIMEZONE})}</span>
         <span className="flex items-center gap-1.5 text-xs"><span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span><span className="hidden sm:inline">En ligne</span></span>
       </div>
     </header>

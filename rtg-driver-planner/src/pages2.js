@@ -1826,7 +1826,7 @@ function RapportRHPage() {
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
-            <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+            <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "Africa/Casablanca" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "Africa/Casablanca" })}</div>
             <div>{report.rows.length} conducteur{report.rows.length > 1 ? "s" : ""}</div>
           </div>
         </div>
@@ -1895,7 +1895,7 @@ function RapportRHPage() {
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
-            <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+            <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "Africa/Casablanca" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "Africa/Casablanca" })}</div>
             <div>{feriesReport.totalFerie} jour(s) férié(s) travaillé(s) · {feriesReport.totalS3} 3ème shift dimanche</div>
           </div>
         </div>
@@ -1962,7 +1962,7 @@ function RapportRHPage() {
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
-            <div>Généré le {generatedAt.toLocaleDateString("fr-FR")} à {generatedAt.toLocaleTimeString("fr-FR")}</div>
+            <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "Africa/Casablanca" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "Africa/Casablanca" })}</div>
             <div>{mvtReport.rows.length} conducteur{mvtReport.rows.length > 1 ? "s" : ""} · {mvtReport.total} mouvement{mvtReport.total > 1 ? "s" : ""}</div>
           </div>
         </div>
