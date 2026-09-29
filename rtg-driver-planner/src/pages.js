@@ -2338,6 +2338,14 @@ function Cell({ assignment, detailLevel, onEdit, frameCls, noRotation, hasVacati
 // vacations V1/V2 quand l'algorithme automatique ne suffit pas.
 const EDITABLE_STATUSES = ["PRESENT", "REPOS", "REPOS_COMPENSATOIRE", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "OFF"];
 
+// Mêmes valeurs "non physiques" que CER_NON_PHYSICAL_ZONES
+// (cerPosteRotationEngine.js) : pour un CDI, ce ne sont jamais de vrais
+// postes quai choisis par le responsable, seulement la valeur par défaut du
+// formulaire ou la suggestion du jour déjà affichée — les enregistrer telles
+// quelles figerait la rotation automatique MAERSK/MSC/COSCO (cf. save() ci-
+// dessous, AssignmentEditModal).
+const CER_CDI_AUTO_ZONE_VALUES = ["PARC", "AUTORISE", "MAERSK", "MSC", "COSCO"];
+
 // Chaque zone de stockage RTG (A-H) est physiquement divisée en 2 blocs ; un
 // conducteur peut être affecté à toute la zone (seul, se déplaçant entre les
 // 2 blocs) ou à un seul bloc (zone doublée, ex. "01B"/"02B" — même convention
@@ -2371,6 +2379,16 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
   // conducteur selon le besoin réel, et il travaille la journée complète
   // (V1+V2), jamais une seule vacation.
   const isNoRotation = !!team && ((!team.shiftCycle || team.shiftCycle.length === 0) || /stagiaire|\bcdi\b/i.test(team.nom || ""));
+  // CDI (flotte CER, sans rotation fixe) : son SHIFT est toujours saisi à la
+  // main (cf. isNoRotation ci-dessus) — donc CHAQUE jour passe forcément par
+  // cette modale, même quand le responsable ne veut rien dire de plus sur la
+  // zone. Si on enregistrait alors la valeur affichée par défaut (PARC ou la
+  // suggestion du jour) comme une vraie zone manuelle, la rotation
+  // automatique MAERSK/MSC/COSCO (cerPosteRotationEngine.js) se figeait pour
+  // toujours dès le premier enregistrement (bug constaté : zone identique
+  // jour après jour). Seul un vrai poste quai physique compte comme une
+  // décision volontaire du responsable ("l'envoyer au quai") — cf. save().
+  const isCerCdi = isNoRotation && fleet === "CER";
   // Flotte sans vacation (CER, § data.js fleetHasVacation) : même convention
   // "V1+V2" (journée complète) que les stagiaires, mais le shift reste
   // automatique (vraie rotation d'équipe) — seul le sélecteur Vacation
@@ -2411,7 +2429,12 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
           startTime = vacDef ? vacDef.start : null;
           endTime = vacDef ? vacDef.end : null;
         }
-        override = { status: "PRESENT", shift: shift, vacation: vacation, zone: zone, startTime: startTime, endTime: endTime };
+        // CDI : une valeur "placeholder" (PARC/suggestion) n'est jamais une
+        // vraie décision du responsable — seul un vrai poste quai physique en
+        // est une (cf. commentaire isCerCdi ci-dessus). On enregistre alors
+        // `null`, ce qui laisse la rotation automatique continuer à tourner.
+        const effectiveZone = isCerCdi && CER_CDI_AUTO_ZONE_VALUES.indexOf(zone) !== -1 ? null : zone;
+        override = { status: "PRESENT", shift: shift, vacation: vacation, zone: effectiveZone, startTime: startTime, endTime: endTime };
       } else {
         override = { status: status, shift: null, vacation: null, zone: null, startTime: null, endTime: null };
       }

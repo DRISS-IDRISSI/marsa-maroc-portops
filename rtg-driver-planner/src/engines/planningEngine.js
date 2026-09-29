@@ -210,7 +210,14 @@ const PlanningEngine = {
       // effectif titulaires). Les stagiaires CC gardent le simple défaut
       // "PARC" (inchangé, pas de file de rotation pour eux).
       const isCerCdi = b.isNoRotationTeam && team && team.typeEngin === "CER";
-      const zoneManuallySet = !!(override && override.zone !== undefined && !zoneFromImport);
+      // "!= null" (pas "!== undefined") : une zone explicitement enregistrée
+      // à null (cas vécu, CDI — AssignmentEditModal, pages.js) ne doit PAS
+      // bloquer la suggestion automatique MAERSK/MSC/COSCO qui suit — sans
+      // ça, dès qu'une ligne manual_overrides existe pour ce jour (obligatoire
+      // pour un CDI, dont le shift est toujours saisi à la main) avec une
+      // zone à null, la suggestion restait figée (souvent vide) pour
+      // toujours, au lieu de continuer à tourner jour après jour.
+      const zoneManuallySet = !!(override && override.zone != null && !zoneFromImport);
       if (!zoneManuallySet && finalStatus === "PRESENT" && isQueueBasedContext && (b.isNoRotationTeam || isoDate >= todayIso)) {
         zone = isCerCdi ? (ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, teams) || "PARC") : "PARC";
       }
