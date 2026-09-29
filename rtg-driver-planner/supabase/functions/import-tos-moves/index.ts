@@ -6,9 +6,16 @@
 // pour cette application) envoie un email avec ce rapport en pièce jointe
 // .xls à la fin de CHAQUE shift (S1/S2/S3). L'exploitant a mis en place une
 // règle de transfert automatique sur sa boîte professionnelle vers une boîte
-// dédiée (Yahoo Mail, migrée depuis Gmail — le compte gestioneffectif@gmail.com
-// a été bloqué par Google, vérification téléphonique impossible à finaliser),
-// lue ici en IMAP.
+// dédiée (Outlook.com, migrée depuis Gmail — le compte gestioneffectif@gmail.com
+// a été bloqué par Google, vérification téléphonique impossible à finaliser ;
+// une tentative Yahoo a ensuite échoué, création de compte bloquée par la
+// vérification téléphonique côté Yahoo), lue ici en IMAP. ⚠️ Outlook.com
+// désactive POP/IMAP par défaut (à activer : Paramètres > Mail > Synchroniser
+// le courrier) et pousse de plus en plus vers l'authentification "moderne"
+// (OAuth2) plutôt qu'un simple mot de passe d'application — si la connexion
+// IMAP échoue malgré un mot de passe d'application correct et IMAP activé,
+// il faudra probablement un enregistrement d'application Azure AD + flux
+// OAuth2 (XOAUTH2), non implémenté ici.
 //
 // Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
 // toutes les 5 minutes : se connecte à la boîte dédiée, cherche les
@@ -58,8 +65,8 @@
 // déclenche le parsing complet.
 //
 // Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
-//   - TOS_MAIL_USER : l'adresse Yahoo Mail dédiée (ex. xxx@yahoo.com)
-//   - TOS_MAIL_APP_PASSWORD : mot de passe d'application Yahoo de ce compte
+//   - TOS_MAIL_USER : l'adresse Outlook.com dédiée (ex. xxx@outlook.com)
+//   - TOS_MAIL_APP_PASSWORD : mot de passe d'application Outlook de ce compte
 //     (validation en 2 étapes à activer sur ce compte, puis générer un mot
 //     de passe d'application — même procédure que pour MAIL_APP_PASSWORD
 //     utilisé pour l'envoi, voir send-conge-email).
@@ -304,7 +311,7 @@ Deno.serve(async _req => {
   const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
 
   const client = new ImapFlow({
-    host: "imap.mail.yahoo.com",
+    host: "outlook.office365.com",
     port: 993,
     secure: true,
     auth: { user: tosUser, pass: tosPassword },

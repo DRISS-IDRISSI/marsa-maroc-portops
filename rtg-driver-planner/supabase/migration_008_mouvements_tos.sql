@@ -1,9 +1,10 @@
 -- ==========================================
 -- RTG DRIVER PLANNER — Migration : mouvements RTG importés depuis le
 -- rapport TOS ("DRIVER MOVES PER SHIFT"), reçu par email à la fin de
--- chaque shift et relayé automatiquement vers une boîte mail dédiée (Yahoo
--- Mail, migrée depuis gestioneffectif@gmail.com), lue par la fonction
--- Supabase "import-tos-moves" (voir supabase/functions/import-tos-moves/index.ts).
+-- chaque shift et relayé automatiquement vers une boîte mail dédiée
+-- (Outlook.com, migrée depuis gestioneffectif@gmail.com), lue par la
+-- fonction Supabase "import-tos-moves" (voir
+-- supabase/functions/import-tos-moves/index.ts).
 -- ==========================================
 -- À exécuter dans Supabase : Project > SQL Editor > New query.
 
