@@ -42,6 +42,10 @@ function cerBlockKey(driver) {
   return driver.teamId;
 }
 
+function isCdiTeam(team) {
+  return !!team && /\bcdi\b/i.test(team.nom || "");
+}
+
 function cerRefDate(state) {
   return RTGDate.parseISO(state.config.cerRotationReferenceDate || state.config.rotationReferenceDate);
 }
@@ -67,6 +71,7 @@ const CerPosteRotationEngine = {
     this._dayRank = {};
     this._frozen = {};
     this._cursorIso = null;
+    CerCdiRotationEngine.clearCache();
   },
 
   // Conducteurs CER concernés par la file d'attente automatique — exclut les
@@ -202,6 +207,8 @@ const CerPosteRotationEngine = {
   },
 
   getZoneForDate(driver, date, state, teams) {
+    const team = teams.find(t => t.id === driver.teamId);
+    if (isCdiTeam(team)) return CerCdiRotationEngine.getZoneForDate(driver, date, state, teams);
     const refDate = cerRefDate(state);
     if (date.getTime() < refDate.getTime()) return null;
     const iso = RTGDate.toISO(date);
@@ -209,6 +216,189 @@ const CerPosteRotationEngine = {
     const dayResult = this._dayZone[iso];
     return (dayResult && dayResult[driver.id] !== undefined) ? dayResult[driver.id] : null;
   },
+
+  getRankForDate(driver, date, state, teams) {
+    const team = teams.find(t => t.id === driver.teamId);
+    if (isCdiTeam(team)) return CerCdiRotationEngine.getRankForDate(driver, date, state, teams);
+    const refDate = cerRefDate(state);
+    if (date.getTime() < refDate.getTime()) return null;
+    const iso = RTGDate.toISO(date);
+    this._ensureCascade(iso, state, teams);
+    const rank = this._dayRank[iso] ? this._dayRank[iso][driver.id] : undefined;
+    return rank === undefined ? null : rank;
+  },
+
+  getExpectedZoneForDate(driver, date, state, teams) {
+    const team = teams.find(t => t.id === driver.teamId);
+    if (isCdiTeam(team)) return CerCdiRotationEngine.getExpectedZoneForDate(driver, date, state, teams);
+    const refDate = cerRefDate(state);
+    if (date.getTime() < refDate.getTime()) return null;
+    const iso = RTGDate.toISO(date);
+    this._ensureCascade(iso, state, teams);
+    const rank = this._dayRank[iso] ? this._dayRank[iso][driver.id] : undefined;
+    if (rank === undefined) return null;
+    const cerPosts = flattenCerPosts(state.config.cerPostes);
+    return rank < cerPosts.length ? cerPosts[rank] : "PARC";
+  }
+};
+
+// ==========================================
+// File d'attente CDI — SÉPARÉE de celle des titulaires (demande explicite
+// de l'exploitant), règle reconstituée à partir des scénarios fournis
+// (fichier "ROTATION_DES_CONDUCTEURS_CER_TITULAIRE_ET_CDI") :
+//
+//   - S'il y a au moins un CDI au QUAI la veille (cas exceptionnel :
+//     titulaires insuffisants, affectation TOUJOURS manuelle, jamais
+//     automatique — demande explicite de l'exploitant) : même partition
+//     avant/arrière que les titulaires (quai -> repasse dernier).
+//   - Sinon (personne au quai) :
+//       - si le premier de la file était en REPOS la veille : il reste
+//         figé en tête, les autres tournent d'un cran entre eux ;
+//       - sinon : toute la file tourne d'un cran.
+//
+// Les CDI n'ont JAMAIS de zone automatique écrite (cf. planningEngine.js,
+// isNoRotationTeam) — cette file ne sert qu'à calculer un RANG (getRankForDate)
+// et une zone SUGGÉRÉE (getExpectedZoneForDate, cycle MAERSK/MSC/COSCO),
+// jamais une affectation imposée : le responsable saisit toujours la zone
+// du jour lui-même, comme aujourd'hui.
+// ==========================================
+const CerCdiRotationEngine = {
+  _order: {},
+  _dayRank: {},
+  _frozen: {},
+  _cursorIso: null,
+
+  clearCache() {
+    this._order = {};
+    this._dayRank = {};
+    this._frozen = {};
+    this._cursorIso = null;
+  },
+
+  _cdiDrivers(state, teams) {
+    return state.drivers.filter(d => {
+      if (d.actif === false) return false;
+      const team = teams.find(t => t.id === d.teamId);
+      return isCdiTeam(team);
+    });
+  },
+
+  _bootstrapOrder(state, teams, refDate) {
+    const drivers = this._cdiDrivers(state, teams);
+    const byBlock = {};
+    drivers.forEach(driver => {
+      const status = PlanningEngine.getDailyStatus(driver, refDate, state, teams);
+      if (CER_FROZEN_STATUSES.indexOf(status) !== -1) {
+        this._frozen[driver.id] = true;
+        return;
+      }
+      const key = cerBlockKey(driver);
+      (byBlock[key] = byBlock[key] || []).push(driver);
+    });
+    Object.keys(byBlock).forEach(key => {
+      const ordered = byBlock[key].slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule)));
+      this._order[key] = ordered.map(d => d.id);
+    });
+  },
+
+  _ensureCascade(targetIso, state, teams) {
+    if (this._cursorIso !== null && this._cursorIso >= targetIso) return;
+
+    const refDate = cerRefDate(state);
+    const targetDate = RTGDate.parseISO(targetIso);
+    if (targetDate.getTime() < refDate.getTime()) return;
+
+    let cursor;
+    if (this._cursorIso === null) {
+      this._bootstrapOrder(state, teams, refDate);
+      cursor = refDate;
+    } else {
+      cursor = RTGDate.addDays(RTGDate.parseISO(this._cursorIso), 1);
+    }
+
+    while (cursor.getTime() <= targetDate.getTime()) {
+      const iso = RTGDate.toISO(cursor);
+      const driversById = {};
+      this._cdiDrivers(state, teams).forEach(d => { driversById[d.id] = d; });
+
+      const byBlock = {};
+      Object.keys(driversById).forEach(id => {
+        const key = cerBlockKey(driversById[id]);
+        (byBlock[key] = byBlock[key] || []).push(id);
+      });
+
+      const dayRank = {};
+      const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
+
+      Object.keys(byBlock).forEach(key => {
+        const blockDriverIds = byBlock[key];
+        let order = (this._order[key] || []).filter(id => driversById[id]);
+
+        const statusToday = {};
+        blockDriverIds.forEach(id => { statusToday[id] = PlanningEngine.getDailyStatus(driversById[id], cursor, state, teams); });
+
+        const toAppend = [];
+        blockDriverIds.forEach(id => {
+          if (order.indexOf(id) !== -1) return;
+          if (this._frozen[id] && CER_FROZEN_STATUSES.indexOf(statusToday[id]) === -1) {
+            this._frozen[id] = false;
+            toAppend.push(id);
+          } else if (!this._frozen[id]) {
+            toAppend.push(id);
+          }
+        });
+        toAppend.sort((a, b) => String(driversById[a].matricule).localeCompare(String(driversById[b].matricule)));
+
+        order = order.filter(id => {
+          if (!this._frozen[id] && CER_FROZEN_STATUSES.indexOf(statusToday[id]) !== -1) {
+            this._frozen[id] = true;
+            return false;
+          }
+          return true;
+        });
+
+        // Réalité de la veille pour chaque CDI de la file : seule une
+        // affectation manuelle saisie ce jour-là fait foi (les CDI n'ont
+        // jamais de zone automatique) ; à défaut, "PARC" — la valeur par
+        // défaut déjà affichée quand rien n'a été saisi (planningEngine.js).
+        const wasOnQuai = {}, wasOnRepos = {};
+        let quaiExists = false;
+        order.forEach(id => {
+          const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
+          const statusYesterday = manualYesterday && manualYesterday.status !== undefined
+            ? manualYesterday.status
+            : PlanningEngine.getDailyStatus(driversById[id], RTGDate.addDays(cursor, -1), state, teams);
+          const zYesterday = manualYesterday && manualYesterday.zone !== undefined ? manualYesterday.zone : "PARC";
+          const onQuai = statusYesterday === "PRESENT" && !!zYesterday && CER_NON_PHYSICAL_ZONES.indexOf(String(zYesterday).toUpperCase()) === -1;
+          wasOnQuai[id] = onQuai;
+          wasOnRepos[id] = statusYesterday === "REPOS" || statusYesterday === "REPOS_COMPENSATOIRE";
+          if (onQuai) quaiExists = true;
+        });
+
+        let newOrder;
+        if (quaiExists) {
+          const front = [], back = [];
+          order.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
+          newOrder = front.concat(back);
+        } else if (order.length > 0 && wasOnRepos[order[0]]) {
+          const rest = order.slice(1);
+          newOrder = [order[0]].concat(rest.slice(1)).concat(rest.slice(0, 1));
+        } else {
+          newOrder = order.slice(1).concat(order.slice(0, 1));
+        }
+        newOrder = newOrder.concat(toAppend);
+
+        this._order[key] = newOrder;
+        newOrder.forEach((id, idx) => { dayRank[id] = idx; });
+      });
+
+      this._dayRank[iso] = dayRank;
+      this._cursorIso = iso;
+      cursor = RTGDate.addDays(cursor, 1);
+    }
+  },
+
+  getZoneForDate() { return null; },
 
   getRankForDate(driver, date, state, teams) {
     const refDate = cerRefDate(state);
@@ -220,13 +410,9 @@ const CerPosteRotationEngine = {
   },
 
   getExpectedZoneForDate(driver, date, state, teams) {
-    const refDate = cerRefDate(state);
-    if (date.getTime() < refDate.getTime()) return null;
-    const iso = RTGDate.toISO(date);
-    this._ensureCascade(iso, state, teams);
-    const rank = this._dayRank[iso] ? this._dayRank[iso][driver.id] : undefined;
-    if (rank === undefined) return null;
-    const cerPosts = flattenCerPosts(state.config.cerPostes);
-    return rank < cerPosts.length ? cerPosts[rank] : "PARC";
+    const rank = this.getRankForDate(driver, date, state, teams);
+    if (rank === null) return null;
+    const zones = ["MAERSK", "MSC", "COSCO"];
+    return zones[rank % zones.length];
   }
 };
