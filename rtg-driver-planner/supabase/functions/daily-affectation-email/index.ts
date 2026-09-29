@@ -27,9 +27,10 @@
 // boîte de réception) — les PDF joints sont la version faisant référence.
 //
 // SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut,
-// automatiquement disponibles ici. Réutilise MAIL_USER / MAIL_APP_PASSWORD
-// (déjà configurés pour send-conge-email, compte technique Yahoo Mail —
-// migré depuis Gmail) — aucun nouveau secret à ajouter.
+// automatiquement disponibles ici. Envoi via Microsoft Graph (API REST,
+// OAuth2) — compte technique Outlook marsamaroc.CES@outlook.fr, même
+// jeton que import-tos-moves (MAIL_OAUTH_CLIENT_ID déjà configuré, aucun
+// nouveau secret à ajouter).
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme send-conge-email/request-password-reset) :
 //   Edge Functions > Create a new function > "daily-affectation-email" >
@@ -38,13 +39,54 @@
 //   quotidien à 06h00.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const MAIL_USER = Deno.env.get("MAIL_USER");
-const MAIL_APP_PASSWORD = Deno.env.get("MAIL_APP_PASSWORD");
+const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
+
+// Dupliqué à l'identique dans chaque Edge Function utilisant Graph — pas de
+// module partagé entre fonctions, chacune reste déployable isolément.
+async function getGraphAccessToken(admin: ReturnType<typeof createClient>): Promise<string> {
+  const clientId = Deno.env.get("MAIL_OAUTH_CLIENT_ID");
+  if (!clientId) throw new Error("MAIL_OAUTH_CLIENT_ID non configuré (Project Settings > Edge Functions > Secrets).");
+  const { data: row, error } = await admin.from("mail_oauth_tokens").select("*").eq("id", "outlook").maybeSingle();
+  if (error) throw new Error("Lecture du jeton OAuth2 Outlook échouée : " + error.message);
+  if (!row) throw new Error("Aucun jeton OAuth2 Outlook enregistré — exécutez d'abord oauth-outlook-setup (voir son en-tête).");
+  if (row.access_token && row.access_token_expires_at && new Date(row.access_token_expires_at).getTime() > Date.now() + 120000) {
+    return row.access_token;
+  }
+  const resp = await fetch(GRAPH_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      grant_type: "refresh_token",
+      refresh_token: row.refresh_token,
+      scope: GRAPH_SCOPE
+    })
+  });
+  const json = await resp.json();
+  if (!resp.ok) throw new Error("Rafraîchissement du jeton OAuth2 Outlook échoué : " + (json.error_description || json.error || resp.status));
+  const expiresAt = new Date(Date.now() + (json.expires_in || 3600) * 1000).toISOString();
+  await admin.from("mail_oauth_tokens").update({
+    access_token: json.access_token,
+    access_token_expires_at: expiresAt,
+    refresh_token: json.refresh_token || row.refresh_token,
+    updated_at: new Date().toISOString()
+  }).eq("id", "outlook");
+  return json.access_token;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 
 // ==========================================
 // RTG_CONFIG — copié tel quel depuis src/data.js (config métier statique,
@@ -977,19 +1019,31 @@ function splitEmails(raw: string) {
 
 type PdfAttachment = { filename: string; bytes: Uint8Array };
 
-async function sendAffectationEmail(client: SMTPClient, to: string, isoDate: string, html: string, pdfAttachments: PdfAttachment[]) {
+async function sendAffectationEmail(accessToken: string, to: string, isoDate: string, html: string, pdfAttachments: PdfAttachment[]) {
   const recipients = splitEmails(to);
   if (recipients.length === 0) return;
-  await client.send({
-    from: MAIL_USER!,
-    to: recipients,
-    subject: `Affectation du jour — ${isoDate}`,
-    // content:"auto" génère automatiquement la version texte brut (fallback
-    // pour les clients mail qui n'affichent pas le HTML) à partir de "html".
-    content: "auto",
-    html,
-    attachments: pdfAttachments.map(a => ({ filename: a.filename, contentType: "application/pdf", encoding: "binary", content: a.bytes }))
+  const resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: {
+        subject: `Affectation du jour — ${isoDate}`,
+        body: { contentType: "HTML", content: html },
+        toRecipients: recipients.map(email => ({ emailAddress: { address: email } })),
+        attachments: pdfAttachments.map(a => ({
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: a.filename,
+          contentType: "application/pdf",
+          contentBytes: bytesToBase64(a.bytes)
+        }))
+      },
+      saveToSentItems: "true"
+    })
   });
+  if (!resp.ok) {
+    const errJson = await resp.json().catch(() => ({}));
+    throw new Error("Envoi Graph échoué (" + resp.status + ") : " + (errJson.error ? errJson.error.message : ""));
+  }
 }
 
 // ==========================================
@@ -1214,7 +1268,7 @@ function buildAllShiftReports(assignments: any[], state: any, dateIso: string) {
 // ==========================================
 Deno.serve(async _req => {
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !MAIL_USER || !MAIL_APP_PASSWORD) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Configuration incomplète (secrets manquants).");
     }
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -1262,9 +1316,7 @@ Deno.serve(async _req => {
         .in("role", ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"]).eq("actif", true);
     if (profilesError) throw profilesError;
 
-    const client = new SMTPClient({
-      connection: { hostname: "smtp.mail.yahoo.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
-    });
+    const accessToken = await getGraphAccessToken(admin);
 
     let sent = 0, skipped = 0;
     const errors: string[] = [];
@@ -1292,13 +1344,12 @@ Deno.serve(async _req => {
         ? (pdfByShift[teamShiftMap[p.team_id]] ? [pdfByShift[teamShiftMap[p.team_id]]] : [])
         : ["S1", "S2", "S3"].map(s => pdfByShift[s]).filter(Boolean);
       try {
-        await sendAffectationEmail(client, p.email, todayIso, html, pdfAttachments);
+        await sendAffectationEmail(accessToken, p.email, todayIso, html, pdfAttachments);
         sent++;
       } catch (e) {
         errors.push(p.email + ": " + (e && (e as Error).message ? (e as Error).message : String(e)));
       }
     }
-    await client.close();
 
     return new Response(JSON.stringify({ ok: true, date: todayIso, testEmail, sent, skipped, skippedDetails, errors }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {

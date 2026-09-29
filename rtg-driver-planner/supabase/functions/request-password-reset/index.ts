@@ -14,27 +14,60 @@
 //      (ADMIN/RESPONSABLE/RESPONSABLE_SHIFT — migration_006).
 //   3. Si un compte actif avec un email est trouvé : génère un mot de passe
 //      temporaire, l'applique directement via l'API Admin Auth, puis
-//      l'envoie par email (SMTP Yahoo Mail, mêmes secrets que send-conge-email).
+//      l'envoie par email (Microsoft Graph, même jeton OAuth2 que
+//      import-tos-moves).
 //   4. Répond TOUJOURS un message générique de succès, que l'identifiant
 //      existe ou non et qu'un email ait pu être envoyé ou non — pour ne
 //      jamais révéler si un identifiant donné correspond à un compte réel.
 //
 // SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut,
 // automatiquement disponibles dans toute Edge Function du projet — rien à
-// configurer en plus de MAIL_USER / MAIL_APP_PASSWORD (déjà en place pour
-// send-conge-email).
+// configurer en plus de MAIL_OAUTH_CLIENT_ID (déjà en place pour
+// import-tos-moves).
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme send-conge-email) :
 //   Edge Functions > Create a new function > "request-password-reset" >
 //   coller ce fichier > Deploy. Aucun nouveau secret à ajouter.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const MAIL_USER = Deno.env.get("MAIL_USER");
-const MAIL_APP_PASSWORD = Deno.env.get("MAIL_APP_PASSWORD");
+const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
+
+// Dupliqué à l'identique dans chaque Edge Function utilisant Graph — pas de
+// module partagé entre fonctions, chacune reste déployable isolément.
+async function getGraphAccessToken(admin: ReturnType<typeof createClient>): Promise<string> {
+  const clientId = Deno.env.get("MAIL_OAUTH_CLIENT_ID");
+  if (!clientId) throw new Error("MAIL_OAUTH_CLIENT_ID non configuré (Project Settings > Edge Functions > Secrets).");
+  const { data: row, error } = await admin.from("mail_oauth_tokens").select("*").eq("id", "outlook").maybeSingle();
+  if (error) throw new Error("Lecture du jeton OAuth2 Outlook échouée : " + error.message);
+  if (!row) throw new Error("Aucun jeton OAuth2 Outlook enregistré — exécutez d'abord oauth-outlook-setup (voir son en-tête).");
+  if (row.access_token && row.access_token_expires_at && new Date(row.access_token_expires_at).getTime() > Date.now() + 120000) {
+    return row.access_token;
+  }
+  const resp = await fetch(GRAPH_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      grant_type: "refresh_token",
+      refresh_token: row.refresh_token,
+      scope: GRAPH_SCOPE
+    })
+  });
+  const json = await resp.json();
+  if (!resp.ok) throw new Error("Rafraîchissement du jeton OAuth2 Outlook échoué : " + (json.error_description || json.error || resp.status));
+  const expiresAt = new Date(Date.now() + (json.expires_in || 3600) * 1000).toISOString();
+  await admin.from("mail_oauth_tokens").update({
+    access_token: json.access_token,
+    access_token_expires_at: expiresAt,
+    refresh_token: json.refresh_token || row.refresh_token,
+    updated_at: new Date().toISOString()
+  }).eq("id", "outlook");
+  return json.access_token;
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -49,10 +82,7 @@ function generateTempPassword() {
   return out;
 }
 
-async function sendResetEmail(to, username, tempPassword, isConducteur) {
-  const client = new SMTPClient({
-    connection: { hostname: "smtp.mail.yahoo.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
-  });
+async function sendResetEmail(admin: ReturnType<typeof createClient>, to: string, username: string, tempPassword: string, isConducteur: boolean) {
   const content = [
     "Bonjour,",
     "",
@@ -68,8 +98,23 @@ async function sendResetEmail(to, username, tempPassword, isConducteur) {
     "",
     "CES Driver Planner — Marsa Maroc TC3PC"
   ].join("\n");
-  await client.send({ from: MAIL_USER, to: to, subject: "Réinitialisation de votre mot de passe — CES Driver Planner", content: content });
-  await client.close();
+  const accessToken = await getGraphAccessToken(admin);
+  const resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: {
+        subject: "Réinitialisation de votre mot de passe — CES Driver Planner",
+        body: { contentType: "Text", content },
+        toRecipients: [{ emailAddress: { address: to } }]
+      },
+      saveToSentItems: "true"
+    })
+  });
+  if (!resp.ok) {
+    const errJson = await resp.json().catch(() => ({}));
+    throw new Error("Envoi Graph échoué (" + resp.status + ") : " + (errJson.error ? errJson.error.message : ""));
+  }
 }
 
 Deno.serve(async req => {
@@ -77,7 +122,7 @@ Deno.serve(async req => {
   const jsonHeaders = Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" });
 
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !MAIL_USER || !MAIL_APP_PASSWORD) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Configuration incomplète (secrets manquants).");
     }
     const body = await req.json();
@@ -109,7 +154,7 @@ Deno.serve(async req => {
     const { error: updateError } = await admin.auth.admin.updateUserById(profile.id, { password: tempPassword });
     if (updateError) { console.error(updateError); throw updateError; }
 
-    await sendResetEmail(targetEmail, profile.username, tempPassword, profile.role === "CONDUCTEUR");
+    await sendResetEmail(admin, targetEmail, profile.username, tempPassword, profile.role === "CONDUCTEUR");
 
     return new Response(JSON.stringify(GENERIC_RESPONSE), { headers: jsonHeaders });
   } catch (e) {
