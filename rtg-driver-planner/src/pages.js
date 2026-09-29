@@ -3977,6 +3977,44 @@ function AffectationDuJour() {
     if (driver) setEditing({ driver: driver, iso: dateStr, assignment: a });
   } : undefined;
 
+  // Un stagiaire/CDI (noRotationTeamIds) absent un jour donné (repos, congé,
+  // maladie...) n'a AUCUNE rotation d'équipe réelle dont déduire un shift
+  // théorique (cf. isNoRotationTeam) : teamShiftMap[a.teamId] n'est alors
+  // qu'un artefact du cycle par défaut (config.shiftRotationCycleDefault)
+  // appliqué faute de mieux à toute l'équipe "GR CDI", qui mélange pourtant
+  // des conducteurs affectés à des shifts différents le même jour. Ça faisait
+  // apparaître un CDI absent sous le shift 1 alors qu'il était shift 2 la
+  // veille. Demande explicite de l'exploitant : absent un jour, il garde le
+  // MÊME shift que les autres jours de sa semaine (pas un shift d'équipe
+  // fictif) — on retrouve donc son propre shift réel le jour présent le plus
+  // proche (avant, puis après) dans la semaine du dateStr affiché.
+  const dayAssignmentsCache = { [dateStr]: assignments };
+  const noRotationShiftCache = {};
+  const resolveNoRotationShift = (driverId, teamId) => {
+    const cacheKey = driverId;
+    if (noRotationShiftCache[cacheKey] !== undefined) return noRotationShiftCache[cacheKey];
+    const weekStart = RTGDate.startOfWeekMonday(dateObj);
+    const candidates = [];
+    for (let i = 0; i < 7; i++) candidates.push(RTGDate.toISO(RTGDate.addDays(weekStart, i)));
+    candidates.sort((a, b) => Math.abs(RTGDate.diffDays(RTGDate.parseISO(a), dateObj)) - Math.abs(RTGDate.diffDays(RTGDate.parseISO(b), dateObj)));
+    let found = null;
+    for (const iso of candidates) {
+      if (iso === dateStr) continue;
+      let dayAssignments = dayAssignmentsCache[iso];
+      if (!dayAssignments) {
+        try { dayAssignments = PlanningEngine.generateDailyAssignments(iso, state); } catch (e) { dayAssignments = []; }
+        dayAssignmentsCache[iso] = dayAssignments;
+      }
+      const a = dayAssignments.find(x => x.driverId === driverId);
+      if (a && a.status === "PRESENT" && a.shift) { found = a.shift; break; }
+    }
+    // Repli : aucune journée présente trouvée cette semaine-là (ex. absent
+    // toute la semaine, ou nouveau conducteur) — on retombe sur l'ancien
+    // calcul par équipe plutôt que de faire disparaître la ligne.
+    noRotationShiftCache[cacheKey] = found || teamShiftMap[teamId];
+    return noRotationShiftCache[cacheKey];
+  };
+
   const grouped = {};
   const showVacationGroups = fleetHasVacation(displayedFleet);
   state.config.shifts.forEach(s => {
@@ -4003,7 +4041,12 @@ function AffectationDuJour() {
     // doivent jamais être mélangés aux titulaires d'une autre équipe, même
     // quand ils sont affectés au même shift le même jour.
     const fullDayRows = assignments.filter(a => a.shift === s.id && a.vacation === "V1+V2" && a.status === "PRESENT")
-      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noVacationOrRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id));
+      // CER titulaires sans vacation (vraie rotation d'équipe, cf. noVacationTeamIds)
+      // mais PAS stagiaires/CDI : teamShiftMap reste correct pour eux.
+      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noVacationTeamIds.has(a.teamId) && !noRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id))
+      // Stagiaires/CDI (aucune vraie rotation d'équipe) : shift propre au
+      // conducteur, retrouvé via resolveNoRotationShift ci-dessus.
+      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noRotationTeamIds.has(a.teamId) && resolveNoRotationShift(a.driverId, a.teamId) === s.id));
     const fullDayRowsByTeam = {};
     fullDayRows.forEach(a => { (fullDayRowsByTeam[a.teamId] = fullDayRowsByTeam[a.teamId] || []).push(a); });
     // CDI toujours à droite (demande explicite de l'exploitant) — sans ce
