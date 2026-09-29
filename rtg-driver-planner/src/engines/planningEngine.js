@@ -183,9 +183,21 @@ const PlanningEngine = {
       // "aujourd'hui" par calcul (ex. shift de nuit à cheval sur minuit) —
       // demande explicite de l'exploitant : "je veux que ça soit
       // automatique d'affecter les stagiaires au PARC par défaut".
+      // CDI (CER) : dès que le responsable a renseigné une affectation
+      // (shift + éventuellement zone) pour un jour, la file CDI (§
+      // cerPosteRotationEngine.js, CerCdiRotationEngine) en tient compte
+      // pour générer automatiquement la zone SUGGÉRÉE des jours suivants
+      // (cycle MAERSK/MSC/COSCO) — demande explicite de l'exploitant :
+      // "une fois le jour J renseigné, l'appli génère la rotation du jour
+      // J+1 et ainsi de suite". Reste une SUGGESTION par défaut, jamais
+      // figée : le responsable peut toujours la corriger manuellement (et
+      // c'est le seul moyen d'envoyer un CDI au quai, en cas de sous-
+      // effectif titulaires). Les stagiaires CC gardent le simple défaut
+      // "PARC" (inchangé, pas de file de rotation pour eux).
+      const isCerCdi = b.isNoRotationTeam && team && team.typeEngin === "CER";
       const zoneManuallySet = !!(override && override.zone !== undefined && !zoneFromImport);
       if (!zoneManuallySet && finalStatus === "PRESENT" && isQueueBasedContext && (b.isNoRotationTeam || isoDate >= todayIso)) {
-        zone = "PARC";
+        zone = isCerCdi ? (ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, teams) || "PARC") : "PARC";
       }
 
       return {
