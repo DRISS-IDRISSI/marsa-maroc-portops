@@ -42,7 +42,31 @@ const PlanningEngine = {
     return "PRESENT";
   },
 
-  generateDailyAssignments(isoDate, state) {
+  generateDailyAssignments(isoDate, state, opts) {
+    // Bug réel constaté (rotation CDI qui ne bougeait jamais, § exploitant
+    // "LES CDI NE BOUGENT PAS") : CerPosteRotationEngine/CerCdiRotationEngine
+    // (comme CcPosteRotationEngine, ZoneRotationEngine...) mémorisent leur
+    // file de rotation par date, PROGRESSIVEMENT, dans un cache interne au
+    // module — jamais invalidé quand `state` change (ex. une affectation
+    // manuelle saisie après coup) tant que ce cache n'est pas explicitement
+    // vidé. generateMonthlyPlanning() le vide bien AVANT sa propre boucle
+    // jour par jour, mais "Affectation du jour" (AffectationDuJour, pages.js)
+    // et les autres vues appellent generateDailyAssignments DIRECTEMENT, pour
+    // UN SEUL jour, sans jamais passer par generateMonthlyPlanning — leur
+    // cache restait donc figé sur la première rotation calculée (souvent
+    // avant même la saisie réelle du jour), quels que soient les changements
+    // ultérieurs. On revide donc systématiquement ici, SAUF quand on est
+    // appelé depuis la boucle de generateMonthlyPlanning elle-même
+    // (opts.skipRotationCacheReset) — un vidage à CHAQUE jour de cette
+    // boucle romprait la cascade progressive sur laquelle elle repose.
+    if (!opts || !opts.skipRotationCacheReset) {
+      RestDayEngine.clearCache();
+      ZoneRotationEngine.clearCache();
+      CcPosteRotationEngine.clearCache();
+      CerPosteRotationEngine.clearCache();
+      VacationRotationEngine.clearCache();
+    }
+
     const date = RTGDate.parseISO(isoDate);
     const teams = state.teams;
     // Flotte CC : au-delà d'aujourd'hui, le poste QUAI/PARC n'est jamais
@@ -289,7 +313,7 @@ const PlanningEngine = {
     const days = [];
     for (let d = 1; d <= dim; d++) {
       const iso = RTGDate.toISO(RTGDate.makeDate(year, month, d));
-      days.push({ day: d, iso: iso, assignments: this.generateDailyAssignments(iso, state) });
+      days.push({ day: d, iso: iso, assignments: this.generateDailyAssignments(iso, state, { skipRotationCacheReset: true }) });
     }
 
     const validation = ValidationEngine.validateMonth(days, state);
