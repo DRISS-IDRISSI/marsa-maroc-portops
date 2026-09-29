@@ -4006,8 +4006,15 @@ function AffectationDuJour() {
       .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noVacationOrRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id));
     const fullDayRowsByTeam = {};
     fullDayRows.forEach(a => { (fullDayRowsByTeam[a.teamId] = fullDayRowsByTeam[a.teamId] || []).push(a); });
+    // CDI toujours à gauche (demande explicite de l'exploitant) — sans ce
+    // tri dédié, l'ordre alphabétique du nom d'équipe plaçait "GR CDI"
+    // tantôt avant, tantôt après l'équipe titulaire du shift, selon le nom
+    // de celle-ci (avant "GR AZZAM-BAHOUS" mais après "GR CDI"... ex.
+    // "GR EDDAOUIDI-HOUSSAM").
     Object.keys(fullDayRowsByTeam).sort((t1, t2) => {
       const n1 = (state.teams.find(t => t.id === t1) || {}).nom || t1, n2 = (state.teams.find(t => t.id === t2) || {}).nom || t2;
+      const isCdi1 = /\bcdi\b/i.test(n1), isCdi2 = /\bcdi\b/i.test(n2);
+      if (isCdi1 !== isCdi2) return isCdi1 ? -1 : 1;
       return n1.localeCompare(n2);
     }).forEach(teamId => {
       const teamNom = (state.teams.find(t => t.id === teamId) || {}).nom || teamId;
