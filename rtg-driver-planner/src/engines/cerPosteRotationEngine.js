@@ -398,16 +398,24 @@ const CerCdiRotationEngine = {
       const driversById = {};
       this._cdiDrivers(state, teams).forEach(d => { driversById[d.id] = d; });
 
-      // Un CDI sans shift saisi ce jour-là (jamais de rotation d'équipe
-      // automatique pour lui, cf. cdiShiftForDate) ne participe à AUCUNE des
-      // files S1/S2 ce jour — ni retiré définitivement (il réapparaîtra dans
-      // la bonne file dès qu'un shift lui sera à nouveau saisi), ni compté
-      // deux fois dans les deux files à la fois.
+      // Un CDI en repos (ou sans shift saisi ce jour précis) reste à SA place
+      // dans la file de son dernier shift connu — cas vécu, NOUHAIR (3ᵉ le
+      // 28/09, juste après GOURAGUINE) doit rester DANS la rotation de la
+      // file S2 le 29/09 (2ᵉ, la file ayant tourné d'un cran), pas en sortir
+      // ni repartir en fin de file une fois son shift repris. Seul un statut
+      // du groupe CER_FROZEN_STATUSES (congé/maladie/absence/formation/
+      // détachement) ou un changement RÉEL de shift (S1<->S2) déplace un CDI
+      // d'une file à l'autre — cf. plus bas.
       const byBlock = {};
       Object.keys(driversById).forEach(id => {
         const shift = cdiShiftForDate(driversById[id], iso, state);
-        if (!shift) return;
-        const key = cerBlockKey(driversById[id]) + "::" + shift;
+        let key;
+        if (shift) {
+          key = cerBlockKey(driversById[id]) + "::" + shift;
+        } else {
+          key = Object.keys(this._order).find(k => this._order[k].indexOf(id) !== -1);
+        }
+        if (!key) return;
         (byBlock[key] = byBlock[key] || []).push(id);
       });
 
