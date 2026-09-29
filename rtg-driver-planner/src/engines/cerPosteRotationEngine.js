@@ -46,6 +46,19 @@ function isCdiTeam(team) {
   return !!team && /\bcdi\b/i.test(team.nom || "");
 }
 
+// Confirmé par l'exploitant ("CHAQUE GROUPE DE CDI AFFECTES A UN SHIFT SUIT
+// SA ROTATION SEPAREMENT") : les CDI d'une même équipe ne forment PAS une
+// seule file d'attente — chaque shift (S1/S2) où des CDI sont affectés ce
+// jour-là tourne sa propre rotation MAERSK/MSC/COSCO, indépendamment de
+// l'autre shift. Le shift d'un CDI est TOUJOURS une saisie manuelle (jamais
+// une rotation d'équipe automatique, cf. isNoRotationTeam) : on le lit donc
+// directement dans manual_overrides pour le jour donné, jamais via
+// PlanningEngine.getDailyStatus (qui ignore les affectations manuelles).
+function cdiShiftForDate(driver, iso, state) {
+  const ov = state.manualOverrides && state.manualOverrides[iso + "_" + driver.id];
+  return ov && ov.shift !== undefined && ov.shift !== null ? ov.shift : null;
+}
+
 // File de départ RÉELLE des 3 équipes titulaires CER (relevé papier "État
 // d'affectation des conducteurs", Chariots Élévateurs TC3PC, 28/09/2026 —
 // même date que cerRotationReferenceDate), matricules dans l'ordre exact du
@@ -338,6 +351,7 @@ const CerCdiRotationEngine = {
 
   _bootstrapOrder(state, teams, refDate) {
     const drivers = this._cdiDrivers(state, teams);
+    const refIso = RTGDate.toISO(refDate);
     const byBlock = {};
     drivers.forEach(driver => {
       const status = PlanningEngine.getDailyStatus(driver, refDate, state, teams);
@@ -345,7 +359,9 @@ const CerCdiRotationEngine = {
         this._frozen[driver.id] = true;
         return;
       }
-      const key = cerBlockKey(driver);
+      const shift = cdiShiftForDate(driver, refIso, state);
+      if (!shift) { this._frozen[driver.id] = true; return; }
+      const key = cerBlockKey(driver) + "::" + shift;
       (byBlock[key] = byBlock[key] || []).push(driver);
     });
     Object.keys(byBlock).forEach(key => {
@@ -382,9 +398,16 @@ const CerCdiRotationEngine = {
       const driversById = {};
       this._cdiDrivers(state, teams).forEach(d => { driversById[d.id] = d; });
 
+      // Un CDI sans shift saisi ce jour-là (jamais de rotation d'équipe
+      // automatique pour lui, cf. cdiShiftForDate) ne participe à AUCUNE des
+      // files S1/S2 ce jour — ni retiré définitivement (il réapparaîtra dans
+      // la bonne file dès qu'un shift lui sera à nouveau saisi), ni compté
+      // deux fois dans les deux files à la fois.
       const byBlock = {};
       Object.keys(driversById).forEach(id => {
-        const key = cerBlockKey(driversById[id]);
+        const shift = cdiShiftForDate(driversById[id], iso, state);
+        if (!shift) return;
+        const key = cerBlockKey(driversById[id]) + "::" + shift;
         (byBlock[key] = byBlock[key] || []).push(id);
       });
 
@@ -393,7 +416,11 @@ const CerCdiRotationEngine = {
 
       Object.keys(byBlock).forEach(key => {
         const blockDriverIds = byBlock[key];
-        let order = (this._order[key] || []).filter(id => driversById[id]);
+        // "blockDriverIds.indexOf" (pas seulement "driversById[id]") : un CDI
+        // qui a changé de shift depuis hier (S1<->S2, saisie manuelle) doit
+        // sortir de la file de SON ANCIEN shift, pas y rester compté en plus
+        // de sa nouvelle file — il y réapparaîtra via "toAppend" ci-dessous.
+        let order = (this._order[key] || []).filter(id => blockDriverIds.indexOf(id) !== -1);
 
         const statusToday = {};
         blockDriverIds.forEach(id => { statusToday[id] = PlanningEngine.getDailyStatus(driversById[id], cursor, state, teams); });
