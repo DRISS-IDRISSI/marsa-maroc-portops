@@ -3536,34 +3536,37 @@ function CcStagiairesPrintable({ rows }) {
   // jour donnait l'impression que les stagiaires avaient "disparu" du
   // rapport plutôt que d'être simplement absents ce jour-là.
   return (
-    <table className="w-full text-[11px] border-collapse border border-slate-400 mt-2" style={{ tableLayout: "fixed" }}>
-      <thead>
-        <tr>
-          <th className={PRINT_TH_XS + " text-center"} colSpan="4">Stagiaires — {list.length}</th>
-        </tr>
-        <tr>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Mat</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Nom</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Prénom</th>
-          <th className={PRINT_TH_XS + " text-center"} style={{ width: "30%" }}>Poste</th>
-        </tr>
-      </thead>
-      <tbody>
-        {list.length === 0 ? (
-          <tr style={{ height: "22px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="4">Aucun stagiaire ce jour</td></tr>
-        ) : list.map(r => {
-          const isQuaiZone = isCcQuaiZone(r.zone);
-          return (
-            <tr key={r.driverId} style={{ height: "22px" }}>
-              <td className={PRINT_TD_XS}>{r.matricule}</td>
-              <td className={PRINT_TD_XS}>{r.nom}</td>
-              <td className={PRINT_TD_XS}>{r.prenom}</td>
-              <td className={PRINT_TD_XS + " text-center font-semibold"}>{isQuaiZone ? "🚢 " : ""}{ccPosteCellLabel(r, isQuaiZone)}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="mt-2 rounded-lg overflow-hidden border border-slate-400">
+      <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
+        <thead>
+          <tr>
+            <th className={PRINT_TH_XS + " text-center"} colSpan="4">Stagiaires — {list.length}</th>
+          </tr>
+          <tr>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Mat</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Nom</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "27.5%" }}>Prénom</th>
+            <th className={PRINT_TH_XS + " text-center"} style={{ width: "30%" }}>Poste</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.length === 0 ? (
+            <tr style={{ height: "22px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="4">Aucun stagiaire ce jour</td></tr>
+          ) : list.map(r => {
+            const isQuaiZone = isCcQuaiZone(r.zone);
+            const variant = ccBadgeVariant(r, isQuaiZone);
+            return (
+              <tr key={r.driverId} style={{ height: "22px" }}>
+                <td className={PRINT_TD_XS} style={{ textTransform: "uppercase" }}>{r.matricule}</td>
+                <td className={PRINT_TD_XS + " text-center"} style={{ textTransform: "uppercase" }}><CcNomBadge nom={r.nom} variant={variant} /></td>
+                <td className={PRINT_TD_XS + " text-center"} style={{ textTransform: "uppercase" }}>{r.prenom}</td>
+                <td className={PRINT_TD_XS + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><CcPosteBadge label={ccPosteCellLabel(r, isQuaiZone)} variant={variant} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -3575,16 +3578,17 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
   const rowIdxs = Array.from({ length: maxRows }, (_, i) => i);
   return (
     <div className="mb-3">
-      <div className="grid grid-cols-2 border border-slate-400 text-[11px]">
-        <div className="border-r border-slate-400 px-2 py-1.5 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
-        <div className="px-2 py-1.5">
-          <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
-          <div>DATE : {dateFmt}</div>
+      <div className="rounded-lg overflow-hidden border border-slate-400">
+        <div className="grid grid-cols-2 border-b border-slate-400 text-[11px]">
+          <div className="border-r border-slate-400 px-2 py-1.5 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
+          <div className="px-2 py-1.5">
+            <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
+            <div>DATE : {dateFmt}</div>
+          </div>
         </div>
-      </div>
-      <div className="border border-t-0 border-slate-400 text-center font-bold text-[12px] py-1 uppercase">Chariots Cavaliers</div>
-      <table className="w-full text-[11px] border-collapse border border-slate-400" style={{ tableLayout: "fixed" }}>
-        <thead>
+        <div className="border-b border-slate-400 text-center font-bold text-[12px] py-1 uppercase">Chariots Cavaliers</div>
+        <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
+          <thead>
           <tr>
             <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
             <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
@@ -3613,6 +3617,7 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
           ))}
         </tbody>
       </table>
+      </div>
       <CcStagiairesPrintable rows={stagiaireRows} />
     </div>
   );
