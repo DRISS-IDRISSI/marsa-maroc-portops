@@ -173,7 +173,11 @@ const RTG_CONFIG = {
   // Même principe que ccRotationReferenceDate ci-dessus, mais pour la file
   // QUAI/PARC CER (CerPosteRotationEngine) — distincte des deux autres
   // (RTG zone/vacation, CC QUAI/PARC), jamais touchées par ce réglage.
-  cerRotationReferenceDate: "2026-09-01",
+  // Déplacée au 28/09/2026 (demande explicite de l'exploitant) : cette
+  // date correspond à une affectation réelle terrain (3 documents papier
+  // "État d'affectation des conducteurs", TC3PC) saisie comme référence —
+  // voir migration_029_cer_affectation_28_09.sql.
+  cerRotationReferenceDate: "2026-09-28",
   // Mois de DÉPART des repos mensuels — demande explicite de l'exploitant :
   // les contraintes calculées sur septembre 2026 (mois avant ce point de
   // départ, notamment le repos du dernier jour du mois qui bloquait par
