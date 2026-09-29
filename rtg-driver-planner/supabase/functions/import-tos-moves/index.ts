@@ -6,21 +6,30 @@
 // pour cette application) envoie un email avec ce rapport en pièce jointe
 // .xls à la fin de CHAQUE shift (S1/S2/S3). L'exploitant a mis en place une
 // règle de transfert automatique sur sa boîte professionnelle vers une boîte
-// dédiée (Yahoo Mail, migrée depuis Gmail — le compte gestioneffectif@gmail.com
-// a été bloqué par Google, vérification téléphonique impossible à finaliser).
-// Essais intermédiaires écartés : Outlook.com (bloqué des deux côtés —
-// IMAP refusant le mot de passe même en application, "Login is disabled",
-// et Azure AD inaccessible pour tenter l'OAuth2 à cause d'un compte trop
-// récent) et iCloud (Mail iCloud indisponible sans appareil Apple physique
-// déjà utilisé sur ce compte).
+// dédiée (Outlook, marsamaroc.CES@outlook.fr), lue ici via l'API Microsoft
+// Graph (HTTPS, OAuth2) — PAS en IMAP classique. Historique des essais
+// écartés avant d'arriver à cette solution : Gmail (compte
+// gestioneffectif@gmail.com bloqué par Google, vérification téléphonique
+// impossible), Yahoo (création de compte bloquée par la vérification
+// téléphonique), iCloud (Mail iCloud indisponible sans appareil Apple
+// physique), et l'IMAP classique d'Outlook.com lui-même (mot de passe
+// d'application refusé — "Login is disabled", Microsoft imposant
+// l'authentification OAuth2 pour l'accès protocole). Microsoft Graph
+// (API REST moderne, disponible nativement pour un compte Outlook
+// personnel une fois un tenant Azure AD créé) contourne cette dernière
+// limite : plus besoin d'IMAP du tout, juste des appels HTTPS authentifiés
+// par un jeton OAuth2 rafraîchi automatiquement (voir getGraphAccessToken
+// ci-dessous, jeton géré dans la table mail_oauth_tokens — voir
+// migration_034 et la fonction oauth-outlook-setup pour l'obtenir la
+// première fois).
 //
 // Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
-// toutes les 5 minutes : se connecte à la boîte dédiée, cherche les
-// emails NON LUS dont le sujet contient "DRIVER MOVES PER SHIFT", parse la
-// pièce jointe .xls — DEUX onglets, un par flotte : "RTG" et "SC" (Straddle
-// Carrier, le nom technique du chariot cavalier — flotte "CC" dans cette
-// application) — et enregistre une ligne par conducteur x engin dans la
-// table mouvements_tos, pour les deux flottes.
+// toutes les 5 minutes : liste les emails reçus dans les derniers jours
+// dont le sujet contient "DRIVER MOVES PER SHIFT", parse la pièce jointe
+// .xls — DEUX onglets, un par flotte : "RTG" et "SC" (Straddle Carrier, le
+// nom technique du chariot cavalier — flotte "CC" dans cette application)
+// — et enregistre une ligne par conducteur x engin dans la table
+// mouvements_tos, pour les deux flottes.
 //
 // Rattachement conducteur : le rapport identifie chaque conducteur par un
 // LOGIN TOS (ex. "mcharihtc3"), jamais par son matricule. Convention confirmée
@@ -49,37 +58,82 @@
 // engin), retraiter plusieurs fois le même email ne crée aucun doublon —
 // c'est donc sans risque de le revoir à chaque exécution pendant sa fenêtre
 // de rétention. MAIS le RE-TRAITEMENT COMPLET (téléchargement + parsing
-// mailparser + XLSX de la pièce jointe) de TOUS les emails de la fenêtre à
-// CHAQUE exécution (toutes les 5 min) est coûteux en CPU ; avec 7 jours ×
-// 3 shifts d'accumulés, ce coût grossit et a fini par dépasser le budget CPU
-// de la fonction (erreurs "CPU Time exceeded" observées en pratique,
-// causant l'échec silencieux de TOUT l'import, y compris des shifts jamais
-// encore importés). Pour rester sans risque de perte (toujours rebalayer la
+// XLSX de la pièce jointe) de TOUS les emails de la fenêtre à CHAQUE
+// exécution (toutes les 5 min) est coûteux en CPU ; avec 7 jours × 3 shifts
+// d'accumulés, ce coût grossit et a fini par dépasser le budget CPU de la
+// fonction (erreurs "CPU Time exceeded" observées en pratique, causant
+// l'échec silencieux de TOUT l'import, y compris des shifts jamais encore
+// importés). Pour rester sans risque de perte (toujours rebalayer la
 // fenêtre par date, jamais par statut lu) SANS reparser ce qui est déjà en
-// base, chaque email est d'abord identifié par son Message-ID (fetch léger,
-// sans télécharger la pièce jointe) et comparé à mouvements_tos.source_message_id
-// déjà connus pour cette même fenêtre : seul un email VRAIMENT nouveau
-// déclenche le parsing complet.
+// base, chaque email est d'abord identifié par son Message-ID (issu de la
+// liste initiale, sans appel supplémentaire) et comparé à
+// mouvements_tos.source_message_id déjà connus pour cette même fenêtre :
+// seul un email VRAIMENT nouveau déclenche le téléchargement de la pièce
+// jointe et le parsing complet.
 //
 // Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
-//   - TOS_MAIL_USER : l'adresse Yahoo Mail dédiée (ex. xxx@yahoo.com)
-//   - TOS_MAIL_APP_PASSWORD : mot de passe d'application Yahoo de ce compte
-//     (validation en 2 étapes à activer sur ce compte, puis générer un mot
-//     de passe d'application — même procédure que pour MAIL_APP_PASSWORD
-//     utilisé pour l'envoi, voir send-conge-email).
+//   - MAIL_OAUTH_CLIENT_ID : Application (client) ID de l'inscription
+//     Azure AD "CES Driver Planner Mail" (voir oauth-outlook-setup pour la
+//     procédure complète d'inscription + autorisation initiale).
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut, déjà
 // disponibles automatiquement.
 //
 // DÉPLOIEMENT : Edge Functions > Create a new function > "import-tos-moves" >
 // coller ce fichier > Deploy. Puis exécuter migration_008_mouvements_tos.sql
-// (table) et migration_009_cron_import_tos_moves.sql (planification).
+// (table), migration_009_cron_import_tos_moves.sql (planification) et
+// migration_034_mail_oauth_tokens.sql (jetons OAuth2) — et avoir déjà
+// exécuté oauth-outlook-setup au moins une fois (voir son en-tête).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { ImapFlow } from "npm:imapflow@1";
-import { simpleParser } from "npm:mailparser@3";
 import * as XLSX from "npm:xlsx@0.18.5";
 
 const SUBJECT_FILTER = "DRIVER MOVES PER SHIFT";
+const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
+
+// Rafraîchit (et met en cache en base, avec une marge de sécurité de 2 min)
+// l'access_token Microsoft Graph à partir du refresh_token stocké — voir
+// migration_034_mail_oauth_tokens.sql et oauth-outlook-setup pour l'obtenir
+// la première fois. Dupliqué à l'identique dans chaque Edge Function
+// utilisant Graph (send-conge-email, etc.) — pas de module partagé entre
+// fonctions, chacune reste déployable isolément (convention du projet).
+async function getGraphAccessToken(admin: ReturnType<typeof createClient>): Promise<string> {
+  const clientId = Deno.env.get("MAIL_OAUTH_CLIENT_ID");
+  if (!clientId) throw new Error("MAIL_OAUTH_CLIENT_ID non configuré (Project Settings > Edge Functions > Secrets).");
+  const { data: row, error } = await admin.from("mail_oauth_tokens").select("*").eq("id", "outlook").maybeSingle();
+  if (error) throw new Error("Lecture du jeton OAuth2 Outlook échouée : " + error.message);
+  if (!row) throw new Error("Aucun jeton OAuth2 Outlook enregistré — exécutez d'abord oauth-outlook-setup (voir son en-tête).");
+  if (row.access_token && row.access_token_expires_at && new Date(row.access_token_expires_at).getTime() > Date.now() + 120000) {
+    return row.access_token;
+  }
+  const resp = await fetch(GRAPH_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      grant_type: "refresh_token",
+      refresh_token: row.refresh_token,
+      scope: GRAPH_SCOPE
+    })
+  });
+  const json = await resp.json();
+  if (!resp.ok) throw new Error("Rafraîchissement du jeton OAuth2 Outlook échoué : " + (json.error_description || json.error || resp.status));
+  const expiresAt = new Date(Date.now() + (json.expires_in || 3600) * 1000).toISOString();
+  await admin.from("mail_oauth_tokens").update({
+    access_token: json.access_token,
+    access_token_expires_at: expiresAt,
+    refresh_token: json.refresh_token || row.refresh_token,
+    updated_at: new Date().toISOString()
+  }).eq("id", "outlook");
+  return json.access_token;
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 // Seuls S1/S2/S3 existent réellement sur ce terminal (3 vacations/jour) — un
 // "S4" (ou toute autre valeur) déjà rencontré dans le rapport TOS vient
@@ -150,13 +204,15 @@ function toInt(v: unknown) {
 Deno.serve(async _req => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  const tosUser = Deno.env.get("TOS_MAIL_USER");
-  const tosPassword = Deno.env.get("TOS_MAIL_APP_PASSWORD");
-  if (!tosUser || !tosPassword) {
-    return new Response(JSON.stringify({ ok: false, error: "TOS_MAIL_USER / TOS_MAIL_APP_PASSWORD non configurés." }), {
+  let accessToken: string;
+  try {
+    accessToken = await getGraphAccessToken(admin);
+  } catch (e) {
+    return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }), {
       status: 500, headers: { "Content-Type": "application/json" }
     });
   }
+
   // Tous les conducteurs actifs, des deux flottes — mais le rattachement d'un
   // login se fait TOUJOURS au sein d'une seule flotte à la fois (voir
   // buildLoginMap ci-dessous), jamais tous conducteurs confondus : sans ça,
@@ -290,8 +346,6 @@ Deno.serve(async _req => {
 
   // Fenêtre de recherche large (7 jours) : couvre les week-ends et les
   // éventuels retards d'acheminement, sans dépendre du statut lu/non lu.
-  // Calculée une seule fois : sert à la fois à la recherche IMAP et au
-  // pré-filtrage par Message-ID ci-dessous (même fenêtre des deux côtés).
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - 7);
 
@@ -306,14 +360,6 @@ Deno.serve(async _req => {
     .gte("date_travail", since.toISOString().slice(0, 10));
   const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
 
-  const client = new ImapFlow({
-    host: "imap.mail.yahoo.com",
-    port: 993,
-    secure: true,
-    auth: { user: tosUser, pass: tosPassword },
-    logger: false
-  });
-
   let processedEmails = 0;
   let importedRows = 0;
   let skippedNoAttachment = 0;
@@ -323,160 +369,173 @@ Deno.serve(async _req => {
   const unmatchedLogins = new Set<string>();
   const errors: string[] = [];
 
-  // ImapFlow (et le socket TLS sous-jacent) émet ses erreurs de connexion via
-  // un événement 'error' (EventEmitter), PAS via une promesse rejetée — sans
-  // écouteur explicite, une simple coupure réseau côté serveur mail (fréquente,
-  // ex. "peer closed connection without sending TLS close_notify") remonte
-  // comme une erreur non gérée qui fait planter TOUTE la fonction (crash de
-  // l'isolate, réponse 5xx), alors qu'elle devrait rester une erreur réseau
-  // ordinaire et non bloquante comme les autres, capturées ci-dessous dans
-  // `errors`.
-  client.on("error", err => {
-    errors.push("Erreur de connexion IMAP (non bloquante) : " + (err instanceof Error ? err.message : String(err)));
-  });
-
   try {
-    await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      const uids: number[] = await client.search({ since, subject: SUBJECT_FILTER }, { uid: true });
+    // Liste des emails de la fenêtre (avec pagination Graph via @odata.nextLink) —
+    // filtrés côté serveur par date, puis par sujet côté client (le champ
+    // "subject" n'est pas fiable en $filter/contains sur cet endpoint pour
+    // tous les tenants ; un simple test .includes() en local est plus robuste
+    // et le volume de cette boîte technique dédiée reste faible).
+    const sinceIso = since.toISOString();
+    let url: string | null =
+      `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages` +
+      `?$filter=${encodeURIComponent(`receivedDateTime ge ${sinceIso}`)}` +
+      `&$select=id,subject,receivedDateTime,internetMessageId,hasAttachments` +
+      `&$orderby=receivedDateTime desc&$top=50`;
 
-      for (const uid of uids) {
-        let markSeen = false;
-        try {
-          // Pré-filtrage bon marché : identifie l'email par son Message-ID
-          // (fetch léger, sans le corps ni la pièce jointe) avant de décider
-          // si le traitement complet (coûteux en CPU) est nécessaire.
-          const envelopeOnly = await client.fetchOne(String(uid), { envelope: true }, { uid: true });
-          const messageId = envelopeOnly && envelopeOnly.envelope ? envelopeOnly.envelope.messageId : null;
-          if (messageId && alreadyImportedMessageIds.has(messageId)) {
-            skippedAlreadyImported++;
-            processedEmails++;
-            continue;
-          }
+    type GraphMessage = { id: string; subject?: string; internetMessageId?: string; hasAttachments?: boolean };
+    const matchingMessages: GraphMessage[] = [];
 
-          const msg = await client.fetchOne(String(uid), { source: true, envelope: true }, { uid: true });
-          if (!msg || !msg.source) { continue; }
+    while (url) {
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const json = await resp.json();
+      if (!resp.ok) {
+        errors.push("Listage des emails échoué : " + (json.error ? json.error.message : resp.status));
+        break;
+      }
+      ((json.value || []) as GraphMessage[]).forEach(m => {
+        if (m.hasAttachments && (m.subject || "").toUpperCase().includes(SUBJECT_FILTER)) matchingMessages.push(m);
+      });
+      url = json["@odata.nextLink"] || null;
+    }
 
-          const parsed = await simpleParser(msg.source);
-          const xlsAttachment = (parsed.attachments || []).find(a => /\.xls$/i.test(a.filename || ""));
+    for (const message of matchingMessages) {
+      let markRead = false;
+      try {
+        const messageId = message.internetMessageId || null;
+        if (messageId && alreadyImportedMessageIds.has(messageId)) {
+          skippedAlreadyImported++;
+          processedEmails++;
+          continue;
+        }
 
-          if (!xlsAttachment) {
-            skippedNoAttachment++;
-            markSeen = true; // pour la propreté visuelle de la boîte, sans effet sur le traitement
-          } else {
-            const wb = XLSX.read(xlsAttachment.content, { type: "buffer", cellDates: true });
+        const attResp = await fetch(
+          `https://graph.microsoft.com/v1.0/me/messages/${message.id}/attachments`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        const attJson = await attResp.json();
+        if (!attResp.ok) throw new Error("Récupération des pièces jointes échouée : " + (attJson.error ? attJson.error.message : attResp.status));
 
-            const records = [];
-            let anySheetFound = false;
-            for (const cfg of SHEETS) {
-              const sheet = wb.Sheets[cfg.sheetName];
-              if (!sheet) continue;
-              anySheetFound = true;
-              const loginMap = loginMapByFleet[cfg.fleet];
-              // Les 2 premières lignes du fichier TOS sont des titres ; l'en-tête
-              // des colonnes est à la 3ème ligne (index 2).
-              const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: 2, defval: null });
+        const xlsAttachment = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
+          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes);
 
-              for (const row of rows) {
-                if (String(row.TYPE_ENGIN || "").toUpperCase() !== cfg.typeEnginValue) continue;
-                const rawLogin = String(row.LOGIN || "").trim().toLowerCase();
-                if (!rawLogin || ignoredLogins.has(rawLogin)) continue;
-                const dateTravail = excelDateToIso(row.DATE_TRAVAIL);
-                if (!dateTravail) continue;
+        if (!xlsAttachment) {
+          skippedNoAttachment++;
+          markRead = true; // pour la propreté visuelle de la boîte, sans effet sur le traitement
+        } else {
+          const bytes = base64ToBytes(xlsAttachment.contentBytes!);
+          const wb = XLSX.read(bytes, { type: "array", cellDates: true });
 
-                const shift = String(row.SHIFT || "").trim().toUpperCase();
-                if (!VALID_SHIFTS.has(shift)) {
-                  skippedInvalidShift++;
-                  invalidShiftSamples.add(`${rawLogin} ${dateTravail} shift="${shift}"`);
-                  continue;
-                }
+          const records = [];
+          let anySheetFound = false;
+          for (const cfg of SHEETS) {
+            const sheet = wb.Sheets[cfg.sheetName];
+            if (!sheet) continue;
+            anySheetFound = true;
+            const loginMap = loginMapByFleet[cfg.fleet];
+            // Les 2 premières lignes du fichier TOS sont des titres ; l'en-tête
+            // des colonnes est à la 3ème ligne (index 2).
+            const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: 2, defval: null });
 
-                const matches = loginMap.get(rawLogin) || [];
-                let driverId: string | null = null;
-                let matchNote: string | null = null;
-                if (matches.length === 1) {
-                  driverId = matches[0];
-                } else if (matches.length === 0) {
-                  matchNote = `Aucun conducteur ${cfg.fleet} actif ne correspond à ce login.`;
-                  unmatchedLogins.add(rawLogin);
-                } else {
-                  matchNote = `Plusieurs conducteurs ${cfg.fleet} actifs correspondent à ce login (ambigu) : ` + matches.join(", ");
-                  unmatchedLogins.add(rawLogin);
-                }
+            for (const row of rows) {
+              if (String(row.TYPE_ENGIN || "").toUpperCase() !== cfg.typeEnginValue) continue;
+              const rawLogin = String(row.LOGIN || "").trim().toLowerCase();
+              if (!rawLogin || ignoredLogins.has(rawLogin)) continue;
+              const dateTravail = excelDateToIso(row.DATE_TRAVAIL);
+              if (!dateTravail) continue;
 
-                records.push({
-                  driver_id: driverId,
-                  login_tos: rawLogin,
-                  date_travail: dateTravail,
-                  // trim + majuscules — même normalisation que rawLogin
-                  // ci-dessus. Sans ça, une différence d'espace ou de casse
-                  // entre deux générations du même rapport TOS (ex. "RTG01"
-                  // vs "RTG01 ", ou "S3" vs "s3") fait échouer la contrainte
-                  // unique (login_tos, date_travail, shift, engin) : au lieu
-                  // de METTRE À JOUR la ligne existante, l'upsert en crée une
-                  // SECONDE, invisible en tant que doublon (chaque ligne a
-                  // l'air normale isolément) mais dont les valeurs sont
-                  // ADDITIONNÉES au moment de l'affichage (regroupement par
-                  // conducteur) — constaté en pratique : un conducteur dont
-                  // le rapport corrigé montrait exactement le double de ses
-                  // vrais mouvements.
-                  shift,
-                  engin: String(row.ENGIN || "").trim().toUpperCase(),
-                  facility: row.FACILITY ? String(row.FACILITY) : null,
-                  nombre_in: toInt(row.NOMBRE_IN),
-                  nombre_out: toInt(row.NOMBRE_OUT),
-                  nombre_move: toInt(row.NOMBRE_MOVE),
-                  nombre_shifting: toInt(row.NOMBRE_SHIFTING),
-                  nombre_disch: toInt(row.NOMBRE_DISCH),
-                  nombre_load: toInt(row.NOMBRE_LOAD),
-                  nombre_autre: toInt(row.NOMBRE_AUTRE),
-                  total_mvmt: toInt(row.TOTAL_MVMT),
-                  match_note: matchNote,
-                  source_message_id: parsed.messageId || null
-                });
-              }
-            }
-
-            if (!anySheetFound) {
-              throw new Error(`Aucun onglet reconnu (${SHEETS.map(s => `"${s.sheetName}"`).join(" / ")}) dans la pièce jointe.`);
-            }
-
-            // Insertion PAR PAQUETS plutôt qu'en un seul upsert géant : un
-            // rapport consolidé multi-jours peut facilement dépasser un
-            // millier de lignes (RTG + SC confondus) en une seule pièce
-            // jointe — un paquet qui échoue (taille, verrou temporaire...)
-            // ne doit pas faire perdre les paquets déjà insérés avec succès.
-            const CHUNK_SIZE = 200;
-            for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-              const chunk = records.slice(i, i + CHUNK_SIZE);
-              const { error: upsertError } = await admin
-                .from("mouvements_tos")
-                .upsert(chunk, { onConflict: "login_tos,date_travail,shift,engin" });
-              if (upsertError) {
-                errors.push(`Email uid=${uid} (paquet ${i}-${i + chunk.length}) : Insertion échouée : ` + upsertError.message);
+              const shift = String(row.SHIFT || "").trim().toUpperCase();
+              if (!VALID_SHIFTS.has(shift)) {
+                skippedInvalidShift++;
+                invalidShiftSamples.add(`${rawLogin} ${dateTravail} shift="${shift}"`);
                 continue;
               }
-              importedRows += chunk.length;
-            }
-            markSeen = true;
-          }
-        } catch (e) {
-          errors.push(`Email uid=${uid} : ` + (e instanceof Error ? e.message : String(e)));
-        }
 
-        if (markSeen) {
-          try { await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }); } catch { /* non bloquant */ }
+              const matches = loginMap.get(rawLogin) || [];
+              let driverId: string | null = null;
+              let matchNote: string | null = null;
+              if (matches.length === 1) {
+                driverId = matches[0];
+              } else if (matches.length === 0) {
+                matchNote = `Aucun conducteur ${cfg.fleet} actif ne correspond à ce login.`;
+                unmatchedLogins.add(rawLogin);
+              } else {
+                matchNote = `Plusieurs conducteurs ${cfg.fleet} actifs correspondent à ce login (ambigu) : ` + matches.join(", ");
+                unmatchedLogins.add(rawLogin);
+              }
+
+              records.push({
+                driver_id: driverId,
+                login_tos: rawLogin,
+                date_travail: dateTravail,
+                // trim + majuscules — même normalisation que rawLogin
+                // ci-dessus. Sans ça, une différence d'espace ou de casse
+                // entre deux générations du même rapport TOS (ex. "RTG01"
+                // vs "RTG01 ", ou "S3" vs "s3") fait échouer la contrainte
+                // unique (login_tos, date_travail, shift, engin) : au lieu
+                // de METTRE À JOUR la ligne existante, l'upsert en crée une
+                // SECONDE, invisible en tant que doublon (chaque ligne a
+                // l'air normale isolément) mais dont les valeurs sont
+                // ADDITIONNÉES au moment de l'affichage (regroupement par
+                // conducteur) — constaté en pratique : un conducteur dont
+                // le rapport corrigé montrait exactement le double de ses
+                // vrais mouvements.
+                shift,
+                engin: String(row.ENGIN || "").trim().toUpperCase(),
+                facility: row.FACILITY ? String(row.FACILITY) : null,
+                nombre_in: toInt(row.NOMBRE_IN),
+                nombre_out: toInt(row.NOMBRE_OUT),
+                nombre_move: toInt(row.NOMBRE_MOVE),
+                nombre_shifting: toInt(row.NOMBRE_SHIFTING),
+                nombre_disch: toInt(row.NOMBRE_DISCH),
+                nombre_load: toInt(row.NOMBRE_LOAD),
+                nombre_autre: toInt(row.NOMBRE_AUTRE),
+                total_mvmt: toInt(row.TOTAL_MVMT),
+                match_note: matchNote,
+                source_message_id: messageId
+              });
+            }
+          }
+
+          if (!anySheetFound) {
+            throw new Error(`Aucun onglet reconnu (${SHEETS.map(s => `"${s.sheetName}"`).join(" / ")}) dans la pièce jointe.`);
+          }
+
+          // Insertion PAR PAQUETS plutôt qu'en un seul upsert géant : un
+          // rapport consolidé multi-jours peut facilement dépasser un
+          // millier de lignes (RTG + SC confondus) en une seule pièce
+          // jointe — un paquet qui échoue (taille, verrou temporaire...)
+          // ne doit pas faire perdre les paquets déjà insérés avec succès.
+          const CHUNK_SIZE = 200;
+          for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+            const chunk = records.slice(i, i + CHUNK_SIZE);
+            const { error: upsertError } = await admin
+              .from("mouvements_tos")
+              .upsert(chunk, { onConflict: "login_tos,date_travail,shift,engin" });
+            if (upsertError) {
+              errors.push(`Email id=${message.id} (paquet ${i}-${i + chunk.length}) : Insertion échouée : ` + upsertError.message);
+              continue;
+            }
+            importedRows += chunk.length;
+          }
+          markRead = true;
         }
-        processedEmails++;
+      } catch (e) {
+        errors.push(`Email id=${message.id} : ` + (e instanceof Error ? e.message : String(e)));
       }
-    } finally {
-      lock.release();
+
+      if (markRead) {
+        try {
+          await fetch(`https://graph.microsoft.com/v1.0/me/messages/${message.id}`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ isRead: true })
+          });
+        } catch { /* non bloquant */ }
+      }
+      processedEmails++;
     }
   } catch (e) {
-    errors.push("Connexion IMAP : " + (e instanceof Error ? e.message : String(e)));
-  } finally {
-    try { await client.logout(); } catch { /* déjà déconnecté */ }
+    errors.push("Import Graph : " + (e instanceof Error ? e.message : String(e)));
   }
 
   return new Response(JSON.stringify({

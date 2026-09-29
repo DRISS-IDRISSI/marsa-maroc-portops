@@ -12,10 +12,13 @@
 --
 -- Prérequis :
 --   - La table mouvements_tos doit déjà exister (migration_008).
+--   - La table mail_oauth_tokens doit déjà exister (migration_034) et
+--     contenir un jeton Outlook valide (exécuter oauth-outlook-setup une
+--     première fois — voir son en-tête).
 --   - La fonction "import-tos-moves" doit déjà être déployée (Edge
 --     Functions > Create a new function).
---   - Les secrets TOS_MAIL_USER et TOS_MAIL_APP_PASSWORD doivent déjà
---     être configurés (Edge Functions > Secrets).
+--   - Le secret MAIL_OAUTH_CLIENT_ID doit déjà être configuré (Edge
+--     Functions > Secrets).
 --
 -- Fréquence : toutes les 5 minutes. Le TOS envoie un rapport à la fin de
 -- chaque shift (S1/S2/S3, horaires précis non garantis) ; un intervalle
