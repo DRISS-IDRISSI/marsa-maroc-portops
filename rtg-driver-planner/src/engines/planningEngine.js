@@ -222,17 +222,22 @@ const PlanningEngine = {
       // "aujourd'hui" par calcul (ex. shift de nuit à cheval sur minuit) —
       // demande explicite de l'exploitant : "je veux que ça soit
       // automatique d'affecter les stagiaires au PARC par défaut".
-      // CDI (CER) : dès que le responsable a renseigné une affectation
-      // (shift + éventuellement zone) pour un jour, la file CDI (§
-      // cerPosteRotationEngine.js, CerCdiRotationEngine) en tient compte
-      // pour générer automatiquement la zone SUGGÉRÉE des jours suivants
-      // (cycle MAERSK/MSC/COSCO) — demande explicite de l'exploitant :
-      // "une fois le jour J renseigné, l'appli génère la rotation du jour
-      // J+1 et ainsi de suite". Reste une SUGGESTION par défaut, jamais
-      // figée : le responsable peut toujours la corriger manuellement (et
-      // c'est le seul moyen d'envoyer un CDI au quai, en cas de sous-
-      // effectif titulaires). Les stagiaires CC gardent le simple défaut
-      // "PARC" (inchangé, pas de file de rotation pour eux).
+      // CDI (CER) : la file CDI (§ cerPosteRotationEngine.js,
+      // CerCdiRotationEngine) calcule en interne, jour après jour, la
+      // rotation MAERSK/MSC/COSCO — mais cette rotation reste une SIMULATION
+      // servant à ce que l'ORDRE de la file (et donc la zone suggérée du jour
+      // SUIVANT) reste cohérent, jamais une décision affichée telle quelle
+      // pour aujourd'hui ou demain (même règle que le poste QUAI des
+      // titulaires ci-dessus, demande explicite de l'exploitant : "l'affectation
+      // de demain doit toujours être vide, sans poste — au responsable de
+      // shift ou au chef d'escale de le renseigner ; la mission de l'appli
+      // est d'assurer la rotation en respectant les règles, pas de préremplir
+      // le poste"). Seuls les jours déjà PASSÉS affichent la suggestion
+      // calculée ce jour-là, comme registre historique déjà vérifié — pour
+      // aujourd'hui/demain, "PARC" (au responsable de le remplacer par le
+      // poste réel, comme pour les titulaires). Les stagiaires CC gardent le
+      // simple défaut "PARC" à toute date (inchangé, pas de file de rotation
+      // pour eux).
       const isCerCdi = b.isNoRotationTeam && team && team.typeEngin === "CER";
       // "!= null" (pas "!== undefined") : une zone explicitement enregistrée
       // à null (cas vécu, CDI — AssignmentEditModal, pages.js) ne doit PAS
@@ -242,8 +247,12 @@ const PlanningEngine = {
       // zone à null, la suggestion restait figée (souvent vide) pour
       // toujours, au lieu de continuer à tourner jour après jour.
       const zoneManuallySet = !!(override && override.zone != null && !zoneFromImport);
-      if (!zoneManuallySet && finalStatus === "PRESENT" && isQueueBasedContext && (b.isNoRotationTeam || isoDate >= todayIso)) {
-        zone = isCerCdi ? (ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, teams) || "PARC") : "PARC";
+      if (!zoneManuallySet && finalStatus === "PRESENT" && isQueueBasedContext) {
+        if (isCerCdi) {
+          zone = isoDate < todayIso ? (ZoneRotationEngine.getExpectedZoneForDate(driver, date, state, teams) || "PARC") : "PARC";
+        } else if (b.isNoRotationTeam || isoDate >= todayIso) {
+          zone = "PARC";
+        }
       }
 
       return {
