@@ -114,7 +114,7 @@ const PlanningEngine = {
     // absence/formation, via AbsenceEngine). Une affectation manuelle laissée
     // par un import antérieur (ex. import Excel) ne doit jamais masquer un
     // congé/maladie saisi après coup sur la même date : le figé gagne toujours.
-    return base.map(b => {
+    const results = base.map(b => {
       const driver = b.driver, team = b.team;
       let shift = b.shift, vacation = b.vacation, zone = b.zone, startTime = b.startTime, endTime = b.endTime;
       let source = "AUTO";
@@ -237,6 +237,38 @@ const PlanningEngine = {
         updatedAt: override && override.updatedAt ? override.updatedAt : null
       };
     });
+
+    // Une fois les postes quai saisis à la main pour certains titulaires CER
+    // ce jour-là, les autres restent au "PARC" générique — demande explicite
+    // de l'exploitant : les répartir automatiquement sur MAERSK/MSC/COSCO en
+    // cycle plutôt que de tout laisser à "PARC", PAR ÉQUIPE (chaque équipe
+    // tourne indépendamment), dans l'ordre de la file de rotation
+    // (CerPosteRotationEngine) pour que le cycle reste cohérent jour après
+    // jour. Le poste quai lui-même reste une saisie manuelle, inchangée —
+    // seul ce reliquat "PARC" est concerné, jamais une prédiction de poste
+    // quai affichée automatiquement (règle explicite ci-dessus).
+    const cerParcGroups = {};
+    results.forEach(r => {
+      if (r.status !== "PRESENT" || r.zone !== "PARC") return;
+      const team = teams.find(t => t.id === r.teamId);
+      if (!team || team.typeEngin !== "CER" || /\bcdi\b/i.test(team.nom || "")) return;
+      (cerParcGroups[r.teamId] = cerParcGroups[r.teamId] || []).push(r);
+    });
+    const cerParcCycle = ["MAERSK", "MSC", "COSCO"];
+    Object.keys(cerParcGroups).forEach(teamId => {
+      const group = cerParcGroups[teamId].slice().sort((a, b) => {
+        const da = state.drivers.find(d => d.id === a.driverId), db = state.drivers.find(d => d.id === b.driverId);
+        const ra = da ? CerPosteRotationEngine.getRankForDate(da, date, state, teams) : null;
+        const rb = db ? CerPosteRotationEngine.getRankForDate(db, date, state, teams) : null;
+        if (ra == null && rb == null) return 0;
+        if (ra == null) return 1;
+        if (rb == null) return -1;
+        return ra - rb;
+      });
+      group.forEach((r, idx) => { r.zone = cerParcCycle[idx % cerParcCycle.length]; });
+    });
+
+    return results;
   },
 
   generateMonthlyPlanning(month, year, state) {
