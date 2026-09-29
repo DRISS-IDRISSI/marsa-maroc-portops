@@ -143,6 +143,21 @@ const PlanningEngine = {
         vacation = "V1+V2";
       }
 
+      // Filet équivalent pour le SHIFT d'un titulaire (équipe à rotation
+      // réelle, pas isNoRotationTeam) : b.shift n'est calculé en Passe 1 que
+      // si le statut NATUREL (avant correction) était déjà PRESENT ce
+      // jour-là (cf. plus haut). Une correction manuelle qui repasse un
+      // conducteur en repos naturel à PRESENT sans préciser elle-même le
+      // shift (cas vécu : migration_029_cer_affectation_28_09.sql) laissait
+      // donc `shift` à null — ce conducteur ne correspondait alors plus à
+      // aucun onglet Shift 1/2/3 sur Affectation du jour et disparaissait
+      // silencieusement de tous. On retombe ici sur le shift normal de son
+      // équipe ce jour-là (même calcul que la Passe 1, juste non conditionné
+      // au statut naturel).
+      if (finalStatus === "PRESENT" && !shift && team && !b.isNoRotationTeam) {
+        shift = ShiftRotationEngine.getTeamShiftForDate(team, date, state.config);
+      }
+
       // Un import Excel en masse (RTG_IMPORT_OVERRIDE_MOTIF) a pu figer une
       // zone CC générique (parfois reprise du mauvais modèle de postes,
       // constaté sur GR BAHOUS/GR HOUSSAM), jamais réévaluée depuis — ce
