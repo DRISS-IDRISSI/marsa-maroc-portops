@@ -7,32 +7,30 @@
 // juste après la mise à jour du statut en base — voir ce fichier pour le
 // payload exact envoyé.
 //
-// Envoi via SMTP Outlook.com (compte technique dédié) avec un "mot de passe
-// d'application" — PAS le mot de passe normal du compte (nécessite la
-// validation en 2 étapes activée sur ce compte, voir account.live.com >
-// Security > "Add another way to sign in" > mot de passe d'application).
+// Envoi via SMTP iCloud Mail (compte technique dédié) avec un "mot de passe
+// d'application" — PAS le mot de passe (Apple ID) normal du compte
+// (nécessite la validation en 2 étapes activée sur ce compte, puis un mot
+// de passe d'application généré sur appleid.apple.com > Connexion et
+// sécurité > Mots de passe pour applications).
 // Migré depuis Gmail (compte gestioneffectif@gmail.com bloqué par Google —
 // vérification téléphonique impossible à finaliser), puis depuis une
 // tentative Yahoo (création de compte bloquée par la vérification
-// téléphonique côté Yahoo). ⚠️ Microsoft impose de plus en plus
-// l'authentification "moderne" (OAuth2) pour l'accès SMTP/IMAP par mot de
-// passe sur Outlook.com — si l'authentification échoue malgré un mot de
-// passe d'application correct, il faudra probablement passer par un
-// enregistrement d'application Azure AD + flux OAuth2 (XOAUTH2), plus
-// complexe que le simple couple utilisateur/mot de passe utilisé ici.
-// Vérifiez aussi que POP/IMAP est bien activé côté Outlook.com (Paramètres
-// > Mail > Synchroniser le courrier > "Laisser les appareils et applications
-// utiliser POP"/IMAP), désactivé par défaut.
+// téléphonique côté Yahoo), puis depuis Outlook.com (bloqué des deux
+// côtés : IMAP refusé — "Login is disabled", authentification moderne
+// imposée — et SMTP en échec côté bibliothèque denomailer sur la
+// négociation STARTTLS du port 587). iCloud utilise le port 465 (TLS
+// implicite, comme Gmail à l'origine) plutôt que 587/STARTTLS, ce qui
+// évite ce bug de bibliothèque.
 //
 // DÉPLOIEMENT (sans CLI, depuis le Dashboard Supabase — comme les migrations
 // SQL) :
 //   1. Project > Edge Functions > Create a new function > nommez-la
 //      "send-conge-email" > collez le contenu de ce fichier > Deploy.
 //   2. Project > Edge Functions > Secrets (ou Manage secrets) > ajoutez :
-//        MAIL_USER = l'adresse Outlook choisie (ex. xxx@outlook.com)
-//        MAIL_APP_PASSWORD = le mot de passe d'application Outlook (PAS le
-//        mot de passe normal du compte) — ne JAMAIS coller ce mot de passe
-//        ailleurs qu'ici.
+//        MAIL_USER = l'adresse iCloud choisie (ex. xxx@icloud.com)
+//        MAIL_APP_PASSWORD = le mot de passe d'application iCloud (PAS le
+//        mot de passe Apple ID normal du compte) — ne JAMAIS coller ce mot
+//        de passe ailleurs qu'ici.
 // Tant que ces 2 secrets ne sont pas configurés, la fonction répond une
 // erreur explicite (voir plus bas) — la validation/refus du congé côté
 // appli continue de fonctionner normalement (l'échec d'envoi d'email
@@ -85,9 +83,9 @@ Deno.serve(async req => {
 
     const client = new SMTPClient({
       connection: {
-        hostname: "smtp-mail.outlook.com",
-        port: 587,
-        tls: false,
+        hostname: "smtp.mail.me.com",
+        port: 465,
+        tls: true,
         auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD }
       }
     });

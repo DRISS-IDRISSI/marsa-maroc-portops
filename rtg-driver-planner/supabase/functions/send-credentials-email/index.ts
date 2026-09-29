@@ -11,10 +11,9 @@
 //
 // Réutilise MAIL_USER / MAIL_APP_PASSWORD (déjà configurés pour
 // send-conge-email / daily-affectation-email) — aucun nouveau secret à
-// ajouter. Compte technique Outlook.com (migré depuis Gmail, bloqué par une
-// vérification téléphonique impossible à finaliser) — voir send-conge-email
-// pour le détail de la procédure de génération du mot de passe d'application
-// et la mise en garde sur l'authentification moderne (OAuth2).
+// ajouter. Compte technique iCloud Mail (migré depuis Gmail, Yahoo puis
+// Outlook.com, chacun bloqué à son tour) — voir send-conge-email pour le
+// détail de la procédure de génération du mot de passe d'application.
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme send-conge-email) :
 //   Edge Functions > Create a new function > "send-credentials-email" >
@@ -101,9 +100,9 @@ Deno.serve(async req => {
 
     const client = new SMTPClient({
       connection: {
-        hostname: "smtp-mail.outlook.com",
-        port: 587,
-        tls: false,
+        hostname: "smtp.mail.me.com",
+        port: 465,
+        tls: true,
         auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD }
       }
     });

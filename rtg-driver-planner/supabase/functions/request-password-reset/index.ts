@@ -14,7 +14,7 @@
 //      (ADMIN/RESPONSABLE/RESPONSABLE_SHIFT — migration_006).
 //   3. Si un compte actif avec un email est trouvé : génère un mot de passe
 //      temporaire, l'applique directement via l'API Admin Auth, puis
-//      l'envoie par email (SMTP Outlook.com, mêmes secrets que send-conge-email).
+//      l'envoie par email (SMTP iCloud Mail, mêmes secrets que send-conge-email).
 //   4. Répond TOUJOURS un message générique de succès, que l'identifiant
 //      existe ou non et qu'un email ait pu être envoyé ou non — pour ne
 //      jamais révéler si un identifiant donné correspond à un compte réel.
@@ -51,7 +51,7 @@ function generateTempPassword() {
 
 async function sendResetEmail(to, username, tempPassword, isConducteur) {
   const client = new SMTPClient({
-    connection: { hostname: "smtp-mail.outlook.com", port: 587, tls: false, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
+    connection: { hostname: "smtp.mail.me.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
   });
   const content = [
     "Bonjour,",
