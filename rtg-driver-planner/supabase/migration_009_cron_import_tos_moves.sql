@@ -1,6 +1,6 @@
 -- ==========================================
 -- RTG DRIVER PLANNER — Migration : planification de l'import automatique
--- des mouvements RTG depuis le rapport TOS (boîte Gmail dédiée)
+-- des mouvements RTG depuis le rapport TOS (boîte mail dédiée)
 -- ==========================================
 -- À exécuter dans Supabase : Project > SQL Editor > New query.
 --
@@ -14,7 +14,7 @@
 --   - La table mouvements_tos doit déjà exister (migration_008).
 --   - La fonction "import-tos-moves" doit déjà être déployée (Edge
 --     Functions > Create a new function).
---   - Les secrets TOS_GMAIL_USER et TOS_GMAIL_APP_PASSWORD doivent déjà
+--   - Les secrets TOS_MAIL_USER et TOS_MAIL_APP_PASSWORD doivent déjà
 --     être configurés (Edge Functions > Secrets).
 --
 -- Fréquence : toutes les 5 minutes. Le TOS envoie un rapport à la fin de

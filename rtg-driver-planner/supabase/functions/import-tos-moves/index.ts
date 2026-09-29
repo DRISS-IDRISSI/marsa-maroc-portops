@@ -6,10 +6,12 @@
 // pour cette application) envoie un email avec ce rapport en pièce jointe
 // .xls à la fin de CHAQUE shift (S1/S2/S3). L'exploitant a mis en place une
 // règle de transfert automatique sur sa boîte professionnelle vers une boîte
-// Gmail dédiée (gestioneffectif@gmail.com), lue ici en IMAP.
+// dédiée (Yahoo Mail, migrée depuis Gmail — le compte gestioneffectif@gmail.com
+// a été bloqué par Google, vérification téléphonique impossible à finaliser),
+// lue ici en IMAP.
 //
 // Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
-// toutes les 5 minutes : se connecte à la boîte Gmail dédiée, cherche les
+// toutes les 5 minutes : se connecte à la boîte dédiée, cherche les
 // emails NON LUS dont le sujet contient "DRIVER MOVES PER SHIFT", parse la
 // pièce jointe .xls — DEUX onglets, un par flotte : "RTG" et "SC" (Straddle
 // Carrier, le nom technique du chariot cavalier — flotte "CC" dans cette
@@ -36,7 +38,7 @@
 //
 // Les emails traités sont recherchés par DATE (derniers jours), pas par
 // statut lu/non lu : le statut "lu" d'un email peut changer à tout moment
-// (n'importe quelle consultation de la boîte via l'interface Gmail marque
+// (n'importe quelle consultation de la boîte via l'interface webmail marque
 // l'email comme lu), ce qui le ferait disparaître définitivement de la
 // recherche si on se basait dessus. Comme l'insertion des mouvements est
 // une upsert avec contrainte anti-doublon (login_tos, date_travail, shift,
@@ -56,10 +58,11 @@
 // déclenche le parsing complet.
 //
 // Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
-//   - TOS_GMAIL_USER : gestioneffectif@gmail.com
-//   - TOS_GMAIL_APP_PASSWORD : mot de passe d'application Gmail de ce compte
-//     (2FA à activer sur ce compte, puis générer un mot de passe d'application
-//     — même procédure que pour GMAIL_APP_PASSWORD utilisé pour l'envoi).
+//   - TOS_MAIL_USER : l'adresse Yahoo Mail dédiée (ex. xxx@yahoo.com)
+//   - TOS_MAIL_APP_PASSWORD : mot de passe d'application Yahoo de ce compte
+//     (validation en 2 étapes à activer sur ce compte, puis générer un mot
+//     de passe d'application — même procédure que pour MAIL_APP_PASSWORD
+//     utilisé pour l'envoi, voir send-conge-email).
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut, déjà
 // disponibles automatiquement.
 //
@@ -143,10 +146,10 @@ function toInt(v: unknown) {
 Deno.serve(async _req => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  const tosUser = Deno.env.get("TOS_GMAIL_USER");
-  const tosPassword = Deno.env.get("TOS_GMAIL_APP_PASSWORD");
+  const tosUser = Deno.env.get("TOS_MAIL_USER");
+  const tosPassword = Deno.env.get("TOS_MAIL_APP_PASSWORD");
   if (!tosUser || !tosPassword) {
-    return new Response(JSON.stringify({ ok: false, error: "TOS_GMAIL_USER / TOS_GMAIL_APP_PASSWORD non configurés." }), {
+    return new Response(JSON.stringify({ ok: false, error: "TOS_MAIL_USER / TOS_MAIL_APP_PASSWORD non configurés." }), {
       status: 500, headers: { "Content-Type": "application/json" }
     });
   }
@@ -301,7 +304,7 @@ Deno.serve(async _req => {
   const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
 
   const client = new ImapFlow({
-    host: "imap.gmail.com",
+    host: "imap.mail.yahoo.com",
     port: 993,
     secure: true,
     auth: { user: tosUser, pass: tosPassword },
@@ -319,7 +322,7 @@ Deno.serve(async _req => {
 
   // ImapFlow (et le socket TLS sous-jacent) émet ses erreurs de connexion via
   // un événement 'error' (EventEmitter), PAS via une promesse rejetée — sans
-  // écouteur explicite, une simple coupure réseau côté Gmail (fréquente,
+  // écouteur explicite, une simple coupure réseau côté serveur mail (fréquente,
   // ex. "peer closed connection without sending TLS close_notify") remonte
   // comme une erreur non gérée qui fait planter TOUTE la fonction (crash de
   // l'isolate, réponse 5xx), alors qu'elle devrait rester une erreur réseau

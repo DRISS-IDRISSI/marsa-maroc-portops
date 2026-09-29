@@ -17,7 +17,8 @@
 // contrôle, n'importe quel utilisateur connecté pourrait réinitialiser le
 // mot de passe de n'importe qui.
 //
-// Réutilise GMAIL_USER / GMAIL_APP_PASSWORD (déjà configurés) — aucun
+// Réutilise MAIL_USER / MAIL_APP_PASSWORD (déjà configurés, compte
+// technique Yahoo Mail — migré depuis Gmail, voir send-conge-email) — aucun
 // nouveau secret à ajouter. SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
 // SUPABASE_ANON_KEY sont des secrets par défaut, déjà disponibles.
 //
@@ -30,8 +31,8 @@ import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const GMAIL_USER = Deno.env.get("GMAIL_USER");
-const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD");
+const MAIL_USER = Deno.env.get("MAIL_USER");
+const MAIL_APP_PASSWORD = Deno.env.get("MAIL_APP_PASSWORD");
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -166,7 +167,7 @@ Deno.serve(async req => {
   const jsonHeaders = Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" });
 
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !MAIL_USER || !MAIL_APP_PASSWORD) {
       throw new Error("Configuration incomplète (secrets manquants).");
     }
     const authHeader = req.headers.get("Authorization") || "";
@@ -220,9 +221,9 @@ Deno.serve(async req => {
 
     const html = buildHtml({ driverName, username: target.username, password: tempPassword, appUrl, role: target.role, fleet });
     const client = new SMTPClient({
-      connection: { hostname: "smtp.gmail.com", port: 465, tls: true, auth: { username: GMAIL_USER, password: GMAIL_APP_PASSWORD } }
+      connection: { hostname: "smtp.mail.yahoo.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
     });
-    await client.send({ from: GMAIL_USER, to: targetEmail, subject: "Vos identifiants — CES Driver Planner", content: "auto", html });
+    await client.send({ from: MAIL_USER, to: targetEmail, subject: "Vos identifiants — CES Driver Planner", content: "auto", html });
     await client.close();
 
     return new Response(JSON.stringify({ ok: true }), { headers: jsonHeaders });

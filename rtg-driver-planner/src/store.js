@@ -492,7 +492,7 @@ const RTGStore = (function () {
     addAuditEntry({ driverId: updated.driverId, matricule: d ? d.matricule : "", action: auditAction, details: motifRefus || "" });
     // Email de confirmation (Edge Function "send-conge-email", voir son
     // en-tête pour le déploiement) — best-effort : un échec d'envoi (email
-    // absent, secrets Gmail pas encore configurés, fonction pas encore
+    // absent, secrets mail pas encore configurés, fonction pas encore
     // déployée) ne doit JAMAIS remettre en cause la validation/refus
     // elle-même, déjà actée en base ci-dessus.
     if (d && d.email) {

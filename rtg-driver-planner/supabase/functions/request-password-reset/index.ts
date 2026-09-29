@@ -14,14 +14,14 @@
 //      (ADMIN/RESPONSABLE/RESPONSABLE_SHIFT — migration_006).
 //   3. Si un compte actif avec un email est trouvé : génère un mot de passe
 //      temporaire, l'applique directement via l'API Admin Auth, puis
-//      l'envoie par email (SMTP Gmail, mêmes secrets que send-conge-email).
+//      l'envoie par email (SMTP Yahoo Mail, mêmes secrets que send-conge-email).
 //   4. Répond TOUJOURS un message générique de succès, que l'identifiant
 //      existe ou non et qu'un email ait pu être envoyé ou non — pour ne
 //      jamais révéler si un identifiant donné correspond à un compte réel.
 //
 // SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut,
 // automatiquement disponibles dans toute Edge Function du projet — rien à
-// configurer en plus de GMAIL_USER / GMAIL_APP_PASSWORD (déjà en place pour
+// configurer en plus de MAIL_USER / MAIL_APP_PASSWORD (déjà en place pour
 // send-conge-email).
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme send-conge-email) :
@@ -33,8 +33,8 @@ import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const GMAIL_USER = Deno.env.get("GMAIL_USER");
-const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD");
+const MAIL_USER = Deno.env.get("MAIL_USER");
+const MAIL_APP_PASSWORD = Deno.env.get("MAIL_APP_PASSWORD");
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -51,7 +51,7 @@ function generateTempPassword() {
 
 async function sendResetEmail(to, username, tempPassword, isConducteur) {
   const client = new SMTPClient({
-    connection: { hostname: "smtp.gmail.com", port: 465, tls: true, auth: { username: GMAIL_USER, password: GMAIL_APP_PASSWORD } }
+    connection: { hostname: "smtp.mail.yahoo.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
   });
   const content = [
     "Bonjour,",
@@ -68,7 +68,7 @@ async function sendResetEmail(to, username, tempPassword, isConducteur) {
     "",
     "CES Driver Planner — Marsa Maroc TC3PC"
   ].join("\n");
-  await client.send({ from: GMAIL_USER, to: to, subject: "Réinitialisation de votre mot de passe — CES Driver Planner", content: content });
+  await client.send({ from: MAIL_USER, to: to, subject: "Réinitialisation de votre mot de passe — CES Driver Planner", content: content });
   await client.close();
 }
 
@@ -77,7 +77,7 @@ Deno.serve(async req => {
   const jsonHeaders = Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" });
 
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !MAIL_USER || !MAIL_APP_PASSWORD) {
       throw new Error("Configuration incomplète (secrets manquants).");
     }
     const body = await req.json();
