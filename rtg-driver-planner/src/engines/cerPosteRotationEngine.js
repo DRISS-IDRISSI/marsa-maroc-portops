@@ -56,7 +56,7 @@ function isCdiTeam(team) {
 const CER_BOOTSTRAP_ORDER = [
   { pattern: /azzam/i, order: ["TCI040", "TC0075", "TCI033", "TC0085", "TC0082", "TC0090", "TCI027", "TC0087", "TC0072"] },
   { pattern: /bakkali|haddazi/i, order: ["C07847", "TC0084", "TCI032", "TCI026", "C07846", "C07220", "TCI028", "C07789", "TCI035"] },
-  { pattern: /eddaouidi|houssam/i, order: ["C07845", "TCI037", "C07783", "C07402", "TCI022", "TCI031", "TC0803", "TC0081"] }
+  { pattern: /eddaouidi|houssam/i, order: ["C07845", "TCI037", "C07783", "C07402", "TCI022", "TCI031", "C07803", "TC0081"] }
 ];
 function cerBootstrapOrderFor(team) {
   if (!team) return null;
