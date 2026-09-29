@@ -64,6 +64,13 @@ function cerBootstrapOrderFor(team) {
   return entry ? entry.order : null;
 }
 
+// Même principe pour les CDI (relevé papier du 28/09/2026, shift 1 puis
+// shift 2 — les CDI ne sont jamais sur le shift 3) — file unique, séparée
+// des titulaires (cf. CerCdiRotationEngine). EL BOURANI et HALLAL (en congé
+// ce jour-là, donc pas de position observée sur le terrain) retombent en
+// fin de file par tri matricule, comme tout conducteur absent de cette liste.
+const CER_CDI_BOOTSTRAP_ORDER = ["TCI059", "TCI046", "TCI054", "TCI048", "TCI055", "TCI060", "TCI053", "TCI047", "TCI051"];
+
 function cerRefDate(state) {
   return RTGDate.parseISO(state.config.cerRotationReferenceDate || state.config.rotationReferenceDate);
 }
@@ -331,7 +338,15 @@ const CerCdiRotationEngine = {
       (byBlock[key] = byBlock[key] || []).push(driver);
     });
     Object.keys(byBlock).forEach(key => {
-      const ordered = byBlock[key].slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule)));
+      const blockDrivers = byBlock[key];
+      const byMatricule = {};
+      blockDrivers.forEach(d => { byMatricule[String(d.matricule).trim().toUpperCase()] = d; });
+      const ordered = [];
+      CER_CDI_BOOTSTRAP_ORDER.forEach(mat => {
+        const d = byMatricule[mat.toUpperCase()];
+        if (d) { ordered.push(d); delete byMatricule[mat.toUpperCase()]; }
+      });
+      Object.keys(byMatricule).sort().forEach(mat => ordered.push(byMatricule[mat]));
       this._order[key] = ordered.map(d => d.id);
     });
   },
