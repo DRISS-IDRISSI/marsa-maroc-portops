@@ -17,12 +17,16 @@
 // contrôle, n'importe quel utilisateur connecté pourrait réinitialiser le
 // mot de passe de n'importe qui.
 //
-// Envoi via Microsoft Graph (API REST, OAuth2) — compte technique Outlook
-// marsamaroc.CES@outlook.fr, jeton déjà obtenu via oauth-outlook-setup et
-// réutilisé ici tel quel (aucun nouveau secret à ajouter : MAIL_OAUTH_CLIENT_ID
-// et la table mail_oauth_tokens, déjà configurés pour import-tos-moves).
-// SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY sont des
-// secrets par défaut, déjà disponibles.
+// Envoi via l'API transactionnelle Brevo (HTTPS) — PAS Microsoft Graph :
+// un envoi de test via Graph (compte Outlook marsamaroc.CES@outlook.fr,
+// tenant tout neuf) a été rejeté par le filtre anti-spam SORTANT de
+// Microsoft lui-même ("550 5.7.520 Message blocked because it contains
+// content identified as spam") — un contenu "identifiant + mot de passe +
+// lien" ressemble typiquement à du phishing. Brevo, un service dédié à
+// l'email transactionnel, n'a pas ce problème. Réutilise BREVO_API_KEY /
+// MAIL_USER (déjà configurés pour send-conge-email) — aucun nouveau
+// secret à ajouter. SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
+// SUPABASE_ANON_KEY sont des secrets par défaut, déjà disponibles.
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme les autres Edge Functions) :
 //   Edge Functions > Create a new function > "reset-and-send-credentials" >
@@ -32,58 +36,22 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
-const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
+const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
+const MAIL_USER = Deno.env.get("MAIL_USER");
 
-// Dupliqué à l'identique dans chaque Edge Function utilisant Graph — pas de
-// module partagé entre fonctions, chacune reste déployable isolément.
-async function getGraphAccessToken(admin: ReturnType<typeof createClient>): Promise<string> {
-  const clientId = Deno.env.get("MAIL_OAUTH_CLIENT_ID");
-  if (!clientId) throw new Error("MAIL_OAUTH_CLIENT_ID non configuré (Project Settings > Edge Functions > Secrets).");
-  const { data: row, error } = await admin.from("mail_oauth_tokens").select("*").eq("id", "outlook").maybeSingle();
-  if (error) throw new Error("Lecture du jeton OAuth2 Outlook échouée : " + error.message);
-  if (!row) throw new Error("Aucun jeton OAuth2 Outlook enregistré — exécutez d'abord oauth-outlook-setup (voir son en-tête).");
-  if (row.access_token && row.access_token_expires_at && new Date(row.access_token_expires_at).getTime() > Date.now() + 120000) {
-    return row.access_token;
-  }
-  const resp = await fetch(GRAPH_TOKEN_ENDPOINT, {
+async function sendViaBrevo({ to, subject, html }: { to: string; subject: string; html: string }) {
+  const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      grant_type: "refresh_token",
-      refresh_token: row.refresh_token,
-      scope: GRAPH_SCOPE
-    })
-  });
-  const json = await resp.json();
-  if (!resp.ok) throw new Error("Rafraîchissement du jeton OAuth2 Outlook échoué : " + (json.error_description || json.error || resp.status));
-  const expiresAt = new Date(Date.now() + (json.expires_in || 3600) * 1000).toISOString();
-  await admin.from("mail_oauth_tokens").update({
-    access_token: json.access_token,
-    access_token_expires_at: expiresAt,
-    refresh_token: json.refresh_token || row.refresh_token,
-    updated_at: new Date().toISOString()
-  }).eq("id", "outlook");
-  return json.access_token;
-}
-
-async function sendViaGraph(accessToken: string, { to, subject, html }: { to: string; subject: string; html: string }) {
-  const resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    headers: { "api-key": BREVO_API_KEY!, "Content-Type": "application/json", "Accept": "application/json" },
     body: JSON.stringify({
-      message: {
-        subject,
-        body: { contentType: "HTML", content: html },
-        toRecipients: [{ emailAddress: { address: to } }]
-      },
-      saveToSentItems: "true"
+      sender: { email: MAIL_USER, name: "CES Driver Planner" },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html
     })
   });
   if (!resp.ok) {
-    const errJson = await resp.json().catch(() => ({}));
-    throw new Error("Envoi Graph échoué (" + resp.status + ") : " + (errJson.error ? errJson.error.message : ""));
+    throw new Error("Envoi Brevo échoué (" + resp.status + ") : " + (await resp.text()));
   }
 }
 
@@ -220,7 +188,7 @@ Deno.serve(async req => {
   const jsonHeaders = Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" });
 
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !MAIL_USER || !BREVO_API_KEY) {
       throw new Error("Configuration incomplète (secrets manquants).");
     }
     const authHeader = req.headers.get("Authorization") || "";
@@ -273,8 +241,7 @@ Deno.serve(async req => {
     if (updateError) { console.error(updateError); throw updateError; }
 
     const html = buildHtml({ driverName, username: target.username, password: tempPassword, appUrl, role: target.role, fleet });
-    const accessToken = await getGraphAccessToken(admin);
-    await sendViaGraph(accessToken, { to: targetEmail, subject: "Vos identifiants — CES Driver Planner", html });
+    await sendViaBrevo({ to: targetEmail, subject: "Vos identifiants — CES Driver Planner", html });
 
     return new Response(JSON.stringify({ ok: true }), { headers: jsonHeaders });
   } catch (e) {

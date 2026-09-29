@@ -9,72 +9,38 @@
 // moment où le mot de passe en clair est encore connu (Supabase Auth ne le
 // stocke jamais en clair, il ne peut donc pas être renvoyé plus tard).
 //
-// Envoi via Microsoft Graph (API REST, OAuth2) — compte technique Outlook
-// marsamaroc.CES@outlook.fr, jeton déjà obtenu via oauth-outlook-setup et
-// réutilisé ici tel quel (aucun nouveau secret à ajouter : MAIL_OAUTH_CLIENT_ID
-// et la table mail_oauth_tokens, déjà configurés pour import-tos-moves —
-// voir son en-tête pour le détail de la procédure d'inscription Azure AD
-// + autorisation initiale).
+// Envoi via l'API transactionnelle Brevo (HTTPS) — PAS Microsoft Graph
+// (contrairement à import-tos-moves) : un envoi de test via Graph
+// (compte Outlook marsamaroc.CES@outlook.fr, tenant tout neuf) a été
+// rejeté par le filtre anti-spam SORTANT de Microsoft lui-même
+// ("550 5.7.520 Message blocked because it contains content identified
+// as spam") — un contenu "identifiant + mot de passe + lien" ressemble
+// typiquement à du phishing, et Microsoft bloque plus agressivement ce
+// genre de contenu depuis un tenant sans historique d'envoi. Brevo, un
+// service dédié à l'email transactionnel, n'a pas ce problème. Réutilise
+// BREVO_API_KEY / MAIL_USER (déjà configurés pour send-conge-email) —
+// aucun nouveau secret à ajouter.
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme send-conge-email) :
 //   Edge Functions > Create a new function > "send-credentials-email" >
 //   coller ce fichier > Deploy.
 
-import { createClient } from "npm:@supabase/supabase-js@2";
+const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
+const MAIL_USER = Deno.env.get("MAIL_USER");
 
-const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
-const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
-
-// Dupliqué à l'identique dans chaque Edge Function utilisant Graph — pas de
-// module partagé entre fonctions, chacune reste déployable isolément
-// (convention du projet, voir reset-and-send-credentials).
-async function getGraphAccessToken(admin: ReturnType<typeof createClient>): Promise<string> {
-  const clientId = Deno.env.get("MAIL_OAUTH_CLIENT_ID");
-  if (!clientId) throw new Error("MAIL_OAUTH_CLIENT_ID non configuré (Project Settings > Edge Functions > Secrets).");
-  const { data: row, error } = await admin.from("mail_oauth_tokens").select("*").eq("id", "outlook").maybeSingle();
-  if (error) throw new Error("Lecture du jeton OAuth2 Outlook échouée : " + error.message);
-  if (!row) throw new Error("Aucun jeton OAuth2 Outlook enregistré — exécutez d'abord oauth-outlook-setup (voir son en-tête).");
-  if (row.access_token && row.access_token_expires_at && new Date(row.access_token_expires_at).getTime() > Date.now() + 120000) {
-    return row.access_token;
-  }
-  const resp = await fetch(GRAPH_TOKEN_ENDPOINT, {
+async function sendViaBrevo({ to, subject, html }: { to: string; subject: string; html: string }) {
+  const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      grant_type: "refresh_token",
-      refresh_token: row.refresh_token,
-      scope: GRAPH_SCOPE
-    })
-  });
-  const json = await resp.json();
-  if (!resp.ok) throw new Error("Rafraîchissement du jeton OAuth2 Outlook échoué : " + (json.error_description || json.error || resp.status));
-  const expiresAt = new Date(Date.now() + (json.expires_in || 3600) * 1000).toISOString();
-  await admin.from("mail_oauth_tokens").update({
-    access_token: json.access_token,
-    access_token_expires_at: expiresAt,
-    refresh_token: json.refresh_token || row.refresh_token,
-    updated_at: new Date().toISOString()
-  }).eq("id", "outlook");
-  return json.access_token;
-}
-
-async function sendViaGraph(accessToken: string, { to, subject, html }: { to: string; subject: string; html: string }) {
-  const resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    headers: { "api-key": BREVO_API_KEY!, "Content-Type": "application/json", "Accept": "application/json" },
     body: JSON.stringify({
-      message: {
-        subject,
-        body: { contentType: "HTML", content: html },
-        toRecipients: [{ emailAddress: { address: to } }]
-      },
-      saveToSentItems: "true"
+      sender: { email: MAIL_USER, name: "CES Driver Planner" },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html
     })
   });
   if (!resp.ok) {
-    const errJson = await resp.json().catch(() => ({}));
-    throw new Error("Envoi Graph échoué (" + resp.status + ") : " + (errJson.error ? errJson.error.message : ""));
+    throw new Error("Envoi Brevo échoué (" + resp.status + ") : " + (await resp.text()));
   }
 }
 
@@ -140,6 +106,9 @@ Deno.serve(async req => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
   try {
+    if (!MAIL_USER || !BREVO_API_KEY) {
+      throw new Error("MAIL_USER / BREVO_API_KEY non configurés (Project Settings > Edge Functions > Secrets).");
+    }
     const body = await req.json();
     const { to, driverName, username, password, appUrl, fleet } = body || {};
     if (!to || !username || !password || !appUrl) {
@@ -148,10 +117,7 @@ Deno.serve(async req => {
     }
 
     const html = buildHtml({ driverName: driverName || "", username, password, appUrl, fleet });
-
-    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const accessToken = await getGraphAccessToken(admin);
-    await sendViaGraph(accessToken, { to, subject: "Vos identifiants — CES Driver Planner", html });
+    await sendViaBrevo({ to, subject: "Vos identifiants — CES Driver Planner", html });
 
     return new Response(JSON.stringify({ ok: true }), { headers: Object.assign({}, CORS_HEADERS, { "Content-Type": "application/json" }) });
   } catch (e) {

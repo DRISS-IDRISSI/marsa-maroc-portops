@@ -27,10 +27,14 @@
 // boîte de réception) — les PDF joints sont la version faisant référence.
 //
 // SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut,
-// automatiquement disponibles ici. Envoi via Microsoft Graph (API REST,
-// OAuth2) — compte technique Outlook marsamaroc.CES@outlook.fr, même
-// jeton que import-tos-moves (MAIL_OAUTH_CLIENT_ID déjà configuré, aucun
-// nouveau secret à ajouter).
+// automatiquement disponibles ici. Envoi via l'API transactionnelle Brevo
+// (HTTPS) — PAS Microsoft Graph : un envoi de test via Graph (compte
+// Outlook marsamaroc.CES@outlook.fr, tenant tout neuf) a été rejeté par le
+// filtre anti-spam SORTANT de Microsoft lui-même pour un autre email de ce
+// projet ("550 5.7.520 Message blocked because it contains content
+// identified as spam") — Brevo, service dédié à l'email transactionnel,
+// n'a pas ce problème. Réutilise BREVO_API_KEY / MAIL_USER (déjà
+// configurés pour send-conge-email) — aucun nouveau secret à ajouter.
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme send-conge-email/request-password-reset) :
 //   Edge Functions > Create a new function > "daily-affectation-email" >
@@ -43,41 +47,8 @@ import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
-const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
-
-// Dupliqué à l'identique dans chaque Edge Function utilisant Graph — pas de
-// module partagé entre fonctions, chacune reste déployable isolément.
-async function getGraphAccessToken(admin: ReturnType<typeof createClient>): Promise<string> {
-  const clientId = Deno.env.get("MAIL_OAUTH_CLIENT_ID");
-  if (!clientId) throw new Error("MAIL_OAUTH_CLIENT_ID non configuré (Project Settings > Edge Functions > Secrets).");
-  const { data: row, error } = await admin.from("mail_oauth_tokens").select("*").eq("id", "outlook").maybeSingle();
-  if (error) throw new Error("Lecture du jeton OAuth2 Outlook échouée : " + error.message);
-  if (!row) throw new Error("Aucun jeton OAuth2 Outlook enregistré — exécutez d'abord oauth-outlook-setup (voir son en-tête).");
-  if (row.access_token && row.access_token_expires_at && new Date(row.access_token_expires_at).getTime() > Date.now() + 120000) {
-    return row.access_token;
-  }
-  const resp = await fetch(GRAPH_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      grant_type: "refresh_token",
-      refresh_token: row.refresh_token,
-      scope: GRAPH_SCOPE
-    })
-  });
-  const json = await resp.json();
-  if (!resp.ok) throw new Error("Rafraîchissement du jeton OAuth2 Outlook échoué : " + (json.error_description || json.error || resp.status));
-  const expiresAt = new Date(Date.now() + (json.expires_in || 3600) * 1000).toISOString();
-  await admin.from("mail_oauth_tokens").update({
-    access_token: json.access_token,
-    access_token_expires_at: expiresAt,
-    refresh_token: json.refresh_token || row.refresh_token,
-    updated_at: new Date().toISOString()
-  }).eq("id", "outlook");
-  return json.access_token;
-}
+const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
+const MAIL_USER = Deno.env.get("MAIL_USER");
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -1019,30 +990,22 @@ function splitEmails(raw: string) {
 
 type PdfAttachment = { filename: string; bytes: Uint8Array };
 
-async function sendAffectationEmail(accessToken: string, to: string, isoDate: string, html: string, pdfAttachments: PdfAttachment[]) {
+async function sendAffectationEmail(to: string, isoDate: string, html: string, pdfAttachments: PdfAttachment[]) {
   const recipients = splitEmails(to);
   if (recipients.length === 0) return;
-  const resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+  const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    headers: { "api-key": BREVO_API_KEY!, "Content-Type": "application/json", "Accept": "application/json" },
     body: JSON.stringify({
-      message: {
-        subject: `Affectation du jour — ${isoDate}`,
-        body: { contentType: "HTML", content: html },
-        toRecipients: recipients.map(email => ({ emailAddress: { address: email } })),
-        attachments: pdfAttachments.map(a => ({
-          "@odata.type": "#microsoft.graph.fileAttachment",
-          name: a.filename,
-          contentType: "application/pdf",
-          contentBytes: bytesToBase64(a.bytes)
-        }))
-      },
-      saveToSentItems: "true"
+      sender: { email: MAIL_USER, name: "CES Driver Planner" },
+      to: recipients.map(email => ({ email })),
+      subject: `Affectation du jour — ${isoDate}`,
+      htmlContent: html,
+      attachment: pdfAttachments.map(a => ({ name: a.filename, content: bytesToBase64(a.bytes) }))
     })
   });
   if (!resp.ok) {
-    const errJson = await resp.json().catch(() => ({}));
-    throw new Error("Envoi Graph échoué (" + resp.status + ") : " + (errJson.error ? errJson.error.message : ""));
+    throw new Error("Envoi Brevo échoué (" + resp.status + ") : " + (await resp.text()));
   }
 }
 
@@ -1268,7 +1231,7 @@ function buildAllShiftReports(assignments: any[], state: any, dateIso: string) {
 // ==========================================
 Deno.serve(async _req => {
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !MAIL_USER || !BREVO_API_KEY) {
       throw new Error("Configuration incomplète (secrets manquants).");
     }
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -1316,8 +1279,6 @@ Deno.serve(async _req => {
         .in("role", ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"]).eq("actif", true);
     if (profilesError) throw profilesError;
 
-    const accessToken = await getGraphAccessToken(admin);
-
     let sent = 0, skipped = 0;
     const errors: string[] = [];
     // Détail des comptes ignorés (email absent, ou équipe sans conducteur ce
@@ -1344,7 +1305,7 @@ Deno.serve(async _req => {
         ? (pdfByShift[teamShiftMap[p.team_id]] ? [pdfByShift[teamShiftMap[p.team_id]]] : [])
         : ["S1", "S2", "S3"].map(s => pdfByShift[s]).filter(Boolean);
       try {
-        await sendAffectationEmail(accessToken, p.email, todayIso, html, pdfAttachments);
+        await sendAffectationEmail(p.email, todayIso, html, pdfAttachments);
         sent++;
       } catch (e) {
         errors.push(p.email + ": " + (e && (e as Error).message ? (e as Error).message : String(e)));
