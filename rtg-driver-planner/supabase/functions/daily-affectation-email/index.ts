@@ -28,8 +28,8 @@
 //
 // SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut,
 // automatiquement disponibles ici. Réutilise MAIL_USER / MAIL_APP_PASSWORD
-// (déjà configurés pour send-conge-email, compte technique iCloud Mail —
-// migré depuis Gmail/Yahoo/Outlook.com) — aucun nouveau secret à ajouter.
+// (déjà configurés pour send-conge-email, compte technique Yahoo Mail —
+// migré depuis Gmail) — aucun nouveau secret à ajouter.
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme send-conge-email/request-password-reset) :
 //   Edge Functions > Create a new function > "daily-affectation-email" >
@@ -1263,7 +1263,7 @@ Deno.serve(async _req => {
     if (profilesError) throw profilesError;
 
     const client = new SMTPClient({
-      connection: { hostname: "smtp.mail.me.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
+      connection: { hostname: "smtp.mail.yahoo.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
     });
 
     let sent = 0, skipped = 0;

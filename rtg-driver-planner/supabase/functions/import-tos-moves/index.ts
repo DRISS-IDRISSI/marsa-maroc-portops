@@ -6,19 +6,13 @@
 // pour cette application) envoie un email avec ce rapport en pièce jointe
 // .xls à la fin de CHAQUE shift (S1/S2/S3). L'exploitant a mis en place une
 // règle de transfert automatique sur sa boîte professionnelle vers une boîte
-// dédiée (iCloud Mail, migrée depuis Gmail — le compte gestioneffectif@gmail.com
-// a été bloqué par Google, vérification téléphonique impossible à finaliser ;
-// une tentative Yahoo a ensuite échoué à la création de compte, vérification
-// téléphonique bloquée ; puis Outlook.com s'est révélé bloqué des deux côtés,
-// authentification par mot de passe refusée en IMAP malgré un mot de passe
-// d'application correct — "Login is disabled", lié à leur politique
-// d'authentification moderne/OAuth2), lue ici en IMAP.
-//
-// ⚠️ Particularité iCloud confirmée par Apple : l'identifiant IMAP attendu
-// est le NOM SEUL (partie avant @), pas l'adresse complète — contrairement
-// au SMTP (send-conge-email etc.) qui utilise bien l'adresse complète. Voir
-// tosImapUser ci-dessous : dérivé automatiquement de TOS_MAIL_USER (accepte
-// les deux formats en entrée, adresse complète ou nom seul).
+// dédiée (Yahoo Mail, migrée depuis Gmail — le compte gestioneffectif@gmail.com
+// a été bloqué par Google, vérification téléphonique impossible à finaliser).
+// Essais intermédiaires écartés : Outlook.com (bloqué des deux côtés —
+// IMAP refusant le mot de passe même en application, "Login is disabled",
+// et Azure AD inaccessible pour tenter l'OAuth2 à cause d'un compte trop
+// récent) et iCloud (Mail iCloud indisponible sans appareil Apple physique
+// déjà utilisé sur ce compte).
 //
 // Déclenchée par pg_cron (voir migration_009_cron_import_tos_moves.sql)
 // toutes les 5 minutes : se connecte à la boîte dédiée, cherche les
@@ -68,12 +62,11 @@
 // déclenche le parsing complet.
 //
 // Secrets nécessaires (Project Settings > Edge Functions > Secrets) :
-//   - TOS_MAIL_USER : l'adresse iCloud dédiée (ex. xxx@icloud.com — le nom
-//     seul est aussi accepté, voir tosImapUser plus bas)
-//   - TOS_MAIL_APP_PASSWORD : mot de passe d'application iCloud de ce compte
-//     (validation en 2 étapes à activer sur ce compte Apple, puis générer un
-//     mot de passe d'application sur appleid.apple.com — même procédure que
-//     pour MAIL_APP_PASSWORD utilisé pour l'envoi, voir send-conge-email).
+//   - TOS_MAIL_USER : l'adresse Yahoo Mail dédiée (ex. xxx@yahoo.com)
+//   - TOS_MAIL_APP_PASSWORD : mot de passe d'application Yahoo de ce compte
+//     (validation en 2 étapes à activer sur ce compte, puis générer un mot
+//     de passe d'application — même procédure que pour MAIL_APP_PASSWORD
+//     utilisé pour l'envoi, voir send-conge-email).
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY sont des secrets par défaut, déjà
 // disponibles automatiquement.
 //
@@ -164,11 +157,6 @@ Deno.serve(async _req => {
       status: 500, headers: { "Content-Type": "application/json" }
     });
   }
-  // iCloud attend le NOM seul (avant @) comme identifiant IMAP, pas
-  // l'adresse complète (confirmé par Apple) — accepte les deux formats en
-  // entrée pour TOS_MAIL_USER, quel que soit celui saisi côté secret.
-  const tosImapUser = tosUser.includes("@") ? tosUser.split("@")[0] : tosUser;
-
   // Tous les conducteurs actifs, des deux flottes — mais le rattachement d'un
   // login se fait TOUJOURS au sein d'une seule flotte à la fois (voir
   // buildLoginMap ci-dessous), jamais tous conducteurs confondus : sans ça,
@@ -319,10 +307,10 @@ Deno.serve(async _req => {
   const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
 
   const client = new ImapFlow({
-    host: "imap.mail.me.com",
+    host: "imap.mail.yahoo.com",
     port: 993,
     secure: true,
-    auth: { user: tosImapUser, pass: tosPassword },
+    auth: { user: tosUser, pass: tosPassword },
     logger: false
   });
 

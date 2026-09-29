@@ -7,30 +7,27 @@
 // juste après la mise à jour du statut en base — voir ce fichier pour le
 // payload exact envoyé.
 //
-// Envoi via SMTP iCloud Mail (compte technique dédié) avec un "mot de passe
-// d'application" — PAS le mot de passe (Apple ID) normal du compte
-// (nécessite la validation en 2 étapes activée sur ce compte, puis un mot
-// de passe d'application généré sur appleid.apple.com > Connexion et
-// sécurité > Mots de passe pour applications).
+// Envoi via SMTP Yahoo Mail (compte technique dédié) avec un "mot de passe
+// d'application" Yahoo — PAS le mot de passe normal du compte (Yahoo exige
+// une validation en 2 étapes pour en générer un, voir Compte Yahoo > Infos
+// du compte > Sécurité du compte > "Générer un mot de passe d'application").
 // Migré depuis Gmail (compte gestioneffectif@gmail.com bloqué par Google —
-// vérification téléphonique impossible à finaliser), puis depuis une
-// tentative Yahoo (création de compte bloquée par la vérification
-// téléphonique côté Yahoo), puis depuis Outlook.com (bloqué des deux
-// côtés : IMAP refusé — "Login is disabled", authentification moderne
-// imposée — et SMTP en échec côté bibliothèque denomailer sur la
-// négociation STARTTLS du port 587). iCloud utilise le port 465 (TLS
-// implicite, comme Gmail à l'origine) plutôt que 587/STARTTLS, ce qui
-// évite ce bug de bibliothèque.
+// vérification téléphonique impossible à finaliser). Essais intermédiaires
+// écartés : Outlook.com (IMAP bloqué par leur politique d'authentification
+// moderne, SMTP en échec côté bibliothèque denomailer sur la négociation
+// STARTTLS, et Azure AD inaccessible pour tenter l'OAuth2 à cause d'un
+// compte trop récent) et iCloud (Mail iCloud indisponible sans appareil
+// Apple physique déjà utilisé sur ce compte).
 //
 // DÉPLOIEMENT (sans CLI, depuis le Dashboard Supabase — comme les migrations
 // SQL) :
 //   1. Project > Edge Functions > Create a new function > nommez-la
 //      "send-conge-email" > collez le contenu de ce fichier > Deploy.
 //   2. Project > Edge Functions > Secrets (ou Manage secrets) > ajoutez :
-//        MAIL_USER = l'adresse iCloud choisie (ex. xxx@icloud.com)
-//        MAIL_APP_PASSWORD = le mot de passe d'application iCloud (PAS le
-//        mot de passe Apple ID normal du compte) — ne JAMAIS coller ce mot
-//        de passe ailleurs qu'ici.
+//        MAIL_USER = l'adresse Yahoo choisie (ex. xxx@yahoo.com)
+//        MAIL_APP_PASSWORD = le mot de passe d'application Yahoo (PAS le
+//        mot de passe normal du compte) — ne JAMAIS coller ce mot de passe
+//        ailleurs qu'ici.
 // Tant que ces 2 secrets ne sont pas configurés, la fonction répond une
 // erreur explicite (voir plus bas) — la validation/refus du congé côté
 // appli continue de fonctionner normalement (l'échec d'envoi d'email
@@ -83,7 +80,7 @@ Deno.serve(async req => {
 
     const client = new SMTPClient({
       connection: {
-        hostname: "smtp.mail.me.com",
+        hostname: "smtp.mail.yahoo.com",
         port: 465,
         tls: true,
         auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD }

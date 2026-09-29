@@ -18,10 +18,9 @@
 // mot de passe de n'importe qui.
 //
 // Réutilise MAIL_USER / MAIL_APP_PASSWORD (déjà configurés, compte
-// technique iCloud Mail — migré depuis Gmail/Yahoo/Outlook.com, voir
-// send-conge-email) — aucun nouveau secret à ajouter. SUPABASE_URL /
-// SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY sont des secrets par
-// défaut, déjà disponibles.
+// technique Yahoo Mail — migré depuis Gmail, voir send-conge-email) —
+// aucun nouveau secret à ajouter. SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
+// SUPABASE_ANON_KEY sont des secrets par défaut, déjà disponibles.
 //
 // DÉPLOIEMENT (Dashboard Supabase, comme les autres Edge Functions) :
 //   Edge Functions > Create a new function > "reset-and-send-credentials" >
@@ -222,7 +221,7 @@ Deno.serve(async req => {
 
     const html = buildHtml({ driverName, username: target.username, password: tempPassword, appUrl, role: target.role, fleet });
     const client = new SMTPClient({
-      connection: { hostname: "smtp.mail.me.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
+      connection: { hostname: "smtp.mail.yahoo.com", port: 465, tls: true, auth: { username: MAIL_USER, password: MAIL_APP_PASSWORD } }
     });
     await client.send({ from: MAIL_USER, to: targetEmail, subject: "Vos identifiants — CES Driver Planner", content: "auto", html });
     await client.close();
