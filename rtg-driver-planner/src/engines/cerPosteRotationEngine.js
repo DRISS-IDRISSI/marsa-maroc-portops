@@ -56,7 +56,7 @@ function isCdiTeam(team) {
 const CER_BOOTSTRAP_ORDER = [
   { pattern: /azzam/i, order: ["TCI040", "TC0075", "TCI033", "TC0085", "TC0082", "TC0090", "TCI027", "TC0087", "TC0072"] },
   { pattern: /bakkali|haddazi/i, order: ["C07847", "TC0084", "TCI032", "TCI026", "C07846", "C07220", "TCI028", "C07789", "TCI035"] },
-  { pattern: /eddaouidi|houssam/i, order: ["C07845", "TCI037", "C07783", "C07402", "TCI022", "TCI031", "TC0081", "TC0803"] }
+  { pattern: /eddaouidi|houssam/i, order: ["C07845", "TCI037", "C07783", "C07402", "TCI022", "TCI031", "TC0803", "TC0081"] }
 ];
 function cerBootstrapOrderFor(team) {
   if (!team) return null;
@@ -207,24 +207,35 @@ const CerPosteRotationEngine = {
           return true;
         });
 
-        const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
-        const front = [], back = [];
-        order.forEach(id => {
-          const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
-          const isImportForecast = manualYesterday && manualYesterday.motif === RTG_IMPORT_OVERRIDE_MOTIF && yesterdayIso >= todayIsoForCascade;
-          let z;
-          if (manualYesterday && manualYesterday.zone !== undefined && !isImportForecast) {
-            z = manualYesterday.zone;
-          } else if (yesterdayIso < todayIsoForCascade) {
-            const simulated = this._dayZone[yesterdayIso];
-            z = simulated ? simulated[id] : undefined;
-          } else {
-            z = null;
-          }
-          const wasOnPoste = !!z && CER_NON_PHYSICAL_ZONES.indexOf(String(z).toUpperCase()) === -1;
-          if (wasOnPoste) back.push(id); else front.push(id);
-        });
-        order = front.concat(back).concat(toAppend);
+        // 28/09/2026 (cerRotationReferenceDate) est un vrai POINT DE DÉPART
+        // — demande explicite de l'exploitant, "ignorer tous les jours
+        // avant le 28/09" : ce tout premier jour utilise directement l'ordre
+        // de départ (CER_BOOTSTRAP_ORDER, relevé papier) sans repasser par
+        // la partition avant/arrière basée sur une "veille" (27/09)
+        // purement théorique, qui n'a jamais existé dans cette file. Cette
+        // partition ne s'applique qu'à partir du 2ème jour simulé.
+        if (iso === RTGDate.toISO(refDate)) {
+          order = order.concat(toAppend);
+        } else {
+          const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
+          const front = [], back = [];
+          order.forEach(id => {
+            const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
+            const isImportForecast = manualYesterday && manualYesterday.motif === RTG_IMPORT_OVERRIDE_MOTIF && yesterdayIso >= todayIsoForCascade;
+            let z;
+            if (manualYesterday && manualYesterday.zone !== undefined && !isImportForecast) {
+              z = manualYesterday.zone;
+            } else if (yesterdayIso < todayIsoForCascade) {
+              const simulated = this._dayZone[yesterdayIso];
+              z = simulated ? simulated[id] : undefined;
+            } else {
+              z = null;
+            }
+            const wasOnPoste = !!z && CER_NON_PHYSICAL_ZONES.indexOf(String(z).toUpperCase()) === -1;
+            if (wasOnPoste) back.push(id); else front.push(id);
+          });
+          order = front.concat(back).concat(toAppend);
+        }
 
         this._order[key] = order;
         order.forEach((id, idx) => { dayRank[id] = idx; });
@@ -407,36 +418,44 @@ const CerCdiRotationEngine = {
           return true;
         });
 
-        // Réalité de la veille pour chaque CDI de la file : seule une
-        // affectation manuelle saisie ce jour-là fait foi (les CDI n'ont
-        // jamais de zone automatique) ; à défaut, "PARC" — la valeur par
-        // défaut déjà affichée quand rien n'a été saisi (planningEngine.js).
-        const wasOnQuai = {}, wasOnRepos = {};
-        let quaiExists = false;
-        order.forEach(id => {
-          const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
-          const statusYesterday = manualYesterday && manualYesterday.status !== undefined
-            ? manualYesterday.status
-            : PlanningEngine.getDailyStatus(driversById[id], RTGDate.addDays(cursor, -1), state, teams);
-          const zYesterday = manualYesterday && manualYesterday.zone !== undefined ? manualYesterday.zone : "PARC";
-          const onQuai = statusYesterday === "PRESENT" && !!zYesterday && CER_NON_PHYSICAL_ZONES.indexOf(String(zYesterday).toUpperCase()) === -1;
-          wasOnQuai[id] = onQuai;
-          wasOnRepos[id] = statusYesterday === "REPOS" || statusYesterday === "REPOS_COMPENSATOIRE";
-          if (onQuai) quaiExists = true;
-        });
-
+        // 28/09/2026 est un vrai POINT DE DÉPART pour les CDI aussi (même
+        // principe que les titulaires ci-dessus) : ce tout premier jour
+        // garde CER_CDI_BOOTSTRAP_ORDER tel quel, sans reshuffle basé sur
+        // une "veille" théorique.
         let newOrder;
-        if (quaiExists) {
-          const front = [], back = [];
-          order.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
-          newOrder = front.concat(back);
-        } else if (order.length > 0 && wasOnRepos[order[0]]) {
-          const rest = order.slice(1);
-          newOrder = [order[0]].concat(rest.slice(1)).concat(rest.slice(0, 1));
+        if (iso === RTGDate.toISO(refDate)) {
+          newOrder = order.concat(toAppend);
         } else {
-          newOrder = order.slice(1).concat(order.slice(0, 1));
+          // Réalité de la veille pour chaque CDI de la file : seule une
+          // affectation manuelle saisie ce jour-là fait foi (les CDI n'ont
+          // jamais de zone automatique) ; à défaut, "PARC" — la valeur par
+          // défaut déjà affichée quand rien n'a été saisi (planningEngine.js).
+          const wasOnQuai = {}, wasOnRepos = {};
+          let quaiExists = false;
+          order.forEach(id => {
+            const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
+            const statusYesterday = manualYesterday && manualYesterday.status !== undefined
+              ? manualYesterday.status
+              : PlanningEngine.getDailyStatus(driversById[id], RTGDate.addDays(cursor, -1), state, teams);
+            const zYesterday = manualYesterday && manualYesterday.zone !== undefined ? manualYesterday.zone : "PARC";
+            const onQuai = statusYesterday === "PRESENT" && !!zYesterday && CER_NON_PHYSICAL_ZONES.indexOf(String(zYesterday).toUpperCase()) === -1;
+            wasOnQuai[id] = onQuai;
+            wasOnRepos[id] = statusYesterday === "REPOS" || statusYesterday === "REPOS_COMPENSATOIRE";
+            if (onQuai) quaiExists = true;
+          });
+
+          if (quaiExists) {
+            const front = [], back = [];
+            order.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
+            newOrder = front.concat(back);
+          } else if (order.length > 0 && wasOnRepos[order[0]]) {
+            const rest = order.slice(1);
+            newOrder = [order[0]].concat(rest.slice(1)).concat(rest.slice(0, 1));
+          } else {
+            newOrder = order.slice(1).concat(order.slice(0, 1));
+          }
+          newOrder = newOrder.concat(toAppend);
         }
-        newOrder = newOrder.concat(toAppend);
 
         this._order[key] = newOrder;
         newOrder.forEach((id, idx) => { dayRank[id] = idx; });
