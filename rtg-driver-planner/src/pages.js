@@ -4020,7 +4020,13 @@ function AffectationDuJour() {
       const teamNom = (state.teams.find(t => t.id === teamId) || {}).nom || teamId;
       grouped[s.id].push({
         vacation: { id: "V1+V2_" + teamId, start: vacDefs.length ? vacDefs[0].start : "", end: vacDefs.length ? vacDefs[vacDefs.length - 1].end : "", teamNom: teamNom },
-        rows: fullDayRowsByTeam[teamId].sort(byOrdreAffichage)
+        // rowSort (rang réel dans la file de rotation pour CC/CER, retombe
+        // sur byOrdreAffichage sinon) — demande explicite de l'exploitant :
+        // l'ordre affiché doit refléter la rotation (qui a été au poste
+        // hier passe en bas, etc.), pas un ordre d'affichage figé. Bug
+        // constaté : ce bloc utilisait toujours byOrdreAffichage, ignorant
+        // la vraie file pour les titulaires ET les CDI CER.
+        rows: fullDayRowsByTeam[teamId].sort(rowSort)
       });
     });
   });
