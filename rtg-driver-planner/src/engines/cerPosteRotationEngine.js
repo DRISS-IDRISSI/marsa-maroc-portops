@@ -46,6 +46,24 @@ function isCdiTeam(team) {
   return !!team && /\bcdi\b/i.test(team.nom || "");
 }
 
+// File de départ RÉELLE des 3 équipes titulaires CER (relevé papier "État
+// d'affectation des conducteurs", Chariots Élévateurs TC3PC, 28/09/2026 —
+// même date que cerRotationReferenceDate), matricules dans l'ordre exact du
+// document, du plus prioritaire (haut de la liste, ex. QUASSID en tête pour
+// GR EDDAOUIDI-HOUSSAM) au moins prioritaire — même principe que
+// CC_BOOTSTRAP_ORDER (ccPosteRotationEngine.js). Une équipe CER absente de
+// cette table démarre par tri matricule classique (comportement par défaut).
+const CER_BOOTSTRAP_ORDER = [
+  { pattern: /azzam/i, order: ["TCI040", "TC0075", "TCI033", "TC0085", "TC0082", "TC0090", "TCI027", "TC0087", "TC0072"] },
+  { pattern: /bakkali|haddazi/i, order: ["C07847", "TC0084", "TCI032", "TCI026", "C07846", "C07220", "TCI028", "C07789", "TCI035"] },
+  { pattern: /eddaouidi|houssam/i, order: ["C07845", "TCI037", "C07783", "C07402", "TCI022", "TCI031", "TC0803", "TC0081"] }
+];
+function cerBootstrapOrderFor(team) {
+  if (!team) return null;
+  const entry = CER_BOOTSTRAP_ORDER.find(e => e.pattern.test(team.nom || ""));
+  return entry ? entry.order : null;
+}
+
 function cerRefDate(state) {
   return RTGDate.parseISO(state.config.cerRotationReferenceDate || state.config.rotationReferenceDate);
 }
@@ -102,7 +120,24 @@ const CerPosteRotationEngine = {
     });
 
     Object.keys(byBlock).forEach(key => {
-      const ordered = byBlock[key].slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule)));
+      const blockDrivers = byBlock[key];
+      const team = teams.find(t => t.id === blockDrivers[0].teamId);
+      const explicitOrder = cerBootstrapOrderFor(team);
+      let ordered;
+      if (explicitOrder) {
+        const byMatricule = {};
+        blockDrivers.forEach(d => { byMatricule[String(d.matricule).trim().toUpperCase()] = d; });
+        ordered = [];
+        explicitOrder.forEach(mat => {
+          const d = byMatricule[mat.toUpperCase()];
+          if (d) { ordered.push(d); delete byMatricule[mat.toUpperCase()]; }
+        });
+        // Conducteur du bloc absent de la liste communiquée (nouveau,
+        // matricule erroné...) : ajouté à la fin, trié par matricule.
+        Object.keys(byMatricule).sort().forEach(mat => ordered.push(byMatricule[mat]));
+      } else {
+        ordered = blockDrivers.slice().sort((a, b) => String(a.matricule).localeCompare(String(b.matricule)));
+      }
       this._order[key] = ordered.map(d => d.id);
     });
   },
