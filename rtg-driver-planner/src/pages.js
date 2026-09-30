@@ -2338,13 +2338,17 @@ function Cell({ assignment, detailLevel, onEdit, frameCls, noRotation, hasVacati
 // vacations V1/V2 quand l'algorithme automatique ne suffit pas.
 const EDITABLE_STATUSES = ["PRESENT", "REPOS", "REPOS_COMPENSATOIRE", "CONGE", "MALADIE", "ABSENCE", "FORMATION", "DETACHEMENT", "OFF"];
 
-// Mêmes valeurs "non physiques" que CER_NON_PHYSICAL_ZONES
-// (cerPosteRotationEngine.js) : pour un CDI, ce ne sont jamais de vrais
-// postes quai choisis par le responsable, seulement la valeur par défaut du
-// formulaire ou la suggestion du jour déjà affichée — les enregistrer telles
-// quelles figerait la rotation automatique MAERSK/MSC/COSCO (cf. save() ci-
-// dessous, AssignmentEditModal).
-const CER_CDI_AUTO_ZONE_VALUES = ["PARC", "AUTORISE", "MAERSK", "MSC", "COSCO"];
+// Bug vécu (corrigé) : cette liste incluait à tort MAERSK/MSC/COSCO,
+// effaçant silencieusement un CDI volontairement affecté à l'une de ces 3
+// zones (choix réel et valide du menu déroulant, pas juste une suggestion).
+// Seules PARC/AUTORISE sont de vraies valeurs "par défaut, jamais un choix
+// volontaire" pour un CDI (la case n'affiche plus jamais que "PARC" par
+// défaut pour aujourd'hui/demain, cf. planningEngine.js) — les enregistrer
+// telles quelles ne doit PAS compter comme une vraie décision du responsable
+// et ne doit donc pas figer la rotation automatique. MAERSK/MSC/COSCO,
+// choisies explicitement dans le menu, sont un VRAI choix à conserver tel
+// quel (cf. save() ci-dessous, AssignmentEditModal).
+const CER_CDI_AUTO_ZONE_VALUES = ["PARC", "AUTORISE"];
 
 // Chaque zone de stockage RTG (A-H) est physiquement divisée en 2 blocs ; un
 // conducteur peut être affecté à toute la zone (seul, se déplaçant entre les
