@@ -1631,7 +1631,12 @@ function RapportRHPage() {
   // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
   // que soit la flotte affichée par ailleurs.
   const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  // Les rapports sont toujours PAR FLOTTE (titre "Conducteurs CC/CER/RTG") :
+  // un compte restreint avec des équipes dans plusieurs flottes (binôme
+  // RTG+CC+CER) ne doit pas les voir mélangées ici, contrairement aux pages
+  // d'affectation — on garde seulement ses équipes de la flotte affichée.
+  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null)
+    .filter(t => (t.typeEngin || "RTG") === rawState.currentFleet);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
