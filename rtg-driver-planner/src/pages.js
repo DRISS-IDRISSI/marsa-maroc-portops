@@ -1410,6 +1410,14 @@ function fleetTeams(state, restrictedTeamIdValue) {
   return state.teams.filter(t => (t.typeEngin || "RTG") === state.currentFleet);
 }
 
+// Variante stricte : ne garde que les équipes de la flotte AFFICHÉE, même
+// pour un compte restreint à plusieurs équipes de flottes différentes (cas
+// vécu : le compte du chef de service EDDAOUIDI voyait CER, CC et RTG mélangés
+// dans les rapports/listes, qui sont toujours par flotte).
+function fleetTeamsStrict(state, restrictedTeamIdValue) {
+  return fleetTeams(state, restrictedTeamIdValue).filter(t => (t.typeEngin || "RTG") === state.currentFleet);
+}
+
 function fleetTeamIdSet(state, restrictedTeamIdValue) {
   return new Set(fleetTeams(state, restrictedTeamIdValue).map(t => t.id));
 }
@@ -2834,7 +2842,7 @@ function Home() {
   // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
   // que soit cette bascule.
   const restrictedIds = useMemo(() => (shiftRestricted ? restrictedTeamIds(currentUser, rawState) : []), [shiftRestricted, currentUser, rawState]);
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,

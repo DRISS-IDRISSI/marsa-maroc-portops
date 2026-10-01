@@ -767,7 +767,7 @@ function RecordsPage({ title, icon, listKey, kindLabel, showTypeSelect, showStat
   // d'Escale) reste sur sa (ou ses, s'il en a deux — binôme RTG+CC) propre
   // équipe quelle que soit la flotte affichée par ailleurs.
   const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -950,7 +950,7 @@ function CongesPage() {
   // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
   // que soit la flotte affichée par ailleurs.
   const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -1155,7 +1155,7 @@ function HeuresExceptionnellesPage() {
   // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
   // que soit la flotte affichée par ailleurs.
   const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -1284,7 +1284,7 @@ function RemplacementPage() {
   // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
   // que soit la flotte affichée par ailleurs.
   const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -1635,8 +1635,7 @@ function RapportRHPage() {
   // un compte restreint avec des équipes dans plusieurs flottes (binôme
   // RTG+CC+CER) ne doit pas les voir mélangées ici, contrairement aux pages
   // d'affectation — on garde seulement ses équipes de la flotte affichée.
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null)
-    .filter(t => (t.typeEngin || "RTG") === rawState.currentFleet);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -2527,7 +2526,7 @@ function AssistantIntelligentPage() {
   // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
   // que soit la flotte affichée par ailleurs.
   const restrictedIds = useMemo(() => restrictedTeamIds(currentUser, rawState), [currentUser, rawState]);
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
@@ -3451,7 +3450,7 @@ function MouvementsRtgPage() {
   // via la bascule RTG/CC — sinon les mouvements RTG et CC apparaissent
   // mélangés dans le même tableau.
   const ownTeamId = shiftRestricted ? restrictedTeamId(currentUser, rawState) : null;
-  const fTeams = fleetTeams(rawState, shiftRestricted ? restrictedIds : null);
+  const fTeams = fleetTeamsStrict(rawState, shiftRestricted ? restrictedIds : null);
   const fTeamIds = new Set(fTeams.map(t => t.id));
   const state = useMemo(() => Object.assign({}, rawState, {
     teams: fTeams,
