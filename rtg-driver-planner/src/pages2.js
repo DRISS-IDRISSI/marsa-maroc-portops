@@ -494,7 +494,7 @@ function DriversPage() {
     const q = searchQuery.trim().toLowerCase();
     return state.drivers.filter(d =>
       (shiftRestricted ? d.teamId === ownTeamId : fleetTeamIds.has(d.teamId)) &&
-      (teamFilter === "all" || d.teamId === teamFilter) &&
+      (shiftRestricted || teamFilter === "all" || d.teamId === teamFilter) &&
       (statusFilter === "tous" || (statusFilter === "actifs" ? d.actif !== false : d.actif === false)) &&
       (!q || d.matricule.toLowerCase().includes(q) || d.nom.toLowerCase().includes(q) || d.prenom.toLowerCase().includes(q))
     );
