@@ -1415,7 +1415,13 @@ function fleetTeams(state, restrictedTeamIdValue) {
 // vécu : le compte du chef de service EDDAOUIDI voyait CER, CC et RTG mélangés
 // dans les rapports/listes, qui sont toujours par flotte).
 function fleetTeamsStrict(state, restrictedTeamIdValue) {
-  return fleetTeams(state, restrictedTeamIdValue).filter(t => (t.typeEngin || "RTG") === state.currentFleet);
+  const teams = fleetTeams(state, restrictedTeamIdValue);
+  // Un compte restreint dont TOUTES les équipes sont de la même flotte n'a pas
+  // de bascule de flotte (cf. Sidebar.showFleetSwitch) : sa flotte "affichée"
+  // (localStorage, RTG par défaut) peut différer de la sienne — on lui garde
+  // ses équipes telles quelles, sinon il ne verrait plus rien.
+  if (!restrictedTeamIdValue || new Set(teams.map(t => t.typeEngin || "RTG")).size <= 1) return teams;
+  return teams.filter(t => (t.typeEngin || "RTG") === state.currentFleet);
 }
 
 function fleetTeamIdSet(state, restrictedTeamIdValue) {
