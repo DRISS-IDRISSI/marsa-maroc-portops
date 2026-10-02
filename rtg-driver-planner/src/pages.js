@@ -4020,6 +4020,7 @@ function AffectationDuJour() {
   // rotation de shift (contrairement aux stagiaires, cf. isNoRotationTeam) —
   // simplement parce que la vacation n'existe pas pour elles.
   const noVacationTeamIds = new Set(state.teams.filter(t => !fleetHasVacation(t.typeEngin || "RTG")).map(t => t.id));
+  const cdiTeamIds = new Set(state.teams.filter(t => /\bcdi\b/i.test(t.nom || "")).map(t => t.id));
   const noVacationOrRotationTeamIds = new Set([...noRotationTeamIds, ...noVacationTeamIds]);
   const absentByShift = {};
   state.config.shifts.forEach(s => {
@@ -4139,7 +4140,9 @@ function AffectationDuJour() {
       .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noVacationTeamIds.has(a.teamId) && !noRotationTeamIds.has(a.teamId) && teamShiftMap[a.teamId] === s.id))
       // Stagiaires/CDI (aucune vraie rotation d'équipe) : shift propre au
       // conducteur, retrouvé via resolveNoRotationShift ci-dessus.
-      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noRotationTeamIds.has(a.teamId) && resolveNoRotationShift(a.driverId, a.teamId) === s.id));
+      // Un CDI en CONGÉ n'est pas affiché dans l'affectation (demande de
+      // l'exploitant) : il y réapparaît seulement à sa reprise.
+      .concat(assignments.filter(a => ABSENT_STATUSES.indexOf(a.status) !== -1 && noRotationTeamIds.has(a.teamId) && !(a.status === "CONGE" && cdiTeamIds.has(a.teamId)) && resolveNoRotationShift(a.driverId, a.teamId) === s.id));
     const fullDayRowsByTeam = {};
     fullDayRows.forEach(a => { (fullDayRowsByTeam[a.teamId] = fullDayRowsByTeam[a.teamId] || []).push(a); });
     // CDI toujours à droite (demande explicite de l'exploitant) — sans ce
