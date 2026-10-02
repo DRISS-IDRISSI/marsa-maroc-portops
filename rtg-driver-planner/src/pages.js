@@ -3739,34 +3739,34 @@ function TerrainRowCells({ a, extraCols, big }) {
   const label = a.status === "PRESENT" ? (a.zone || "PARC") : a.status === "REPOS" ? "REPOS" : a.status === "REPOS_COMPENSATOIRE" ? "RC" : ((RTG_STATUS_META[a.status] || {}).label || a.status);
   return (
     <React.Fragment>
-      <td className={PRINT_TD_XS} style={big ? { fontSize: 13 } : undefined}>{a.matricule}</td>
-      <td className={PRINT_TD_XS_WRAP + " text-center"} style={{ textTransform: "uppercase" }}><TerrainBadge text={a.nom} variant={variant} status={a.status} big={big} /></td>
-      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><TerrainBadge text={label} variant={variant} status={a.status} semibold big={big} /></td>
-      {extraCols && <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS}></td></React.Fragment>}
+      <td className={TERRAIN_TD} style={big ? { fontSize: 13 } : undefined}>{a.matricule}</td>
+      <td className={TERRAIN_TD_WRAP + " text-center"} style={{ textTransform: "uppercase" }}><TerrainBadge text={a.nom} variant={variant} status={a.status} big={big} /></td>
+      <td className={TERRAIN_TD_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><TerrainBadge text={label} variant={variant} status={a.status} semibold big={big} /></td>
+      {extraCols && <React.Fragment><td className={TERRAIN_TD}></td><td className={TERRAIN_TD}></td></React.Fragment>}
     </React.Fragment>
   );
 }
-// Hauteur de ligne qui remplit la page : ~760px utiles répartis entre les
+// Hauteur de ligne qui remplit la page : ~680px utiles répartis entre les
 // lignes (bornée entre 30px et maxH pour rester lisible quand il y a peu de
 // conducteurs). "big" agrandit aussi la police des badges.
 function terrainRowHeight(nRows, maxH) {
-  return Math.max(30, Math.min(maxH, Math.floor(760 / Math.max(1, nRows))));
+  return Math.max(30, Math.min(maxH, Math.floor(680 / Math.max(1, nRows))));
 }
 function TerrainEmptyCells() {
-  return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
+  return <React.Fragment><td className={TERRAIN_TD}></td><td className={TERRAIN_TD_WRAP}></td><td className={TERRAIN_TD_WRAP}></td></React.Fragment>;
 }
 function TerrainFrameHeader({ team, shiftLabel, dateStr, title }) {
   const dateFmt = dateStr.split("-").reverse().join("/");
   return (
     <React.Fragment>
-      <div className="grid grid-cols-2 border-b border-slate-400 text-[11px]">
-        <div className="border-r border-slate-400 px-2 py-1.5 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
-        <div className="px-2 py-1.5">
+      <div className="grid grid-cols-2 border-b border-black text-[14px]">
+        <div className="border-r border-black px-3 py-3 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
+        <div className="px-3 py-3">
           <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
           <div>DATE : {dateFmt}</div>
         </div>
       </div>
-      <div className="border-b border-slate-400 text-center font-bold text-[12px] py-1 uppercase">{title}</div>
+      <div className="border-b border-black text-center font-bold text-[16px] py-2 uppercase">{title}</div>
     </React.Fragment>
   );
 }
@@ -3780,23 +3780,23 @@ function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups, tit
   const big = rowH >= 46;
   return (
     <div className="mb-3">
-      <div className="rounded-lg overflow-hidden border border-slate-400">
+      <div className="rounded-lg overflow-hidden border-2 border-black">
         <TerrainFrameHeader team={team} shiftLabel={shiftLabel} dateStr={dateStr} title={title || "Chariots Élévateurs"} />
-        <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
+        <table className="w-full text-[13px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "27%" }, TERRAIN_TH_ORANGE)}>Nom</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "25%" }, TERRAIN_TH_ORANGE)}>Poste de travail</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "15%" }, TERRAIN_TH_ORANGE)}>Code Engin</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "23%" }, TERRAIN_TH_ORANGE)}>Émargement</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "27%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "25%" }, TERRAIN_TH_ORANGE)}>Poste de travail</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "15%" }, TERRAIN_TH_ORANGE)}>Code Engin</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "23%" }, TERRAIN_TH_ORANGE)}>Émargement</th>
             </tr>
           </thead>
           <tbody>
-            {total === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="5">Aucun conducteur ce jour</td></tr>}
+            {total === 0 && <tr style={{ height: "30px" }}><td className={TERRAIN_TD + " text-center italic text-slate-500"} colSpan="5">Aucun conducteur ce jour</td></tr>}
             {nonEmpty.map((g, gi) => (
               <React.Fragment key={g.vacation ? g.vacation.id + "_" + gi : gi}>
-                {gi > 0 && <tr style={{ height: Math.round(rowH * 0.4) + "px" }}><td className={PRINT_TD_XS} colSpan="5"></td></tr>}
+                {gi > 0 && <tr style={{ height: Math.round(rowH * 0.4) + "px" }}><td className={TERRAIN_TD} colSpan="5"></td></tr>}
                 {g.rows.map(a => <tr key={a.driverId} style={{ height: rowH + "px" }}><TerrainRowCells a={a} extraCols big={big} /></tr>)}
               </React.Fragment>
             ))}
@@ -3818,25 +3818,25 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
   const vacLabel = (side, letter) => side && side.vacation ? "Vacation " + letter + (side.vacation.start ? " · " + side.vacation.start + " → " + side.vacation.end : "") : "Vacation " + letter;
   return (
     <div className="mb-3">
-      <div className="rounded-lg overflow-hidden border border-slate-400">
+      <div className="rounded-lg overflow-hidden border-2 border-black">
         <TerrainFrameHeader team={team} shiftLabel={shiftLabel} dateStr={dateStr} title="RTG" />
-        <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
+        <table className="w-full text-[13px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">{vacLabel(sideA, "A")}</th>
-              <th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">{vacLabel(sideB, "B")}</th>
+              <th className={TERRAIN_TH + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">{vacLabel(sideA, "A")}</th>
+              <th className={TERRAIN_TH + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">{vacLabel(sideB, "B")}</th>
             </tr>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "16%" }, TERRAIN_TH_ORANGE)}>Zone</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
-              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "16%" }, TERRAIN_TH_ORANGE)}>Zone</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "16%" }, TERRAIN_TH_ORANGE)}>Zone</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+              <th className={TERRAIN_TH + " text-center"} style={Object.assign({ width: "16%" }, TERRAIN_TH_ORANGE)}>Zone</th>
             </tr>
           </thead>
           <tbody>
-            {maxRows === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="6">Aucun conducteur ce jour</td></tr>}
+            {maxRows === 0 && <tr style={{ height: "30px" }}><td className={TERRAIN_TD + " text-center italic text-slate-500"} colSpan="6">Aucun conducteur ce jour</td></tr>}
             {rowIdxs.map(i => (
               <tr key={i} style={{ height: rowH + "px" }}>
                 {rowsA[i] ? <TerrainRowCells a={rowsA[i]} big={big} /> : <TerrainEmptyCells />}
@@ -3847,9 +3847,9 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
         </table>
       </div>
       {(extraGroups || []).length > 0 && (
-        <div className="mt-2 rounded-lg overflow-hidden border border-slate-400">
-          <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
-            <thead><tr><th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">Stagiaires</th></tr></thead>
+        <div className="mt-2 rounded-lg overflow-hidden border-2 border-black">
+          <table className="w-full text-[13px] border-collapse" style={{ tableLayout: "fixed" }}>
+            <thead><tr><th className={TERRAIN_TH + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">Stagiaires</th></tr></thead>
             <tbody>
               {extraGroups.reduce((acc, g) => acc.concat(g.rows), []).map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} /></tr>)}
             </tbody>
@@ -3864,24 +3864,27 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
 // conducteurs"), affiché lettre par lettre dans des cases comme sur le papier.
 const AFFECTATION_DOC_CODE = "ENEACPCPLAN10";
 // En-têtes de tableau en orange (couleur de l'appli) pour les rapports terrain.
-const TERRAIN_TH_ORANGE = { backgroundColor: "#F97316", color: "#ffffff", borderColor: "#c2410c" };
+const TERRAIN_TH_ORANGE = { backgroundColor: "#F97316", color: "#ffffff", borderColor: "#000000", fontSize: 14, paddingTop: 8, paddingBottom: 8 };
+const TERRAIN_TH = "border border-black px-1 py-1 text-left font-semibold whitespace-nowrap align-middle";
+const TERRAIN_TD = "border border-black px-1 py-1 whitespace-nowrap align-middle";
+const TERRAIN_TD_WRAP = "border border-black px-1 py-1 break-words align-middle";
 function CcAffectationHeader({ generatedAt, fleet }) {
   return (
     <div className="mb-2 pb-2 border-b-2 border-slate-800">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-10 w-auto shrink-0" />
-          <div className="text-base font-bold uppercase">État d'affectation des conducteurs</div>
-          {fleet && <span className="px-2.5 py-0.5 rounded-md text-sm font-bold text-white" style={{ backgroundColor: "#F97316" }}>{fleet}</span>}
+          <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-14 w-auto shrink-0" />
+          <div className="text-xl font-bold uppercase">État d'affectation des conducteurs</div>
+          {fleet && <span className="px-3 py-1 rounded-md text-base font-bold text-white" style={{ backgroundColor: "#F97316" }}>{fleet}</span>}
         </div>
         <div className="text-right text-[10px] text-slate-500 shrink-0">
           <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
         </div>
       </div>
-      <div className="mt-1.5 flex items-center gap-1 text-[10px]">
+      <div className="mt-2 flex items-center gap-1 text-[12px]">
         <span className="font-bold uppercase mr-1">Document :</span>
         {AFFECTATION_DOC_CODE.split("").map((ch, idx) => (
-          <span key={idx} className="inline-block text-center font-bold border border-slate-500" style={{ width: 16, lineHeight: "16px" }}>{ch}</span>
+          <span key={idx} className="inline-block text-center font-bold border border-slate-500" style={{ width: 20, lineHeight: "20px" }}>{ch}</span>
         ))}
       </div>
     </div>
