@@ -69,8 +69,16 @@ function normalizeForMatch(s) {
 // (création en masse des conducteurs, § module Chariots Cavalier) : même
 // fichier, même feuille, deux lectures différentes.
 function selectShiftSheet(workbook, teamNom) {
-  const shiftSheets = workbook.SheetNames.filter(n => /^shift/i.test(n.trim()));
+  let shiftSheets = workbook.SheetNames.filter(n => /^shift/i.test(n.trim()));
   const teamKey = normalizeForMatch(teamNom);
+  // Fichier dont les feuilles n'ont PAS le préfixe "SHIFT" (ex. "GR AZZAM") :
+  // on cherche directement la feuille de l'équipe (nom identique en priorité)
+  // au lieu de prendre aveuglément la première feuille du classeur.
+  if (shiftSheets.length === 0 && workbook.SheetNames.length > 1 && teamKey) {
+    const exact = workbook.SheetNames.filter(n => normalizeForMatch(n) === teamKey);
+    if (exact.length === 1) return exact[0];
+    shiftSheets = workbook.SheetNames.slice();
+  }
   if (shiftSheets.length <= 1) return shiftSheets[0] || workbook.SheetNames[0];
   const matches = shiftSheets.filter(n => teamKey && normalizeForMatch(n).indexOf(teamKey) !== -1);
   if (matches.length !== 1) {
@@ -133,12 +141,36 @@ function parseConducteursFromShiftExcel(workbook, teamNom, existingDrivers) {
 // en UTC, formule standard et déterministe (25569 = écart entre l'époque
 // Excel et l'époque Unix, en jours). Partagé par parseRepoCongeExcel et
 // parseVacationLabelExcel (même feuille, même repérage de colonnes).
+// Date d'en-tête écrite en TEXTE ("01-oct", "1 oct.", "01/10", "01/10/2026") au
+// lieu d'une vraie date Excel : renvoie {day, month, year|null} ou null.
+const IMPORT_MOIS_TEXTE = ["jan", "fev", "mar", "avr", "mai", "jui", "jui", "aou", "sep", "oct", "nov", "dec"];
+function parseTextDateHeader(cell) {
+  if (typeof cell !== "string") return null;
+  const t = cell.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+  let m = t.match(/^(\d{1,2})[-\/ .]+([a-z]{3,9})\.?(?:[-\/ .]+(\d{2,4}))?$/);
+  if (m) {
+    const key = m[2].slice(0, 3);
+    let mo = IMPORT_MOIS_TEXTE.indexOf(key) + 1;
+    if (key === "jui") mo = /^juil/.test(m[2]) ? 7 : 6;
+    if (!mo) return null;
+    return { day: Number(m[1]), month: mo, year: m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : null };
+  }
+  m = t.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (m) return { day: Number(m[1]), month: Number(m[2]), year: m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : null };
+  return null;
+}
+
 function detectDayColumns(rows, month, year, sheetName) {
   const excelSerialToUTCDate = serial => new Date(Math.round((serial - 25569) * 86400 * 1000));
   let headerRowIdx = -1, dayColumns = [];
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const cols = [];
     (rows[i] || []).forEach((cell, colIdx) => {
+      if (typeof cell === "string") {
+        const td = parseTextDateHeader(cell);
+        if (td && td.month === month && (td.year === null || td.year === year) && td.day >= 1 && td.day <= 31) cols.push({ day: td.day, colIdx: colIdx });
+        return;
+      }
       if (typeof cell !== "number" || cell < 20000 || cell > 80000) return;
       const d = excelSerialToUTCDate(cell);
       if (d.getUTCFullYear() === year && (d.getUTCMonth() + 1) === month) {
