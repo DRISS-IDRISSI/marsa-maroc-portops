@@ -302,7 +302,7 @@ function Trafic({ term }) {
         borderRadius: 4
       }))
     };
-  }), []);
+  }, []);
 
   const terminals = term === "all" ? ["tce", "tc3"] : [term];
   const typeLabels = { pi: "Plein Imp", vi: "Vide Imp", pe: "Plein Exp", ve: "Vide Exp" };
