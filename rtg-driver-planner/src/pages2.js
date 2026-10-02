@@ -3788,7 +3788,7 @@ function MouvementsRtgPage() {
                         <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{team ? team.nom : "—"}</td>
                         <td className={`px-3 py-1.5 text-slate-900 ${midCellCls}`}>{RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}</td>
                         <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{r.dominantShift}</td>
-                        <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{manuelRows.length > 0 && manuelRows.length === r.sourceRows.length ? <span className="text-sky-400">{r.engins.join(", ")}</span> : r.engins.join(", ")}</td>
+                        <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{r.engins.join(", ")}{manuelRows.length > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-semibold" title={manuelRows.length === r.sourceRows.length ? "Saisi manuellement" : "Contient des mouvements saisis manuellement (en plus du TOS)"}>Manuel{manuelRows.length !== r.sourceRows.length ? " +TOS" : ""}</span>}</td>
                         {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className={`px-3 py-1.5 text-center text-slate-600 ${midCellCls}`}>{disp[c.key]}</td>)}
                         <td className={`px-3 py-1.5 text-center text-slate-900 font-bold ${midCellCls}`}>{r.totalMvmt}</td>
                         <td className={`px-3 py-1.5 ${lastCellCls}`}>
