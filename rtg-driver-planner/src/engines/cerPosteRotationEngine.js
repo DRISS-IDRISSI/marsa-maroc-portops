@@ -84,6 +84,33 @@ function cerBootstrapOrderFor(team) {
 // fin de file par tri matricule, comme tout conducteur absent de cette liste.
 const CER_CDI_BOOTSTRAP_ORDER = ["TCI059", "TCI046", "TCI054", "TCI048", "TCI055", "TCI060", "TCI053", "TCI047", "TCI051"];
 
+// Points de recalage de la file : un relevé papier réel d'une date donnée
+// remplace l'ordre CALCULÉ par le moteur ce jour-là (qui peut avoir dérivé
+// de la réalité terrain depuis le 28/09) ; la rotation repart ensuite de cet
+// ordre pour les jours suivants. Matricules du plus au moins prioritaire,
+// dans l'ordre exact du document.
+//   - titulaires : une entrée par équipe (teamPattern sur le nom de l'équipe) ;
+//   - CDI : une entrée par shift (S1/S2), file propre à chaque shift.
+// Les conducteurs absents de la liste (ou figés : congé...) gardent leur
+// position relative, à la suite.
+const CER_QUEUE_CHECKPOINTS = [
+  // GR AZZAM (shift 1) — affectation de départ du 01/10/2026.
+  { date: "2026-10-01", teamPattern: /azzam/i, order: ["TCI027", "TC0087", "TCI033", "TC0085", "TC0090", "TCI040", "TC0075", "TC0072", "TC0082"] }
+];
+const CER_CDI_QUEUE_CHECKPOINTS = [
+  { date: "2026-10-01", shift: "S1", order: ["TCI059", "TCI054", "TCI048", "TCI046"] }
+];
+function cerApplyQueueCheckpoint(order, iso, checkpoints, matches, driversById) {
+  const cp = checkpoints.find(c => c.date === iso && matches(c));
+  if (!cp) return order;
+  const byMat = {};
+  order.forEach(id => { const d = driversById[id]; if (d) byMat[String(d.matricule).trim().toUpperCase()] = id; });
+  const out = [];
+  cp.order.forEach(m => { const id = byMat[m.toUpperCase()]; if (id) { out.push(id); delete byMat[m.toUpperCase()]; } });
+  order.forEach(id => { if (out.indexOf(id) === -1) out.push(id); });
+  return out;
+}
+
 function cerRefDate(state) {
   return RTGDate.parseISO(state.config.cerRotationReferenceDate || state.config.rotationReferenceDate);
 }
@@ -250,6 +277,8 @@ const CerPosteRotationEngine = {
           order = front.concat(back).concat(toAppend);
         }
 
+        const checkpointTeam = teams.find(t => t.id === key);
+        order = cerApplyQueueCheckpoint(order, iso, CER_QUEUE_CHECKPOINTS, c => !!checkpointTeam && c.teamPattern.test(checkpointTeam.nom || ""), driversById);
         this._order[key] = order;
         order.forEach((id, idx) => { dayRank[id] = idx; });
 
@@ -492,6 +521,8 @@ const CerCdiRotationEngine = {
           newOrder = newOrder.concat(toAppend);
         }
 
+        const cdiShift = key.split("::")[1];
+        newOrder = cerApplyQueueCheckpoint(newOrder, iso, CER_CDI_QUEUE_CHECKPOINTS, c => c.shift === cdiShift, driversById);
         this._order[key] = newOrder;
         newOrder.forEach((id, idx) => { dayRank[id] = idx; });
       });
