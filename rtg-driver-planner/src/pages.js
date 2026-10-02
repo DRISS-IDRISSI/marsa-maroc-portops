@@ -3864,7 +3864,7 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
 // conducteurs"), affiché lettre par lettre dans des cases comme sur le papier.
 const AFFECTATION_DOC_CODE = "ENEACPCPLAN10";
 // En-têtes de tableau en orange (couleur de l'appli) pour les rapports terrain.
-const TERRAIN_TH_ORANGE = { backgroundColor: "#F97316", color: "#ffffff", borderColor: "#000000", fontSize: 14, paddingTop: 8, paddingBottom: 8 };
+const TERRAIN_TH_ORANGE = { backgroundColor: "#FDBA74", color: "#431407", borderColor: "#000000", fontSize: 14, fontWeight: 700, textAlign: "center", verticalAlign: "middle", lineHeight: "16px", paddingTop: 5, paddingBottom: 12 };
 const TERRAIN_TH = "border border-black px-1 py-1 text-left font-semibold whitespace-nowrap align-middle";
 const TERRAIN_TD = "border border-black px-1 py-1 whitespace-nowrap align-middle";
 const TERRAIN_TD_WRAP = "border border-black px-1 py-1 break-words align-middle";
@@ -3875,7 +3875,7 @@ function CcAffectationHeader({ generatedAt, fleet }) {
         <div className="flex items-center gap-3">
           <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-14 w-auto shrink-0" />
           <div className="text-xl font-bold uppercase">État d'affectation des conducteurs</div>
-          {fleet && <span className="px-3 py-1 rounded-md text-base font-bold text-white" style={{ backgroundColor: "#F97316" }}>{fleet}</span>}
+          {fleet && <span className="px-3 rounded-md text-base font-bold" style={{ backgroundColor: "#FDBA74", color: "#431407", lineHeight: "20px", paddingTop: 3, paddingBottom: 7 }}>{fleet}</span>}
         </div>
         <div className="text-right text-[10px] text-slate-500 shrink-0">
           <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
@@ -3884,7 +3884,7 @@ function CcAffectationHeader({ generatedAt, fleet }) {
       <div className="mt-2 flex items-center gap-1 text-[12px]">
         <span className="font-bold uppercase mr-1">Document :</span>
         {AFFECTATION_DOC_CODE.split("").map((ch, idx) => (
-          <span key={idx} className="inline-block text-center font-bold border border-slate-500" style={{ width: 20, lineHeight: "20px" }}>{ch}</span>
+          <span key={idx} className="inline-block text-center font-bold border border-black" style={{ width: 20, lineHeight: "14px", paddingTop: 2, paddingBottom: 6, verticalAlign: "middle" }}>{ch}</span>
         ))}
       </div>
     </div>
