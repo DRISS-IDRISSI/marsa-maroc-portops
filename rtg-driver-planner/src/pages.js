@@ -3731,7 +3731,7 @@ function TerrainBadge({ text, variant, status, semibold }) {
   if (variant === "CONGE") return <span style={Object.assign(base, TERRAIN_CONGE_FILL, { border: "1px solid " + TERRAIN_CONGE_BORDER, fontWeight: 600 })}>{text}</span>;
   return <span style={Object.assign(base, { background: PRINT_STATUS_BG[status] || "#f1f5f9", color: "#334155", border: "1px solid #94a3b8", fontWeight: 600 })}>{text}</span>;
 }
-function TerrainRowCells({ a }) {
+function TerrainRowCells({ a, extraCols }) {
   const physical = a.status === "PRESENT" && !!a.zone && CER_NON_PHYSICAL_ZONES.indexOf(String(a.zone).toUpperCase()) === -1;
   const variant = a.status === "PRESENT" ? (physical ? "QUAI" : "PARC")
     : (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") ? "REPOS"
@@ -3742,6 +3742,7 @@ function TerrainRowCells({ a }) {
       <td className={PRINT_TD_XS}>{a.matricule}</td>
       <td className={PRINT_TD_XS_WRAP + " text-center"} style={{ textTransform: "uppercase" }}><TerrainBadge text={a.nom} variant={variant} status={a.status} /></td>
       <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><TerrainBadge text={label} variant={variant} status={a.status} semibold /></td>
+      {extraCols && <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS}></td></React.Fragment>}
     </React.Fragment>
   );
 }
@@ -3776,17 +3777,19 @@ function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups, tit
         <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "18%" }}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "42%" }}>Nom</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "40%" }}>Poste</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "27%" }}>Nom</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "25%" }}>Poste de travail</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Code Engin</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "23%" }}>Émargement</th>
             </tr>
           </thead>
           <tbody>
-            {total === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="3">Aucun conducteur ce jour</td></tr>}
+            {total === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="5">Aucun conducteur ce jour</td></tr>}
             {nonEmpty.map((g, gi) => (
               <React.Fragment key={g.vacation ? g.vacation.id + "_" + gi : gi}>
-                {gi > 0 && <tr style={{ height: "12px" }}><td className={PRINT_TD_XS} colSpan="3"></td></tr>}
-                {g.rows.map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} /></tr>)}
+                {gi > 0 && <tr style={{ height: "12px" }}><td className={PRINT_TD_XS} colSpan="5"></td></tr>}
+                {g.rows.map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} extraCols /></tr>)}
               </React.Fragment>
             ))}
           </tbody>
