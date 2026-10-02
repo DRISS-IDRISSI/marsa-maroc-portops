@@ -600,7 +600,10 @@ function parseVacationLabelExcel(workbook, drivers, month, year, teamNom) {
       if (currentBlock) {
         dayColumns.forEach(({ day, colIdx }) => {
           const v = row[colIdx];
-          if (v === 1 || v === 2) currentBlock.vacationByDay[day] = v;
+          // Valeur numérique OU texte ("1", "2", "V1", "V2") : beaucoup de
+          // fichiers saisissent la ligne en texte, ce qui était ignoré.
+          const n = typeof v === "string" ? parseInt(v.trim().replace(/^V/i, ""), 10) : v;
+          if (n === 1 || n === 2) currentBlock.vacationByDay[day] = n;
         });
         currentBlock = null;
       }
