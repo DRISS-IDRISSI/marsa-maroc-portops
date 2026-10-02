@@ -3716,6 +3716,61 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
   );
 }
 
+// Flotte CER : même présentation "document terrain" que CC (cadre Département
+// Trafic Conteneurs, équipe + shift, DATE), calquée sur le relevé papier
+// "Chariots Élévateurs" — colonnes Conducteur affecté / Poste de travail /
+// Code Engin / Émargement, repos et congé mis en couleur. Les groupes (équipe
+// titulaire puis CDI) sont séparés par une ligne vide, comme sur le papier.
+function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups }) {
+  const dateFmt = dateStr.split("-").reverse().join("/");
+  const posteLabel = a => a.status === "PRESENT" ? (a.zone || "PARC") : ((RTG_STATUS_META[a.status] || {}).label || a.status);
+  const posteBg = a => a.status === "REPOS" ? "#fff200" : a.status === "CONGE" ? "#ffc000" : (a.status !== "PRESENT" ? PRINT_STATUS_BG[a.status] : undefined);
+  const nonEmpty = (groups || []).filter(g => g.rows && g.rows.length > 0);
+  const total = nonEmpty.reduce((n, g) => n + g.rows.length, 0);
+  return (
+    <div className="mb-3">
+      <div className="rounded-lg overflow-hidden border border-slate-400">
+        <div className="grid grid-cols-2 border-b border-slate-400 text-[11px]">
+          <div className="border-r border-slate-400 px-2 py-1.5 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
+          <div className="px-2 py-1.5">
+            <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
+            <div>DATE : {dateFmt}</div>
+          </div>
+        </div>
+        <div className="border-b border-slate-400 text-center font-bold text-[12px] py-1 uppercase">Chariots Élévateurs</div>
+        <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
+          <thead>
+            <tr>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "30%" }}>Conducteur affecté</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "25%" }}>Poste de travail</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Code Engin</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "20%" }}>Émargement</th>
+            </tr>
+          </thead>
+          <tbody>
+            {total === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="5">Aucun conducteur ce jour</td></tr>}
+            {nonEmpty.map((g, gi) => (
+              <React.Fragment key={g.vacation ? g.vacation.id + "_" + gi : gi}>
+                {gi > 0 && <tr style={{ height: "14px" }}><td className={PRINT_TD_XS} colSpan="5"></td></tr>}
+                {g.rows.map(a => (
+                  <tr key={a.driverId} style={{ height: "30px" }}>
+                    <td className={PRINT_TD_XS + " text-center"}>{a.matricule}</td>
+                    <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}>{a.nom}</td>
+                    <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={Object.assign({ textTransform: "uppercase" }, posteBg(a) ? { backgroundColor: posteBg(a) } : null)}>{posteLabel(a)}</td>
+                    <td className={PRINT_TD_XS}></td>
+                    <td className={PRINT_TD_XS}></td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function CcAffectationHeader({ generatedAt }) {
   return (
     <div className="flex items-center justify-between gap-3 mb-2 pb-2 border-b-2 border-slate-800">
@@ -4399,6 +4454,21 @@ function AffectationDuJour() {
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
                   dateStr={dateStr} sideA={nonStagGroups[0]} sideB={nonStagGroups[1]}
                   stagiaireRows={stagGroup ? stagGroup.rows : []}
+                />
+                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} fleet={displayedFleet} />}
+                <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+                  Document généré automatiquement par CES Driver Planner.
+                </div>
+              </div>
+            );
+          }
+          if (displayedFleet === "CER") {
+            return (
+              <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
+                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} />
+                <CerAffectationTerrainPrintable
+                  team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
+                  dateStr={dateStr} groups={vacationGroupsForDisplay(s.id)}
                 />
                 {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} fleet={displayedFleet} />}
                 <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
