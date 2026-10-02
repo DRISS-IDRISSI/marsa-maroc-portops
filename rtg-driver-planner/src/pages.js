@@ -1264,6 +1264,21 @@ function ImportPlanningModal({ team, month, year, drivers, state, planning, onCl
           <div className="space-y-2 text-xs">
             <p className="text-emerald-400"><i className="fas fa-circle-check mr-1.5"></i>{congeResult ? congeResult.congesCreated + " congé(s), " + congeResult.maladiesCreated + " maladie(s) et " + congeResult.detachementsCreated + " détachement(s) créé(s), " : ""}{applyResult.reposApplied} repos forcé(s), {applyResult.presenceCorrected} repos auto annulé(s) (remis en présence), {applyResult.orderUpdated} conducteur(s) réordonné(s).</p>
             {(applyResult.reposErrors > 0 || applyResult.presenceErrors > 0 || applyResult.orderErrors > 0) && <p className="text-red-700">{applyResult.reposErrors + applyResult.presenceErrors + applyResult.orderErrors} erreur(s) — voir la console.</p>}
+            {/* Une fois les repos du fichier figés, le moteur recalcule le quota
+                de repos du conducteur et peut replacer un repos automatique sur
+                un jour que le fichier donne comme travaillé (cas réel : RAFI le
+                07/10, CHAKIR le 06/10). presenceCorrectionsToApply est recalculé
+                sur le planning à jour : s'il reste des cas, on propose de les
+                corriger (plusieurs passes peuvent être nécessaires). */}
+            {presenceCorrectionsToApply.length > 0 && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-700 space-y-1.5">
+                <p><i className="fas fa-triangle-exclamation mr-1.5"></i>{presenceCorrectionsToApply.length} repos automatique(s) sont réapparus sur des jours où le fichier indique « présent » : {presenceCorrectionsToApply.slice(0, 8).map(c => {
+                  const d = drivers.find(x => x.id === c.driverId);
+                  return (d ? d.nom : c.driverId) + "/" + c.iso.slice(8, 10);
+                }).join(", ")}{presenceCorrectionsToApply.length > 8 ? "…" : ""}.</p>
+                <button onClick={applyRest} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700">Corriger ces repos (remettre en présence)</button>
+              </div>
+            )}
             {vacationParsed ? (
               <button onClick={() => setStep("previewBlock")} className="mt-2 px-4 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600">Continuer vers les blocs et vacations (V1/V2)</button>
             ) : (
