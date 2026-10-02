@@ -3683,16 +3683,16 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
         <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
           <tr>
-            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
-            <th className={PRINT_TH_XS + " text-center"} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
+            <th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">Vacation A · {sideA.vacation.start} → {sideA.vacation.end}</th>
+            <th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">Vacation B · {sideB.vacation.start} → {sideB.vacation.end}</th>
           </tr>
           <tr>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "8%" }}>Mat</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "18%" }}>Poste</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "8%" }}>Mat</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
-            <th className={PRINT_TH_XS + " text-center"} style={{ width: "18%" }}>Poste</th>
+            <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "8%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+            <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+            <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "18%" }, TERRAIN_TH_ORANGE)}>Poste</th>
+            <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "8%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+            <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+            <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "18%" }, TERRAIN_TH_ORANGE)}>Poste</th>
           </tr>
         </thead>
         <tbody>
@@ -3785,11 +3785,11 @@ function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups, tit
         <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "27%" }}>Nom</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "25%" }}>Poste de travail</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Code Engin</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "23%" }}>Émargement</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "27%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "25%" }, TERRAIN_TH_ORANGE)}>Poste de travail</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "15%" }, TERRAIN_TH_ORANGE)}>Code Engin</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "23%" }, TERRAIN_TH_ORANGE)}>Émargement</th>
             </tr>
           </thead>
           <tbody>
@@ -3823,16 +3823,16 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
         <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} colSpan="3">{vacLabel(sideA, "A")}</th>
-              <th className={PRINT_TH_XS + " text-center"} colSpan="3">{vacLabel(sideB, "B")}</th>
+              <th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">{vacLabel(sideA, "A")}</th>
+              <th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">{vacLabel(sideB, "B")}</th>
             </tr>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "16%" }}>Zone</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "16%" }}>Zone</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "16%" }, TERRAIN_TH_ORANGE)}>Zone</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "10%" }, TERRAIN_TH_ORANGE)}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "24%" }, TERRAIN_TH_ORANGE)}>Nom</th>
+              <th className={PRINT_TH_XS + " text-center"} style={Object.assign({ width: "16%" }, TERRAIN_TH_ORANGE)}>Zone</th>
             </tr>
           </thead>
           <tbody>
@@ -3849,7 +3849,7 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
       {(extraGroups || []).length > 0 && (
         <div className="mt-2 rounded-lg overflow-hidden border border-slate-400">
           <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
-            <thead><tr><th className={PRINT_TH_XS + " text-center"} colSpan="3">Stagiaires</th></tr></thead>
+            <thead><tr><th className={PRINT_TH_XS + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">Stagiaires</th></tr></thead>
             <tbody>
               {extraGroups.reduce((acc, g) => acc.concat(g.rows), []).map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} /></tr>)}
             </tbody>
@@ -3860,15 +3860,29 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
   );
 }
 
-function CcAffectationHeader({ generatedAt }) {
+// Code du document (référence qualité du relevé papier "État d'affectation des
+// conducteurs"), affiché lettre par lettre dans des cases comme sur le papier.
+const AFFECTATION_DOC_CODE = "ENEACPCPLAN10";
+// En-têtes de tableau en orange (couleur de l'appli) pour les rapports terrain.
+const TERRAIN_TH_ORANGE = { backgroundColor: "#F97316", color: "#ffffff", borderColor: "#c2410c" };
+function CcAffectationHeader({ generatedAt, fleet }) {
   return (
-    <div className="flex items-center justify-between gap-3 mb-2 pb-2 border-b-2 border-slate-800">
-      <div className="flex items-center gap-3">
-        <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-10 w-auto shrink-0" />
-        <div className="text-base font-bold uppercase">État d'affectation des conducteurs</div>
+    <div className="mb-2 pb-2 border-b-2 border-slate-800">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-10 w-auto shrink-0" />
+          <div className="text-base font-bold uppercase">État d'affectation des conducteurs</div>
+          {fleet && <span className="px-2.5 py-0.5 rounded-md text-sm font-bold text-white" style={{ backgroundColor: "#F97316" }}>{fleet}</span>}
+        </div>
+        <div className="text-right text-[10px] text-slate-500 shrink-0">
+          <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
+        </div>
       </div>
-      <div className="text-right text-[10px] text-slate-500 shrink-0">
-        <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
+      <div className="mt-1.5 flex items-center gap-1 text-[10px]">
+        <span className="font-bold uppercase mr-1">Document :</span>
+        {AFFECTATION_DOC_CODE.split("").map((ch, idx) => (
+          <span key={idx} className="inline-block text-center font-bold border border-slate-500" style={{ width: 16, lineHeight: "16px" }}>{ch}</span>
+        ))}
       </div>
     </div>
   );
@@ -4538,7 +4552,7 @@ function AffectationDuJour() {
             const stagGroup = (grouped[s.id] || []).find(g => g.vacation.id.indexOf("V1+V2") === 0);
             return (
               <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
-                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} />
+                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} fleet={displayedFleet} />
                 <CcAffectationTerrainPrintable
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
                   dateStr={dateStr} sideA={nonStagGroups[0]} sideB={nonStagGroups[1]}
@@ -4557,7 +4571,7 @@ function AffectationDuJour() {
             const extraGroups = vGroups.filter(g => g.vacation.id.indexOf("V1+V2") === 0);
             return (
               <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
-                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} />
+                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} fleet={displayedFleet} />
                 <RtgAffectationTerrainPrintable
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
                   dateStr={dateStr} sideA={mainGroups[0]} sideB={mainGroups[1]} extraGroups={extraGroups}
@@ -4572,7 +4586,7 @@ function AffectationDuJour() {
           if (displayedFleet === "CER") {
             return (
               <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
-                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} />
+                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} fleet={displayedFleet} />
                 <CerAffectationTerrainPrintable
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
                   dateStr={dateStr} groups={vacationGroupsForDisplay(s.id)}
