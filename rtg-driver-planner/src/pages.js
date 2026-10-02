@@ -3723,8 +3723,11 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
 // titulaire puis CDI) sont séparés par une ligne vide, comme sur le papier.
 function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups }) {
   const dateFmt = dateStr.split("-").reverse().join("/");
-  const posteLabel = a => a.status === "PRESENT" ? (a.zone || "PARC") : ((RTG_STATUS_META[a.status] || {}).label || a.status);
-  const posteBg = a => a.status === "REPOS" ? "#fff200" : a.status === "CONGE" ? "#ffc000" : (a.status !== "PRESENT" ? PRINT_STATUS_BG[a.status] : undefined);
+  // Mêmes badges que CC : poste physique (P80...) en orange, réserve
+  // (MAERSK/MSC/COSCO/PARC) en gris, repos/RC en jaune, congé et autres
+  // statuts en ligne colorée à texte simple.
+  const isPhysical = a => a.status === "PRESENT" && !!a.zone && CER_NON_PHYSICAL_ZONES.indexOf(String(a.zone).toUpperCase()) === -1;
+  const posteLabel = a => a.status === "PRESENT" ? (a.zone || "PARC") : a.status === "REPOS" ? "REPOS" : a.status === "REPOS_COMPENSATOIRE" ? "RC" : ((RTG_STATUS_META[a.status] || {}).label || a.status);
   const nonEmpty = (groups || []).filter(g => g.rows && g.rows.length > 0);
   const total = nonEmpty.reduce((n, g) => n + g.rows.length, 0);
   return (
@@ -3741,27 +3744,33 @@ function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups }) {
         <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "30%" }}>Conducteur affecté</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "25%" }}>Poste de travail</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "15%" }}>Code Engin</th>
-              <th className={PRINT_TH_XS + " text-center"} style={{ width: "20%" }}>Émargement</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "18%" }}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "42%" }}>Nom</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "40%" }}>Poste</th>
             </tr>
           </thead>
           <tbody>
-            {total === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="5">Aucun conducteur ce jour</td></tr>}
+            {total === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="3">Aucun conducteur ce jour</td></tr>}
             {nonEmpty.map((g, gi) => (
               <React.Fragment key={g.vacation ? g.vacation.id + "_" + gi : gi}>
-                {gi > 0 && <tr style={{ height: "14px" }}><td className={PRINT_TD_XS} colSpan="5"></td></tr>}
-                {g.rows.map(a => (
-                  <tr key={a.driverId} style={{ height: "30px" }}>
-                    <td className={PRINT_TD_XS + " text-center"}>{a.matricule}</td>
-                    <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}>{a.nom}</td>
-                    <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={Object.assign({ textTransform: "uppercase" }, posteBg(a) ? { backgroundColor: posteBg(a) } : null)}>{posteLabel(a)}</td>
-                    <td className={PRINT_TD_XS}></td>
-                    <td className={PRINT_TD_XS}></td>
-                  </tr>
-                ))}
+                {gi > 0 && <tr style={{ height: "12px" }}><td className={PRINT_TD_XS} colSpan="3"></td></tr>}
+                {g.rows.map(a => {
+                  const variant = ccBadgeVariant(a, isPhysical(a));
+                  const bg = variant === null ? PRINT_STATUS_BG[a.status] : undefined;
+                  const cellStyle = bg ? { backgroundColor: bg } : undefined;
+                  const label = posteLabel(a);
+                  return (
+                    <tr key={a.driverId} style={{ height: "30px" }}>
+                      <td className={PRINT_TD_XS} style={cellStyle}>{a.matricule}</td>
+                      <td className={PRINT_TD_XS_WRAP + " text-center"} style={Object.assign({ textTransform: "uppercase" }, cellStyle)}><CcNomBadge nom={a.nom} variant={variant} /></td>
+                      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={Object.assign({ textTransform: "uppercase" }, cellStyle)}>
+                        {variant === "QUAI"
+                          ? <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_QUAI_FILL, { border: "1px solid " + CC_BADGE_QUAI_BORDER, padding: "1px 8px 5px" })}>{label}</span>
+                          : <CcPosteBadge label={label} variant={variant} />}
+                      </td>
+                    </tr>
+                  );
+                })}
               </React.Fragment>
             ))}
           </tbody>
