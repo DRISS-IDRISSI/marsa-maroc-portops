@@ -3723,15 +3723,15 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
 // la couleur du statut.
 const TERRAIN_CONGE_FILL = { background: "#FED7AA", color: "#7C2D12" };
 const TERRAIN_CONGE_BORDER = "#EA580C";
-function TerrainBadge({ text, variant, status, semibold }) {
-  const base = Object.assign({}, CC_BADGE_OUTER_STYLE, { padding: "1px 8px 5px", fontWeight: semibold ? 600 : 500 });
+function TerrainBadge({ text, variant, status, semibold, big }) {
+  const base = Object.assign({}, CC_BADGE_OUTER_STYLE, { padding: big ? "8px 8px 12px" : "1px 8px 5px", fontWeight: semibold ? 600 : 500 }, big ? { fontSize: 15 } : null);
   if (variant === "QUAI") return <span style={Object.assign(base, CC_BADGE_QUAI_FILL, { border: "1px solid " + CC_BADGE_QUAI_BORDER })}>{text}</span>;
   if (variant === "PARC") return <span style={Object.assign(base, CC_BADGE_PARC_FILL, { border: "1px solid " + CC_BADGE_PARC_BORDER })}>{text}</span>;
   if (variant === "REPOS") return <span style={Object.assign(base, CC_BADGE_REPOS_FILL, { border: "1px solid " + CC_BADGE_REPOS_BORDER, fontWeight: 600 })}>{text}</span>;
   if (variant === "CONGE") return <span style={Object.assign(base, TERRAIN_CONGE_FILL, { border: "1px solid " + TERRAIN_CONGE_BORDER, fontWeight: 600 })}>{text}</span>;
   return <span style={Object.assign(base, { background: PRINT_STATUS_BG[status] || "#f1f5f9", color: "#334155", border: "1px solid #94a3b8", fontWeight: 600 })}>{text}</span>;
 }
-function TerrainRowCells({ a, extraCols }) {
+function TerrainRowCells({ a, extraCols, big }) {
   const physical = a.status === "PRESENT" && !!a.zone && CER_NON_PHYSICAL_ZONES.indexOf(String(a.zone).toUpperCase()) === -1;
   const variant = a.status === "PRESENT" ? (physical ? "QUAI" : "PARC")
     : (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") ? "REPOS"
@@ -3739,12 +3739,18 @@ function TerrainRowCells({ a, extraCols }) {
   const label = a.status === "PRESENT" ? (a.zone || "PARC") : a.status === "REPOS" ? "REPOS" : a.status === "REPOS_COMPENSATOIRE" ? "RC" : ((RTG_STATUS_META[a.status] || {}).label || a.status);
   return (
     <React.Fragment>
-      <td className={PRINT_TD_XS}>{a.matricule}</td>
-      <td className={PRINT_TD_XS_WRAP + " text-center"} style={{ textTransform: "uppercase" }}><TerrainBadge text={a.nom} variant={variant} status={a.status} /></td>
-      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><TerrainBadge text={label} variant={variant} status={a.status} semibold /></td>
+      <td className={PRINT_TD_XS} style={big ? { fontSize: 13 } : undefined}>{a.matricule}</td>
+      <td className={PRINT_TD_XS_WRAP + " text-center"} style={{ textTransform: "uppercase" }}><TerrainBadge text={a.nom} variant={variant} status={a.status} big={big} /></td>
+      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><TerrainBadge text={label} variant={variant} status={a.status} semibold big={big} /></td>
       {extraCols && <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS}></td></React.Fragment>}
     </React.Fragment>
   );
+}
+// Hauteur de ligne qui remplit la page : ~760px utiles répartis entre les
+// lignes (bornée entre 30px et maxH pour rester lisible quand il y a peu de
+// conducteurs). "big" agrandit aussi la police des badges.
+function terrainRowHeight(nRows, maxH) {
+  return Math.max(30, Math.min(maxH, Math.floor(760 / Math.max(1, nRows))));
 }
 function TerrainEmptyCells() {
   return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
@@ -3770,6 +3776,8 @@ function TerrainFrameHeader({ team, shiftLabel, dateStr, title }) {
 function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups, title }) {
   const nonEmpty = (groups || []).filter(g => g.rows && g.rows.length > 0);
   const total = nonEmpty.reduce((n, g) => n + g.rows.length, 0);
+  const rowH = terrainRowHeight(total + Math.max(0, nonEmpty.length - 1) * 0.4 + 1, 84);
+  const big = rowH >= 46;
   return (
     <div className="mb-3">
       <div className="rounded-lg overflow-hidden border border-slate-400">
@@ -3788,8 +3796,8 @@ function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups, tit
             {total === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="5">Aucun conducteur ce jour</td></tr>}
             {nonEmpty.map((g, gi) => (
               <React.Fragment key={g.vacation ? g.vacation.id + "_" + gi : gi}>
-                {gi > 0 && <tr style={{ height: "12px" }}><td className={PRINT_TD_XS} colSpan="5"></td></tr>}
-                {g.rows.map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} extraCols /></tr>)}
+                {gi > 0 && <tr style={{ height: Math.round(rowH * 0.4) + "px" }}><td className={PRINT_TD_XS} colSpan="5"></td></tr>}
+                {g.rows.map(a => <tr key={a.driverId} style={{ height: rowH + "px" }}><TerrainRowCells a={a} extraCols big={big} /></tr>)}
               </React.Fragment>
             ))}
           </tbody>
@@ -3805,6 +3813,8 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
   const rowsA = sideA ? sideA.rows : [], rowsB = sideB ? sideB.rows : [];
   const maxRows = Math.max(rowsA.length, rowsB.length);
   const rowIdxs = Array.from({ length: maxRows }, (_, i) => i);
+  const rowH = terrainRowHeight(maxRows + 2, 64);
+  const big = rowH >= 46;
   const vacLabel = (side, letter) => side && side.vacation ? "Vacation " + letter + (side.vacation.start ? " · " + side.vacation.start + " → " + side.vacation.end : "") : "Vacation " + letter;
   return (
     <div className="mb-3">
@@ -3828,9 +3838,9 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
           <tbody>
             {maxRows === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="6">Aucun conducteur ce jour</td></tr>}
             {rowIdxs.map(i => (
-              <tr key={i} style={{ height: "30px" }}>
-                {rowsA[i] ? <TerrainRowCells a={rowsA[i]} /> : <TerrainEmptyCells />}
-                {rowsB[i] ? <TerrainRowCells a={rowsB[i]} /> : <TerrainEmptyCells />}
+              <tr key={i} style={{ height: rowH + "px" }}>
+                {rowsA[i] ? <TerrainRowCells a={rowsA[i]} big={big} /> : <TerrainEmptyCells />}
+                {rowsB[i] ? <TerrainRowCells a={rowsB[i]} big={big} /> : <TerrainEmptyCells />}
               </tr>
             ))}
           </tbody>
