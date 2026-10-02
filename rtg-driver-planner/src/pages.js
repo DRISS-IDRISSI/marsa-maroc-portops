@@ -3716,31 +3716,63 @@ function CcAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB
   );
 }
 
-// Flotte CER : même présentation "document terrain" que CC (cadre Département
-// Trafic Conteneurs, équipe + shift, DATE), calquée sur le relevé papier
-// "Chariots Élévateurs" — colonnes Conducteur affecté / Poste de travail /
-// Code Engin / Émargement, repos et congé mis en couleur. Les groupes (équipe
-// titulaire puis CDI) sont séparés par une ligne vide, comme sur le papier.
-function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups }) {
+// Cellules Mat / Nom / Poste d'UN conducteur pour les rapports "document
+// terrain" CER et RTG (mêmes badges que CC) : poste physique en orange,
+// réserve en gris, repos/RC en jaune, CONGÉ en cadre orange (le matricule,
+// lui, reste sans fond) et autres statuts (maladie, absence...) en cadre à
+// la couleur du statut.
+const TERRAIN_CONGE_FILL = { background: "#FED7AA", color: "#7C2D12" };
+const TERRAIN_CONGE_BORDER = "#EA580C";
+function TerrainBadge({ text, variant, status, semibold }) {
+  const base = Object.assign({}, CC_BADGE_OUTER_STYLE, { padding: "1px 8px 5px", fontWeight: semibold ? 600 : 500 });
+  if (variant === "QUAI") return <span style={Object.assign(base, CC_BADGE_QUAI_FILL, { border: "1px solid " + CC_BADGE_QUAI_BORDER })}>{text}</span>;
+  if (variant === "PARC") return <span style={Object.assign(base, CC_BADGE_PARC_FILL, { border: "1px solid " + CC_BADGE_PARC_BORDER })}>{text}</span>;
+  if (variant === "REPOS") return <span style={Object.assign(base, CC_BADGE_REPOS_FILL, { border: "1px solid " + CC_BADGE_REPOS_BORDER, fontWeight: 600 })}>{text}</span>;
+  if (variant === "CONGE") return <span style={Object.assign(base, TERRAIN_CONGE_FILL, { border: "1px solid " + TERRAIN_CONGE_BORDER, fontWeight: 600 })}>{text}</span>;
+  return <span style={Object.assign(base, { background: PRINT_STATUS_BG[status] || "#f1f5f9", color: "#334155", border: "1px solid #94a3b8", fontWeight: 600 })}>{text}</span>;
+}
+function TerrainRowCells({ a }) {
+  const physical = a.status === "PRESENT" && !!a.zone && CER_NON_PHYSICAL_ZONES.indexOf(String(a.zone).toUpperCase()) === -1;
+  const variant = a.status === "PRESENT" ? (physical ? "QUAI" : "PARC")
+    : (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") ? "REPOS"
+    : a.status === "CONGE" ? "CONGE" : "AUTRE";
+  const label = a.status === "PRESENT" ? (a.zone || "PARC") : a.status === "REPOS" ? "REPOS" : a.status === "REPOS_COMPENSATOIRE" ? "RC" : ((RTG_STATUS_META[a.status] || {}).label || a.status);
+  return (
+    <React.Fragment>
+      <td className={PRINT_TD_XS}>{a.matricule}</td>
+      <td className={PRINT_TD_XS_WRAP + " text-center"} style={{ textTransform: "uppercase" }}><TerrainBadge text={a.nom} variant={variant} status={a.status} /></td>
+      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><TerrainBadge text={label} variant={variant} status={a.status} semibold /></td>
+    </React.Fragment>
+  );
+}
+function TerrainEmptyCells() {
+  return <React.Fragment><td className={PRINT_TD_XS}></td><td className={PRINT_TD_XS_WRAP}></td><td className={PRINT_TD_XS_WRAP}></td></React.Fragment>;
+}
+function TerrainFrameHeader({ team, shiftLabel, dateStr, title }) {
   const dateFmt = dateStr.split("-").reverse().join("/");
-  // Mêmes badges que CC : poste physique (P80...) en orange, réserve
-  // (MAERSK/MSC/COSCO/PARC) en gris, repos/RC en jaune, congé et autres
-  // statuts en ligne colorée à texte simple.
-  const isPhysical = a => a.status === "PRESENT" && !!a.zone && CER_NON_PHYSICAL_ZONES.indexOf(String(a.zone).toUpperCase()) === -1;
-  const posteLabel = a => a.status === "PRESENT" ? (a.zone || "PARC") : a.status === "REPOS" ? "REPOS" : a.status === "REPOS_COMPENSATOIRE" ? "RC" : ((RTG_STATUS_META[a.status] || {}).label || a.status);
+  return (
+    <React.Fragment>
+      <div className="grid grid-cols-2 border-b border-slate-400 text-[11px]">
+        <div className="border-r border-slate-400 px-2 py-1.5 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
+        <div className="px-2 py-1.5">
+          <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
+          <div>DATE : {dateFmt}</div>
+        </div>
+      </div>
+      <div className="border-b border-slate-400 text-center font-bold text-[12px] py-1 uppercase">{title}</div>
+    </React.Fragment>
+  );
+}
+
+// Flotte CER : un seul tableau (pas de vacation) — équipe titulaire puis CDI,
+// séparés par une ligne vide, comme sur le relevé papier.
+function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups, title }) {
   const nonEmpty = (groups || []).filter(g => g.rows && g.rows.length > 0);
   const total = nonEmpty.reduce((n, g) => n + g.rows.length, 0);
   return (
     <div className="mb-3">
       <div className="rounded-lg overflow-hidden border border-slate-400">
-        <div className="grid grid-cols-2 border-b border-slate-400 text-[11px]">
-          <div className="border-r border-slate-400 px-2 py-1.5 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
-          <div className="px-2 py-1.5">
-            <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
-            <div>DATE : {dateFmt}</div>
-          </div>
-        </div>
-        <div className="border-b border-slate-400 text-center font-bold text-[12px] py-1 uppercase">Chariots Élévateurs</div>
+        <TerrainFrameHeader team={team} shiftLabel={shiftLabel} dateStr={dateStr} title={title || "Chariots Élévateurs"} />
         <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr>
@@ -3754,28 +3786,63 @@ function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups }) {
             {nonEmpty.map((g, gi) => (
               <React.Fragment key={g.vacation ? g.vacation.id + "_" + gi : gi}>
                 {gi > 0 && <tr style={{ height: "12px" }}><td className={PRINT_TD_XS} colSpan="3"></td></tr>}
-                {g.rows.map(a => {
-                  const variant = ccBadgeVariant(a, isPhysical(a));
-                  const bg = variant === null ? PRINT_STATUS_BG[a.status] : undefined;
-                  const cellStyle = bg ? { backgroundColor: bg } : undefined;
-                  const label = posteLabel(a);
-                  return (
-                    <tr key={a.driverId} style={{ height: "30px" }}>
-                      <td className={PRINT_TD_XS} style={cellStyle}>{a.matricule}</td>
-                      <td className={PRINT_TD_XS_WRAP + " text-center"} style={Object.assign({ textTransform: "uppercase" }, cellStyle)}><CcNomBadge nom={a.nom} variant={variant} /></td>
-                      <td className={PRINT_TD_XS_WRAP + " text-center font-semibold"} style={Object.assign({ textTransform: "uppercase" }, cellStyle)}>
-                        {variant === "QUAI"
-                          ? <span style={Object.assign({}, CC_BADGE_OUTER_STYLE, CC_BADGE_QUAI_FILL, { border: "1px solid " + CC_BADGE_QUAI_BORDER, padding: "1px 8px 5px" })}>{label}</span>
-                          : <CcPosteBadge label={label} variant={variant} />}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {g.rows.map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} /></tr>)}
               </React.Fragment>
             ))}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// Flotte RTG : même document que CC — Vacation A (gauche) / Vacation B
+// (droite), colonnes Mat / Nom / Zone, badges identiques.
+function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, sideB, extraGroups }) {
+  const rowsA = sideA ? sideA.rows : [], rowsB = sideB ? sideB.rows : [];
+  const maxRows = Math.max(rowsA.length, rowsB.length);
+  const rowIdxs = Array.from({ length: maxRows }, (_, i) => i);
+  const vacLabel = (side, letter) => side && side.vacation ? "Vacation " + letter + (side.vacation.start ? " · " + side.vacation.start + " → " + side.vacation.end : "") : "Vacation " + letter;
+  return (
+    <div className="mb-3">
+      <div className="rounded-lg overflow-hidden border border-slate-400">
+        <TerrainFrameHeader team={team} shiftLabel={shiftLabel} dateStr={dateStr} title="RTG" />
+        <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
+          <thead>
+            <tr>
+              <th className={PRINT_TH_XS + " text-center"} colSpan="3">{vacLabel(sideA, "A")}</th>
+              <th className={PRINT_TH_XS + " text-center"} colSpan="3">{vacLabel(sideB, "B")}</th>
+            </tr>
+            <tr>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "16%" }}>Zone</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "10%" }}>Mat</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "24%" }}>Nom</th>
+              <th className={PRINT_TH_XS + " text-center"} style={{ width: "16%" }}>Zone</th>
+            </tr>
+          </thead>
+          <tbody>
+            {maxRows === 0 && <tr style={{ height: "30px" }}><td className={PRINT_TD_XS + " text-center italic text-slate-500"} colSpan="6">Aucun conducteur ce jour</td></tr>}
+            {rowIdxs.map(i => (
+              <tr key={i} style={{ height: "30px" }}>
+                {rowsA[i] ? <TerrainRowCells a={rowsA[i]} /> : <TerrainEmptyCells />}
+                {rowsB[i] ? <TerrainRowCells a={rowsB[i]} /> : <TerrainEmptyCells />}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {(extraGroups || []).length > 0 && (
+        <div className="mt-2 rounded-lg overflow-hidden border border-slate-400">
+          <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }}>
+            <thead><tr><th className={PRINT_TH_XS + " text-center"} colSpan="3">Stagiaires</th></tr></thead>
+            <tbody>
+              {extraGroups.reduce((acc, g) => acc.concat(g.rows), []).map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} /></tr>)}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -4463,6 +4530,24 @@ function AffectationDuJour() {
                   team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
                   dateStr={dateStr} sideA={nonStagGroups[0]} sideB={nonStagGroups[1]}
                   stagiaireRows={stagGroup ? stagGroup.rows : []}
+                />
+                {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} fleet={displayedFleet} />}
+                <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
+                  Document généré automatiquement par CES Driver Planner.
+                </div>
+              </div>
+            );
+          }
+          if (displayedFleet === "RTG") {
+            const vGroups = vacationGroupsForDisplay(s.id);
+            const mainGroups = vGroups.filter(g => g.vacation.id.indexOf("V1+V2") !== 0);
+            const extraGroups = vGroups.filter(g => g.vacation.id.indexOf("V1+V2") === 0);
+            return (
+              <div key={s.id} ref={el => { shiftPrintRefs.current[s.id] = el; }} className="print-report bg-white text-slate-900 rounded-xl py-0 px-4">
+                <CcAffectationHeader generatedAt={rtgNowInCasablanca()} />
+                <RtgAffectationTerrainPrintable
+                  team={shiftTeam} shiftLabel={s.label + (s.start ? ` (${s.start} → ${s.end})` : "")}
+                  dateStr={dateStr} sideA={mainGroups[0]} sideB={mainGroups[1]} extraGroups={extraGroups}
                 />
                 {includeOff && <ShiftBlockPrintable title="OFF — Shift 3 dimanche" rows={offRows} showTeamColumn={false} fleet={displayedFleet} />}
                 <div className="mt-4 pt-3 border-t border-slate-300 text-[10px] text-slate-500">
