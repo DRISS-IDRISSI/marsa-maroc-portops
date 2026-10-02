@@ -3265,7 +3265,8 @@ function MesMouvementsPage() {
   // Un conducteur peut réaliser plusieurs shifts/engins le même jour (ex.
   // double vacation) : regroupées en une seule ligne par jour, shifts et
   // engins distincts listés pour rester traçables.
-  const byDay = useMemo(() => groupMouvementsRows(rows, r => r.dateTravail).sort((a, b) => b.dateTravail.localeCompare(a.dateTravail)), [rows]);
+  // Les mouvements saisis à la main (clé "|M") restent sur une ligne à part de ceux du TOS ("|T").
+  const byDay = useMemo(() => groupMouvementsRows(rows, r => r.dateTravail + (r.source === "MANUEL" ? "|M" : "|T")).sort((a, b) => b.dateTravail.localeCompare(a.dateTravail) || (a.id < b.id ? -1 : 1)), [rows]);
 
   return (
     <div className="space-y-4 fade-in">
@@ -3310,7 +3311,7 @@ function MesMouvementsPage() {
                 <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-slate-900">{r.dateTravail}</td>
                   <td className="px-3 py-2 text-slate-600">{r.dominantShift}</td>
-                  <td className="px-3 py-2 text-slate-600">{r.engins.join(", ")}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.engins.join(", ")}{r.sourceRows.some(sr => sr.source === "MANUEL") && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-semibold" title="Mouvements saisis manuellement (non issus du rapport TOS)">Manuel</span>}</td>
                   {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-600">{disp[c.key]}</td>)}
                   <td className="px-3 py-2 text-center text-slate-900 font-bold">{r.totalMvmt}</td>
                 </tr>
