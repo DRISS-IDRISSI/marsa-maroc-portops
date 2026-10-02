@@ -1660,7 +1660,9 @@ function buildPlanningMensuelSheet(ws, team, teamDrivers, planning, month, year,
   const totalCol = firstDayCol + N;
   const shiftRow = 2, dateRow = 3, firstDriverRow = 4;
   const noRotation = isNoRotationTeam(team);
-  const hasVacation = fleetHasVacation((team && team.typeEngin) || "RTG");
+  // Équipe sans rotation (stagiaires/CDI) : pas de ligne "Vacation (1 ou 2)"
+  // (demande de l'exploitant) — chaque conducteur n'a que son shift du jour.
+  const hasVacation = fleetHasVacation((team && team.typeEngin) || "RTG") && !noRotation;
 
   ws.getColumn(1).width = 10;
   ws.getColumn(2).width = 16;
@@ -2695,7 +2697,7 @@ function PlanningGrid({ planning, drivers, detailLevel, config, teams, canEdit, 
               // jour le jour (pas de rotation synchronisée d'équipe) — un
               // en-tête "Shift 1/2/3" fusionné par semaine serait donc
               // trompeur ici (même raison que isNoRotationTeam dans pages2.js).
-              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} noRotation hasVacation={!noVacationFleet} mouvementsByKey={mouvementsByKey} />
+              <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={null} noRotation hasVacation={false} mouvementsByKey={mouvementsByKey} />
             ) : noVacationFleet ? (
               <VacationGroupTable label="Effectif" drivers={teamDrivers} planning={planning} detailLevel={detailLevel} config={config} onEditCell={onEditCell} team={team} hasVacation={false} mouvementsByKey={mouvementsByKey} />
             ) : (
