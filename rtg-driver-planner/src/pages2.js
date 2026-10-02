@@ -3459,6 +3459,10 @@ function MouvementsRtgPage() {
   const now = new Date();
   const [tab, setTab] = useState("detail");
   const [filterDriverId, setFilterDriverId] = useState("");
+  // Filtre de provenance : "tous" | "tos" (importés du rapport TOS) | "manuel"
+  // (saisis à la main). Les mouvements manuels sont de toute façon affichés
+  // sur une ligne séparée de celle du TOS (voir byDay).
+  const [sourceFilter, setSourceFilter] = useState("tous");
 
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -3568,8 +3572,9 @@ function MouvementsRtgPage() {
     const fleet = inferEnginFleet(r.engin);
     return fleet === null || fleet === rawState.currentFleet;
   };
-  const visibleRows = useMemo(() => rows.filter(fleetFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId]);
-  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId]);
+  const sourceFilterRow = r => sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL");
+  const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter]);
+  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter]);
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -3608,13 +3613,15 @@ function MouvementsRtgPage() {
   // un conducteur ayant réalisé plusieurs shifts/engins le même jour (ex.
   // double vacation) apparaît en une seule ligne (shifts et engins distincts
   // listés), plutôt qu'une ligne par shift comme auparavant.
+  // Les mouvements manuels sont gardés sur une ligne à part (clé "|M") pour
+  // ne pas être additionnés silencieusement à ceux du TOS (clé "|T").
   const byDay = useMemo(() => {
     const days = {};
     visibleRows.forEach(r => {
       (days[r.dateTravail] = days[r.dateTravail] || []).push(r);
     });
     return Object.keys(days).sort((a, b) => b.localeCompare(a)).map(dateIso => {
-      const rows = groupMouvementsRows(days[dateIso], r => r.driverId || ("_" + r.loginTos)).sort((a, b) => {
+      const rows = groupMouvementsRows(days[dateIso], r => (r.driverId || ("_" + r.loginTos)) + (r.source === "MANUEL" ? "|M" : "|T")).sort((a, b) => {
         const shiftCmp = shiftSortKey(a.dominantShift) - shiftSortKey(b.dominantShift);
         if (shiftCmp !== 0) return shiftCmp;
         const da = a.driverId ? state.drivers.find(d => d.id === a.driverId) : null;
@@ -3697,6 +3704,13 @@ function MouvementsRtgPage() {
       <div className="flex gap-2">
         <button onClick={() => setTab("detail")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "detail" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Détail par jour/shift</button>
         <button onClick={() => setTab("total")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "total" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Total par conducteur (période)</button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-slate-500">Provenance</span>
+        {[["tous", "Tous"], ["tos", "TOS seulement"], ["manuel", "Manuels seulement"]].map(([v, label]) => (
+          <button key={v} onClick={() => setSourceFilter(v)} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sourceFilter === v ? "bg-sky-600 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{label}</button>
+        ))}
       </div>
 
       <DriverFilterBar state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? restrictedIds : null} />
@@ -3788,7 +3802,7 @@ function MouvementsRtgPage() {
                         <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{team ? team.nom : "—"}</td>
                         <td className={`px-3 py-1.5 text-slate-900 ${midCellCls}`}>{RTGDate.formatFr(RTGDate.parseISO(day.dateIso))}</td>
                         <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{r.dominantShift}</td>
-                        <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{r.engins.join(", ")}{manuelRows.length > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-semibold" title={manuelRows.length === r.sourceRows.length ? "Saisi manuellement" : "Contient des mouvements saisis manuellement (en plus du TOS)"}>Manuel{manuelRows.length !== r.sourceRows.length ? " +TOS" : ""}</span>}</td>
+                        <td className={`px-3 py-1.5 text-slate-600 ${midCellCls}`}>{r.engins.join(", ")}{manuelRows.length > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-semibold" title="Mouvements saisis manuellement (non issus du rapport TOS)">Manuel</span>}</td>
                         {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className={`px-3 py-1.5 text-center text-slate-600 ${midCellCls}`}>{disp[c.key]}</td>)}
                         <td className={`px-3 py-1.5 text-center text-slate-900 font-bold ${midCellCls}`}>{r.totalMvmt}</td>
                         <td className={`px-3 py-1.5 ${lastCellCls}`}>
