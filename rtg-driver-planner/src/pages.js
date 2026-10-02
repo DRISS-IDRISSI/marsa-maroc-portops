@@ -3731,15 +3731,15 @@ function TerrainBadge({ text, variant, status, semibold, big }) {
   if (variant === "CONGE") return <span style={Object.assign(base, TERRAIN_CONGE_FILL, { border: "1px solid " + TERRAIN_CONGE_BORDER, fontWeight: 600 })}>{text}</span>;
   return <span style={Object.assign(base, { background: PRINT_STATUS_BG[status] || "#f1f5f9", color: "#334155", border: "1px solid #94a3b8", fontWeight: 600 })}>{text}</span>;
 }
-function TerrainRowCells({ a, extraCols, big }) {
+function TerrainRowCells({ a, extraCols, big, allPresentBlue }) {
   const physical = a.status === "PRESENT" && !!a.zone && CER_NON_PHYSICAL_ZONES.indexOf(String(a.zone).toUpperCase()) === -1;
-  const variant = a.status === "PRESENT" ? (physical ? "QUAI" : "PARC")
+  const variant = a.status === "PRESENT" ? (physical && !allPresentBlue ? "QUAI" : "PARC")
     : (a.status === "REPOS" || a.status === "REPOS_COMPENSATOIRE") ? "REPOS"
     : a.status === "CONGE" ? "CONGE" : "AUTRE";
   const label = a.status === "PRESENT" ? (a.zone || "PARC") : a.status === "REPOS" ? "REPOS" : a.status === "REPOS_COMPENSATOIRE" ? "RC" : ((RTG_STATUS_META[a.status] || {}).label || a.status);
   return (
     <React.Fragment>
-      <td className={TERRAIN_TD} style={big ? { fontSize: 13 } : undefined}>{a.matricule}</td>
+      <td className={TERRAIN_TD + " text-center"} style={big ? { fontSize: 13 } : undefined}>{a.matricule}</td>
       <td className={TERRAIN_TD_WRAP + " text-center"} style={{ textTransform: "uppercase" }}><TerrainBadge text={a.nom} variant={variant} status={a.status} big={big} /></td>
       <td className={TERRAIN_TD_WRAP + " text-center font-semibold"} style={{ textTransform: "uppercase" }}><TerrainBadge text={label} variant={variant} status={a.status} semibold big={big} /></td>
       {extraCols && <React.Fragment><td className={TERRAIN_TD}></td><td className={TERRAIN_TD}></td></React.Fragment>}
@@ -3839,8 +3839,8 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
             {maxRows === 0 && <tr style={{ height: "30px" }}><td className={TERRAIN_TD + " text-center italic text-slate-500"} colSpan="6">Aucun conducteur ce jour</td></tr>}
             {rowIdxs.map(i => (
               <tr key={i} style={{ height: rowH + "px" }}>
-                {rowsA[i] ? <TerrainRowCells a={rowsA[i]} big={big} /> : <TerrainEmptyCells />}
-                {rowsB[i] ? <TerrainRowCells a={rowsB[i]} big={big} /> : <TerrainEmptyCells />}
+                {rowsA[i] ? <TerrainRowCells a={rowsA[i]} big={big} allPresentBlue /> : <TerrainEmptyCells />}
+                {rowsB[i] ? <TerrainRowCells a={rowsB[i]} big={big} allPresentBlue /> : <TerrainEmptyCells />}
               </tr>
             ))}
           </tbody>
@@ -3851,7 +3851,7 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
           <table className="w-full text-[13px] border-collapse" style={{ tableLayout: "fixed" }}>
             <thead><tr><th className={TERRAIN_TH + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">Stagiaires</th></tr></thead>
             <tbody>
-              {extraGroups.reduce((acc, g) => acc.concat(g.rows), []).map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} /></tr>)}
+              {extraGroups.reduce((acc, g) => acc.concat(g.rows), []).map(a => <tr key={a.driverId} style={{ height: "30px" }}><TerrainRowCells a={a} allPresentBlue /></tr>)}
             </tbody>
           </table>
         </div>
