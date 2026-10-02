@@ -3465,6 +3465,8 @@ function MouvementsRtgPage() {
   const [sourceFilter, setSourceFilter] = useState("tous");
   // Filtre de shift : "tous" | "S1" | "S2" | "S3" (shift de la ligne de mouvements).
   const [shiftFilter, setShiftFilter] = useState("tous");
+  // Filtre d'équipe (ex. GR BAKKALI, GR HOUSSAM) : "tous" ou l'id d'une équipe.
+  const [teamFilter, setTeamFilter] = useState("tous");
 
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -3574,9 +3576,9 @@ function MouvementsRtgPage() {
     const fleet = inferEnginFleet(r.engin);
     return fleet === null || fleet === rawState.currentFleet;
   };
-  const sourceFilterRow = r => (sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL")) && (shiftFilter === "tous" || r.shift === shiftFilter);
-  const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftFilter]);
-  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftFilter]);
+  const sourceFilterRow = r => (sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL")) && (shiftFilter === "tous" || r.shift === shiftFilter) && (teamFilter === "tous" || (() => { const d = r.driverId ? rawState.drivers.find(dr => dr.id === r.driverId) : null; return !!d && d.teamId === teamFilter; })());
+  const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftFilter, teamFilter]);
+  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftFilter, teamFilter]);
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -3713,6 +3715,15 @@ function MouvementsRtgPage() {
         {[["tous", "Tous"], ["tos", "TOS seulement"], ["manuel", "Manuels seulement"]].map(([v, label]) => (
           <button key={v} onClick={() => setSourceFilter(v)} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sourceFilter === v ? "bg-sky-600 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{label}</button>
         ))}
+        {state.teams.length > 1 && (
+          <>
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 ml-3">Équipe</span>
+            <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className={FIELD_CLS} style={{ width: "auto" }}>
+              <option value="tous">Toutes les équipes</option>
+              {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+            </select>
+          </>
+        )}
         <span className="text-[10px] uppercase tracking-wider text-slate-500 ml-3">Shift</span>
         {[["tous", "Tous"], ["S1", "Shift 1"], ["S2", "Shift 2"], ["S3", "Shift 3"]].map(([v, label]) => (
           <button key={v} onClick={() => setShiftFilter(v)} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${shiftFilter === v ? "bg-sky-600 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{label}</button>
