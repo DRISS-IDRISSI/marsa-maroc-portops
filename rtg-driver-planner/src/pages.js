@@ -2477,6 +2477,11 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
   const [shiftChoice, setShiftChoice] = useState(assignment.shift || (config.shifts[0] && config.shifts[0].id));
   const [saving, setSaving] = useState(false);
   const isManual = assignment.source === "MANUAL";
+  // Le poste n'est enregistré QUE si le responsable l'a vraiment choisi : un
+  // simple changement de vacation/shift/statut ne doit jamais figer un poste
+  // (CC/CER, aujourd'hui et jours futurs) — tant qu'il n'est pas saisi, la
+  // zone reste PARC automatiquement (règle de l'exploitant).
+  const [zoneTouched, setZoneTouched] = useState(false);
 
   const shift = isNoRotation ? shiftChoice : (assignment.shift || (team ? ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(iso), config) : null));
   const vacDefs = shift ? (config.vacations[shift] || []) : [];
@@ -2503,7 +2508,10 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
         // vraie décision du responsable — seul un vrai poste quai physique en
         // est une (cf. commentaire isCerCdi ci-dessus). On enregistre alors
         // `null`, ce qui laisse la rotation automatique continuer à tourner.
-        const effectiveZone = isCerCdi && CER_CDI_AUTO_ZONE_VALUES.indexOf(zone) !== -1 ? null : zone;
+        const queueFleet = fleet === "CC" || fleet === "CER";
+        const alreadyManualPoste = assignment.source === "MANUAL" && !!assignment.zone && assignment.zone !== "PARC";
+        const keepAutoParc = queueFleet && iso >= RTGDate.toISO(new Date()) && !zoneTouched && !alreadyManualPoste;
+        const effectiveZone = (isCerCdi && CER_CDI_AUTO_ZONE_VALUES.indexOf(zone) !== -1) || keepAutoParc ? null : zone;
         override = { status: "PRESENT", shift: shift, vacation: vacation, zone: effectiveZone, startTime: startTime, endTime: endTime };
       } else {
         override = { status: status, shift: null, vacation: null, zone: null, startTime: null, endTime: null };
@@ -2559,7 +2567,7 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
               )}
               <div className="flex-1">
                 <label className={LABEL_CLS}>Zone</label>
-                <select className={FIELD_CLS} value={zone} onChange={e => setZone(e.target.value)}>
+                <select className={FIELD_CLS} value={zone} onChange={e => { setZone(e.target.value); setZoneTouched(true); }}>
                   {zoneOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
