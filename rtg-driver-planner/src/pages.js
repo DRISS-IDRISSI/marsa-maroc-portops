@@ -2511,7 +2511,13 @@ function AssignmentEditModal({ driver, iso, assignment, config, teams, onClose }
         const queueFleet = fleet === "CC" || fleet === "CER";
         const alreadyManualPoste = assignment.source === "MANUAL" && !!assignment.zone && assignment.zone !== "PARC";
         const keepAutoParc = queueFleet && iso >= RTGDate.toISO(new Date()) && !zoneTouched && !alreadyManualPoste;
-        const effectiveZone = (isCerCdi && CER_CDI_AUTO_ZONE_VALUES.indexOf(zone) !== -1) || keepAutoParc ? null : zone;
+        // AUTORISE choisi explicitement dans le menu (ou déjà saisi à la main)
+        // est un VRAI choix du responsable, même pour un CDI : il doit être
+        // conservé (seul PARC, ou un AUTORISE simplement hérité du formulaire
+        // sans que le menu ait été touché, retombe sur la rotation auto).
+        const keepAutorise = zone === "AUTORISE" && (zoneTouched || (assignment.source === "MANUAL" && assignment.zone === "AUTORISE"));
+        const cdiPlaceholder = isCerCdi && CER_CDI_AUTO_ZONE_VALUES.indexOf(zone) !== -1 && !keepAutorise;
+        const effectiveZone = cdiPlaceholder || keepAutoParc ? null : zone;
         override = { status: "PRESENT", shift: shift, vacation: vacation, zone: effectiveZone, startTime: startTime, endTime: endTime };
       } else {
         override = { status: status, shift: null, vacation: null, zone: null, startTime: null, endTime: null };
