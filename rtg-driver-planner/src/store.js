@@ -754,7 +754,36 @@ const RTGStore = (function () {
       fetchAllRows("mouvements_tos", "date_travail", driverId, dateFrom, dateTo),
       fetchAllRows("mouvements_manuels", "date_travail", driverId, dateFrom, dateTo)
     ]);
-    return tosRows.map(mapMouvementTosRow).concat(manuelRows.map(mapMouvementManuelRow));
+    return mergeMarginalShiftRows(tosRows.map(mapMouvementTosRow)).concat(manuelRows.map(mapMouvementManuelRow));
+  }
+
+  // Règle de l'exploitant : un conducteur qui réalise des mouvements dans DEUX
+  // shifts différents le même jour — avec MOINS de 6 mouvements dans un autre
+  // shift — voit ces mouvements aberrants fusionnés dans son shift RÉEL (celui
+  // où il en a réalisé le plus ce jour-là). Appliqué ici, à la source, pour
+  // que tous les écrans et rapports (détail, total, PDF, Excel, vue conducteur)
+  // restent cohérents. Deux shifts à 6 mouvements ou plus chacun = vrai
+  // double shift, conservé tel quel. Les mouvements manuels ne sont jamais
+  // touchés (leur shift est un choix volontaire, et n'est pas fusionné ici).
+  const MARGINAL_SHIFT_THRESHOLD = 6;
+  function mergeMarginalShiftRows(rows) {
+    const keyOf = r => (r.driverId || ("_" + r.loginTos)) + "|" + r.dateTravail;
+    const totals = {};
+    rows.forEach(r => {
+      if (!r.shift) return;
+      const k = keyOf(r);
+      const t = totals[k] || (totals[k] = {});
+      t[r.shift] = (t[r.shift] || 0) + (r.totalMvmt || 0);
+    });
+    return rows.map(r => {
+      if (!r.shift) return r;
+      const t = totals[keyOf(r)];
+      const shifts = Object.keys(t);
+      if (shifts.length < 2) return r;
+      const main = shifts.slice().sort((x, y) => t[y] - t[x])[0];
+      if (r.shift === main || t[r.shift] >= MARGINAL_SHIFT_THRESHOLD) return r;
+      return Object.assign({}, r, { shift: main, shiftFusionneDepuis: r.shift });
+    });
   }
 
   // Classement "Challenge Rendement" (Top 10 par flotte, mois en cours, global
