@@ -1678,6 +1678,9 @@ function RapportRHPage() {
   useEffect(() => { setDay("all"); }, [month, year]);
   // Détail jour par jour de chaque conducteur dans le rapport (activé par défaut).
   const [mvtDetail, setMvtDetail] = useState(true);
+  // Groupes cochés pour l'onglet Mouvements (plusieurs possibles ; aucun coché = filtre de la liste "Équipe").
+  const [mvtTeamsSel, setMvtTeamsSel] = useState({});
+  const mvtSelIds = Object.keys(mvtTeamsSel).filter(k => mvtTeamsSel[k]);
 
   const mvtReport = useMemo(() => {
     const map = {};
@@ -1693,7 +1696,9 @@ function RapportRHPage() {
       } else if (inferEnginFleet(r.engin) !== rawState.currentFleet) {
         return;
       }
-      if (effectiveTeamId !== "all" && (!d || d.teamId !== effectiveTeamId)) return;
+      if (mvtSelIds.length > 0) {
+        if (!d || mvtSelIds.indexOf(d.teamId) === -1) return;
+      } else if (effectiveTeamId !== "all" && (!d || d.teamId !== effectiveTeamId)) return;
       const key = r.driverId || ("_" + r.loginTos);
       if (!map[key]) {
         map[key] = { driverId: r.driverId, loginTos: r.loginTos, nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, totalMvmt: 0, rawRows: [] };
@@ -1713,7 +1718,7 @@ function RapportRHPage() {
       return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
     });
     return { rows, total: rows.reduce((s, r) => s + r.totalMvmt, 0) };
-  }, [mvtRows, state.drivers, rawState.currentFleet, effectiveTeamId, dayIso]);
+  }, [mvtRows, state.drivers, rawState.currentFleet, effectiveTeamId, dayIso, mvtTeamsSel]);
 
   const th = "px-2 py-2 text-left font-semibold border-b-2 border-slate-300 whitespace-nowrap";
   const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
@@ -1838,13 +1843,26 @@ function RapportRHPage() {
           <input type="checkbox" checked={mvtDetail} onChange={e => setMvtDetail(e.target.checked)} />Détail par jour de chaque conducteur
         </label>
         )}
-        {(!shiftRestricted || restrictedIds.length > 1) && (
+        {(!shiftRestricted || restrictedIds.length > 1) && tab !== "mouvements" && (
         <div>
           <label className={LABEL_CLS}>Équipe</label>
           <select value={teamId} onChange={e => setTeamId(e.target.value)} className={FIELD_CLS}>
             <option value="all">Toutes les équipes</option>
             {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
           </select>
+        </div>
+        )}
+        {(!shiftRestricted || restrictedIds.length > 1) && tab === "mouvements" && (
+        <div>
+          <label className={LABEL_CLS}>Groupes</label>
+          <div className="flex flex-wrap items-center gap-2">
+            {state.teams.map(t => (
+              <label key={t.id} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer select-none transition-all ${mvtTeamsSel[t.id] ? "bg-sky-600 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>
+                <input type="checkbox" checked={!!mvtTeamsSel[t.id]} onChange={() => setMvtTeamsSel(prev => Object.assign({}, prev, { [t.id]: !prev[t.id] }))} />{t.nom}
+              </label>
+            ))}
+            {mvtSelIds.length > 0 && <button onClick={() => setMvtTeamsSel({})} className="px-2 py-1 text-[11px] underline text-slate-500 hover:text-slate-900">Tous les groupes</button>}
+          </div>
         </div>
         )}
       </div>
@@ -1993,7 +2011,7 @@ function RapportRHPage() {
             <img src={rawState.currentFleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg"} alt={rawState.currentFleet === "CC" ? "Marsa Maroc" : "TC3PC"} className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
-              <div className="text-xs sm:text-sm text-slate-600">Mouvements {state.currentFleet} (import TOS) — {dayIso ? RTGDate.formatFr(RTGDate.parseISO(dayIso)) : RAPPORT_MOIS_LABELS[month - 1] + " " + year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+              <div className="text-xs sm:text-sm text-slate-600">Mouvements {state.currentFleet} (import TOS) — {dayIso ? RTGDate.formatFr(RTGDate.parseISO(dayIso)) : RAPPORT_MOIS_LABELS[month - 1] + " " + year}{mvtSelIds.length > 0 ? " — " + mvtSelIds.map(id => (state.teams.find(t => t.id === id) || {}).nom).filter(Boolean).join(", ") : (effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : "")}</div>
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
