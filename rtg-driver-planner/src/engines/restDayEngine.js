@@ -297,7 +297,12 @@ const RestDayEngine = {
       for (let d = 1; d <= dim; d++) {
         const iso = RTGDate.toISO(RTGDate.makeDate(year, month, d));
         const ov = state.manualOverrides[iso + "_" + driver.id];
-        if (ov && ov.status === "REPOS") set.add(d);
+        // Un repos compensatoire (RC) saisi/importé est traité exactement comme
+        // un repos normal par la rotation (quota, plafonds du jour, adjacence)
+        // et, via getDailyStatus, par les files de postes CC/CER — demande
+        // explicite de l'exploitant ("RC = repos compensatoire, à traiter
+        // comme un repos normal dans la rotation des conducteurs").
+        if (ov && (ov.status === "REPOS" || ov.status === "REPOS_COMPENSATOIRE")) set.add(d);
       }
       manualRestByDriver[driver.id] = set;
     });

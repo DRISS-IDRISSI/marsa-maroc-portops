@@ -58,6 +58,7 @@ const ValidationEngine = {
 
     days.forEach(day => {
       day.assignments.forEach(a => {
+        if (a.status === "REPOS_COMPENSATOIRE" && a.source === "MANUAL") hasManualRepos[a.driverId] = true;
         if (a.status === "REPOS") {
           reposCount[a.driverId] = (reposCount[a.driverId] || 0) + 1;
           if (a.restCorrection) correctedReposCount[a.driverId] = (correctedReposCount[a.driverId] || 0) + 1;
