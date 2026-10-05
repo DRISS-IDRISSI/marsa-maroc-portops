@@ -3465,7 +3465,7 @@ function MouvementsRtgPage() {
   // sur une ligne séparée de celle du TOS (voir byDay).
   const [sourceFilter, setSourceFilter] = useState("tous");
   // Filtre de shift : "tous" | "S1" | "S2" | "S3" (shift de la ligne de mouvements).
-  const [shiftFilter, setShiftFilter] = useState("tous");
+  const [shiftsSel, setShiftsSel] = useState({ S1: true, S2: true, S3: true });
   // Filtre d'équipe (ex. GR BAKKALI, GR HOUSSAM) : "tous" ou l'id d'une équipe.
   const [teamFilter, setTeamFilter] = useState("tous");
 
@@ -3577,9 +3577,9 @@ function MouvementsRtgPage() {
     const fleet = inferEnginFleet(r.engin);
     return fleet === null || fleet === rawState.currentFleet;
   };
-  const sourceFilterRow = r => (sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL")) && (shiftFilter === "tous" || r.shift === shiftFilter) && (teamFilter === "tous" || (() => { const d = r.driverId ? rawState.drivers.find(dr => dr.id === r.driverId) : null; return !!d && d.teamId === teamFilter; })());
-  const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftFilter, teamFilter]);
-  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftFilter, teamFilter]);
+  const sourceFilterRow = r => (sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL")) && (!(shiftsSel.S1 || shiftsSel.S2 || shiftsSel.S3) || (shiftsSel.S1 && shiftsSel.S2 && shiftsSel.S3) || !!shiftsSel[r.shift]) && (teamFilter === "tous" || (() => { const d = r.driverId ? rawState.drivers.find(dr => dr.id === r.driverId) : null; return !!d && d.teamId === teamFilter; })());
+  const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamFilter]);
+  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamFilter]);
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -3597,6 +3597,43 @@ function MouvementsRtgPage() {
       return (da ? da.matricule : "zzz").localeCompare(db ? db.matricule : "zzz");
     });
   }, [visibleTotalRows, state.drivers]);
+
+  // Détail jour par jour de chaque conducteur sur la période (onglet Total) :
+  // une ligne par jour + shift + provenance (TOS / Manuel), triées par date.
+  const dailyByDriver = useMemo(() => {
+    const byKey = {};
+    visibleTotalRows.forEach(r => { const key = r.driverId || ("_" + r.loginTos); (byKey[key] = byKey[key] || []).push(r); });
+    const out = {};
+    Object.keys(byKey).forEach(key => {
+      out[key] = groupMouvementsRows(byKey[key], r => r.dateTravail + "|" + (r.shift || "") + "|" + (r.source === "MANUEL" ? "M" : "T"))
+        .sort((a, b) => a.dateTravail.localeCompare(b.dateTravail) || String(a.dominantShift || "").localeCompare(String(b.dominantShift || "")));
+    });
+    return out;
+  }, [visibleTotalRows]);
+  const [expandedTotal, setExpandedTotal] = useState({});
+  const allExpanded = totalByDriver.length > 0 && totalByDriver.every(g => expandedTotal[g.driverId || ("_" + g.loginTos)]);
+  const toggleAllExpanded = () => {
+    const next = {};
+    if (!allExpanded) totalByDriver.forEach(g => { next[g.driverId || ("_" + g.loginTos)] = true; });
+    setExpandedTotal(next);
+  };
+  const exportTotalDetailExcel = () => {
+    const headers = ["Matricule", "Nom", "Prénom", "Équipe", "Date", "Shift", "Engin", "Provenance"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
+    const dataRows = [];
+    totalByDriver.forEach(g => {
+      const key = g.driverId || ("_" + g.loginTos);
+      const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
+      const team = d ? state.teams.find(t => t.id === d.teamId) : null;
+      (dailyByDriver[key] || []).forEach(day => {
+        const disp = withMouvementsDisplay(day);
+        const isManuel = day.sourceRows.some(sr => sr.source === "MANUEL");
+        dataRows.push([d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"), team ? team.nom : "",
+          RTGDate.formatFr(RTGDate.parseISO(day.dateTravail)), day.dominantShift || "", day.engins.join(", "), isManuel ? "Manuel" : "TOS"]
+          .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key])).concat([day.totalMvmt]));
+      });
+    });
+    downloadXLSX(`mouvements-rtg-detail-${dateDebut}-${dateFin}.xlsx`, headers, dataRows, "Détail");
+  };
 
   const totalUnmatchedLogins = [...new Set(visibleTotalRows.filter(r => !r.driverId).map(r => r.loginTos))];
   const totalGrandTotal = visibleTotalRows.reduce((s, r) => s + (r.totalMvmt || 0), 0);
@@ -3726,8 +3763,10 @@ function MouvementsRtgPage() {
           </>
         )}
         <span className="text-[10px] uppercase tracking-wider text-slate-500 ml-3">Shift</span>
-        {[["tous", "Tous"], ["S1", "Shift 1"], ["S2", "Shift 2"], ["S3", "Shift 3"]].map(([v, label]) => (
-          <button key={v} onClick={() => setShiftFilter(v)} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${shiftFilter === v ? "bg-sky-600 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{label}</button>
+        {[["S1", "Shift 1"], ["S2", "Shift 2"], ["S3", "Shift 3"]].map(([v, label]) => (
+          <label key={v} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer select-none transition-all ${shiftsSel[v] ? "bg-sky-600 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>
+            <input type="checkbox" checked={!!shiftsSel[v]} onChange={() => setShiftsSel(prev => Object.assign({}, prev, { [v]: !prev[v] }))} />{label}
+          </label>
         ))}
       </div>
 
@@ -3869,7 +3908,13 @@ function MouvementsRtgPage() {
           <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} className={FIELD_CLS} />
         </div>
         <button onClick={exportTotalExcel} disabled={totalByDriver.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50">
-          <i className="fas fa-file-excel mr-1.5"></i>Excel
+          <i className="fas fa-file-excel mr-1.5"></i>Excel (totaux)
+        </button>
+        <button onClick={exportTotalDetailExcel} disabled={totalByDriver.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50">
+          <i className="fas fa-file-excel mr-1.5"></i>Excel (détail par jour)
+        </button>
+        <button onClick={toggleAllExpanded} disabled={totalByDriver.length === 0} className="px-4 py-2 text-xs font-semibold rounded-lg bg-marine-700 text-white hover:bg-marine-600 disabled:opacity-50">
+          <i className={`fas ${allExpanded ? "fa-compress" : "fa-expand"} mr-1.5`}></i>{allExpanded ? "Tout replier" : "Tout déplier (détail du mois)"}
         </button>
         {!totalLoading && totalRows.length > 0 && (
           <div className="ml-auto text-xs text-slate-400">{totalByDriver.length} conducteur{totalByDriver.length > 1 ? "s" : ""} — <span className="text-slate-900 font-bold">{totalGrandTotal}</span> mouvements au total</div>
@@ -3892,22 +3937,27 @@ function MouvementsRtgPage() {
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-slate-400">
             <tr className="text-left">
-              <th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Nom</th><th className="px-3 py-2">Prénom</th><th className="px-3 py-2">Équipe</th>
+              <th className="px-2 py-2 w-8"></th><th className="px-3 py-2">Matricule</th><th className="px-3 py-2">Nom</th><th className="px-3 py-2">Prénom</th><th className="px-3 py-2">Équipe</th>
               {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <th key={c.key} className="px-3 py-2 text-center">{c.label}</th>)}
               <th className="px-3 py-2 text-center font-bold">Total</th>
             </tr>
           </thead>
           <tbody>
-            {totalLoading && <tr><td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 5} className="px-3 py-6 text-center text-slate-500 italic">Chargement...</td></tr>}
+            {totalLoading && <tr><td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 6} className="px-3 py-6 text-center text-slate-500 italic">Chargement...</td></tr>}
             {!totalLoading && totalByDriver.length === 0 && (
-              <tr><td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 5} className="px-3 py-6 text-center text-slate-500 italic">Aucun mouvement importé pour cette période.</td></tr>
+              <tr><td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 6} className="px-3 py-6 text-center text-slate-500 italic">Aucun mouvement importé pour cette période.</td></tr>
             )}
             {!totalLoading && totalByDriver.map(g => {
               const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
               const team = d ? state.teams.find(t => t.id === d.teamId) : null;
               const disp = withMouvementsDisplay(g);
+              const rowKey = g.driverId || ("_" + g.loginTos);
+              const isOpen = !!expandedTotal[rowKey];
+              const dayLines = dailyByDriver[rowKey] || [];
               return (
-                <tr key={g.driverId || g.loginTos} className="border-t border-slate-200 hover:bg-marine-600/10">
+                <React.Fragment key={rowKey}>
+                <tr className="border-t border-slate-200 hover:bg-marine-600/10 cursor-pointer" onClick={() => setExpandedTotal(prev => Object.assign({}, prev, { [rowKey]: !prev[rowKey] }))}>
+                  <td className="px-2 py-2 text-slate-500 text-center"><i className={`fas ${isOpen ? "fa-chevron-down" : "fa-chevron-right"}`}></i></td>
                   <td className="px-3 py-2 text-slate-900">{d ? d.matricule : <span className="text-amber-400">{g.loginTos}</span>}</td>
                   <td className="px-3 py-2 text-slate-900">{d ? d.nom : "(non rattaché)"}</td>
                   <td className="px-3 py-2 text-slate-600">{d ? d.prenom : ""}</td>
@@ -3915,6 +3965,38 @@ function MouvementsRtgPage() {
                   {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className="px-3 py-2 text-center text-slate-600">{disp[c.key]}</td>)}
                   <td className="px-3 py-2 text-center text-slate-900 font-bold">{g.totalMvmt}</td>
                 </tr>
+                {isOpen && (
+                  <tr className="bg-slate-50/70">
+                    <td></td>
+                    <td colSpan={MOUVEMENTS_DISPLAY_COLUMNS.length + 5} className="px-3 py-2">
+                      {dayLines.length === 0 ? <span className="text-slate-500 italic">Aucun mouvement sur la période.</span> : (
+                        <table className="w-full text-[11px]">
+                          <thead className="text-slate-400">
+                            <tr className="text-left"><th className="px-2 py-1">Date</th><th className="px-2 py-1">Shift</th><th className="px-2 py-1">Engin</th>
+                              {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <th key={c.key} className="px-2 py-1 text-center">{c.label}</th>)}
+                              <th className="px-2 py-1 text-center font-bold">Total</th></tr>
+                          </thead>
+                          <tbody>
+                            {dayLines.map(day => {
+                              const dd = withMouvementsDisplay(day);
+                              const isManuel = day.sourceRows.some(sr => sr.source === "MANUEL");
+                              return (
+                                <tr key={day.id} className="border-t border-slate-200">
+                                  <td className="px-2 py-1 text-slate-900">{RTGDate.formatFr(RTGDate.parseISO(day.dateTravail))}</td>
+                                  <td className="px-2 py-1 text-slate-600">{day.dominantShift || "—"}</td>
+                                  <td className="px-2 py-1 text-slate-600">{day.engins.join(", ")}{isManuel && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-semibold">Manuel</span>}</td>
+                                  {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className="px-2 py-1 text-center text-slate-600">{dd[c.key]}</td>)}
+                                  <td className="px-2 py-1 text-center text-slate-900 font-bold">{day.totalMvmt}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
           </tbody>
