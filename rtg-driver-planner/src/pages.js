@@ -3779,13 +3779,13 @@ function TerrainFrameHeader({ team, shiftLabel, dateStr, title }) {
   return (
     <React.Fragment>
       <div className="grid grid-cols-2 border-b border-black text-[14px]">
-        <div className="border-r border-black px-3 py-3 font-semibold">Département Trafic Conteneurs — Division Exploitation</div>
-        <div className="px-3 py-3">
+        <div className="border-r border-black px-3 py-3 font-semibold" style={{ backgroundColor: "#DDF1FB", color: "#0B2E5C" }}>Département Trafic Conteneurs — Division Exploitation</div>
+        <div className="px-3 py-3" style={{ backgroundColor: "#DDF1FB", color: "#0B2E5C" }}>
           <div className="font-bold">{team ? team.nom : ""} — {shiftLabel}</div>
           <div>DATE : {dateFmt}</div>
         </div>
       </div>
-      <div className="border-b border-black text-center font-bold text-[16px] py-2 uppercase">{title}</div>
+      <div className="border-b border-black text-center font-bold text-[16px] uppercase" style={{ backgroundColor: "#0B2E5C", color: "#FFFFFF", paddingTop: 4, paddingBottom: 10, lineHeight: "20px" }}>{title}</div>
     </React.Fragment>
   );
 }
@@ -3799,7 +3799,7 @@ function CerAffectationTerrainPrintable({ team, shiftLabel, dateStr, groups, tit
   const big = rowH >= 46;
   return (
     <div className="mb-3">
-      <div className="rounded-lg overflow-hidden border-2 border-black">
+      <div className="rounded-lg overflow-hidden border-2" style={{ borderColor: "#0B2E5C" }}>
         <TerrainFrameHeader team={team} shiftLabel={shiftLabel} dateStr={dateStr} title={title || "Chariots Élévateurs"} />
         <table className="w-full text-[13px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
@@ -3837,7 +3837,7 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
   const vacLabel = (side, letter) => side && side.vacation ? "Vacation " + letter + (side.vacation.start ? " · " + side.vacation.start + " → " + side.vacation.end : "") : "Vacation " + letter;
   return (
     <div className="mb-3">
-      <div className="rounded-lg overflow-hidden border-2 border-black">
+      <div className="rounded-lg overflow-hidden border-2" style={{ borderColor: "#0B2E5C" }}>
         <TerrainFrameHeader team={team} shiftLabel={shiftLabel} dateStr={dateStr} title="RTG" />
         <table className="w-full text-[13px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
@@ -3866,7 +3866,7 @@ function RtgAffectationTerrainPrintable({ team, shiftLabel, dateStr, sideA, side
         </table>
       </div>
       {(extraGroups || []).length > 0 && (
-        <div className="mt-2 rounded-lg overflow-hidden border-2 border-black">
+        <div className="mt-2 rounded-lg overflow-hidden border-2" style={{ borderColor: "#0B2E5C" }}>
           <table className="w-full text-[13px] border-collapse" style={{ tableLayout: "fixed" }}>
             <thead><tr><th className={TERRAIN_TH + " text-center"} style={TERRAIN_TH_ORANGE} colSpan="3">Stagiaires</th></tr></thead>
             <tbody>
@@ -3889,11 +3889,11 @@ const TERRAIN_TD = "border border-black px-1 py-1 whitespace-nowrap align-middle
 const TERRAIN_TD_WRAP = "border border-black px-1 py-1 break-words align-middle";
 function CcAffectationHeader({ generatedAt, fleet }) {
   return (
-    <div className="mb-2 pb-2 border-b-2 border-slate-800">
+    <div className="mb-2 pb-2" style={{ borderBottom: "3px solid #29A8E0" }}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <img src="icons/marsa-maroc-logo.png" alt="Marsa Maroc" className="h-14 w-auto shrink-0" />
-          <div className="text-xl font-bold uppercase">État d'affectation des conducteurs</div>
+          <div className="text-xl font-bold uppercase" style={{ color: "#0B2E5C" }}>État d'affectation des conducteurs</div>
           {fleet && <span className="px-3 rounded-md text-base font-bold" style={{ backgroundColor: "#FDBA74", color: "#431407", lineHeight: "20px", paddingTop: 3, paddingBottom: 7 }}>{fleet}</span>}
         </div>
         <div className="text-right text-[10px] text-slate-500 shrink-0">
@@ -3901,9 +3901,9 @@ function CcAffectationHeader({ generatedAt, fleet }) {
         </div>
       </div>
       <div className="mt-2 flex items-center gap-1 text-[12px]">
-        <span className="font-bold uppercase mr-1">Document :</span>
+        <span className="font-bold uppercase mr-1" style={{ color: "#0B2E5C" }}>Document :</span>
         {AFFECTATION_DOC_CODE.split("").map((ch, idx) => (
-          <span key={idx} className="inline-block text-center font-bold border border-black" style={{ width: 20, lineHeight: "14px", paddingTop: 2, paddingBottom: 6, verticalAlign: "middle" }}>{ch}</span>
+          <span key={idx} className="inline-block text-center font-bold border" style={{ borderColor: "#0B2E5C", color: "#0B2E5C", backgroundColor: "#DDF1FB", width: 20, lineHeight: "14px", paddingTop: 2, paddingBottom: 6, verticalAlign: "middle" }}>{ch}</span>
         ))}
       </div>
     </div>
