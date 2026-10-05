@@ -175,8 +175,23 @@ const RTGStore = (function () {
     const PAGE_SIZE = 1000;
     const rows = [];
     for (let offset = 0; ; offset += PAGE_SIZE) {
-      const { data, error } = await sb.from(table).select("*").order("date").order("id").range(offset, offset + PAGE_SIZE - 1);
-      if (error) { console.error(error); return { data: null, error: error }; }
+      // Jusqu'à 4 essais par page : un échec ponctuel (timeout / réseau) sur
+      // une page renvoyait data=null → TOUS les overrides absents sans aucun
+      // message (shifts CDI, imports, corrections manuelles disparaissaient
+      // d'un coup de l'écran, alors que la base les contenait toujours).
+      let data = null, error = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const res = await sb.from(table).select("*").order("date").order("id").range(offset, offset + PAGE_SIZE - 1);
+        data = res.data; error = res.error;
+        if (!error) break;
+        console.error("Chargement " + table + " (page " + (offset / PAGE_SIZE + 1) + ", essai " + (attempt + 1) + ")", error);
+        await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+      }
+      if (error) {
+        console.error(error);
+        if (typeof window !== "undefined") window.__rtgOverridesLoadError = true;
+        return { data: null, error: error };
+      }
       rows.push(...(data || []));
       if (!data || data.length < PAGE_SIZE) break;
     }
