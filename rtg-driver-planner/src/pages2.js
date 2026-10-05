@@ -3467,7 +3467,8 @@ function MouvementsRtgPage() {
   // Filtre de shift : "tous" | "S1" | "S2" | "S3" (shift de la ligne de mouvements).
   const [shiftsSel, setShiftsSel] = useState({ S1: true, S2: true, S3: true });
   // Filtre d'équipe (ex. GR BAKKALI, GR HOUSSAM) : "tous" ou l'id d'une équipe.
-  const [teamFilter, setTeamFilter] = useState("tous");
+  // Équipes cochées (plusieurs possibles) : aucune cochée = toutes les équipes.
+  const [teamsSel, setTeamsSel] = useState({});
 
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -3577,9 +3578,9 @@ function MouvementsRtgPage() {
     const fleet = inferEnginFleet(r.engin);
     return fleet === null || fleet === rawState.currentFleet;
   };
-  const sourceFilterRow = r => (sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL")) && (!(shiftsSel.S1 || shiftsSel.S2 || shiftsSel.S3) || (shiftsSel.S1 && shiftsSel.S2 && shiftsSel.S3) || !!shiftsSel[r.shift]) && (teamFilter === "tous" || (() => { const d = r.driverId ? rawState.drivers.find(dr => dr.id === r.driverId) : null; return !!d && d.teamId === teamFilter; })());
-  const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamFilter]);
-  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamFilter]);
+  const sourceFilterRow = r => (sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL")) && (!(shiftsSel.S1 || shiftsSel.S2 || shiftsSel.S3) || (shiftsSel.S1 && shiftsSel.S2 && shiftsSel.S3) || !!shiftsSel[r.shift]) && (!Object.keys(teamsSel).some(k => teamsSel[k]) || (() => { const d = r.driverId ? rawState.drivers.find(dr => dr.id === r.driverId) : null; return !!d && !!teamsSel[d.teamId]; })());
+  const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamsSel]);
+  const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamsSel]);
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -3756,10 +3757,14 @@ function MouvementsRtgPage() {
         {state.teams.length > 1 && (
           <>
             <span className="text-[10px] uppercase tracking-wider text-slate-500 ml-3">Équipe</span>
-            <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className={FIELD_CLS} style={{ width: "auto" }}>
-              <option value="tous">Toutes les équipes</option>
-              {state.teams.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-            </select>
+            {state.teams.map(t => (
+              <label key={t.id} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer select-none transition-all ${teamsSel[t.id] ? "bg-sky-600 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>
+                <input type="checkbox" checked={!!teamsSel[t.id]} onChange={() => setTeamsSel(prev => Object.assign({}, prev, { [t.id]: !prev[t.id] }))} />{t.nom}
+              </label>
+            ))}
+            {Object.keys(teamsSel).some(k => teamsSel[k]) && (
+              <button onClick={() => setTeamsSel({})} className="px-2 py-1 text-[11px] underline text-slate-500 hover:text-slate-900">Toutes les équipes</button>
+            )}
           </>
         )}
         <span className="text-[10px] uppercase tracking-wider text-slate-500 ml-3">Shift</span>
