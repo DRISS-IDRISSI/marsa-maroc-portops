@@ -1588,7 +1588,7 @@ function buildRapportRH(state, month, year, teamId) {
 // Rapport jours fériés travaillés & 3ème shift dimanche (§29/§31) — recense les
 // dérogations "nécessité de service" du mois, avec les mouvements réalisés
 // pour chaque jour férié travaillé (cf. FerieMouvementsPanel, pages.js).
-function buildRapportFeriesS3(state, month, year, teamId) {
+function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
   const prefix = year + "-" + String(month).padStart(2, "0");
   const records = state.heuresExceptionnelles
     .filter(r => (r.type === "FERIE_TRAVAILLE" || r.type === "DIMANCHE_S3") && r.dateDebut.slice(0, 7) === prefix)
@@ -1604,13 +1604,25 @@ function buildRapportFeriesS3(state, month, year, teamId) {
     })
     .slice().sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
 
+  // Mouvements réellement réalisés (TOS + saisies manuelles) par conducteur
+  // et par jour : repris automatiquement pour les jours fériés travaillés ET
+  // les 3èmes shifts dimanche (demande explicite de l'exploitant).
+  const mvtByKey = {};
+  (mvtRows || []).forEach(m => {
+    if (!m.driverId) return;
+    const k = m.driverId + "_" + m.dateTravail;
+    mvtByKey[k] = (mvtByKey[k] || 0) + (m.totalMvmt || 0);
+  });
   const rows = records.map(r => {
     const driver = state.drivers.find(d => d.id === r.driverId);
     const team = driver ? state.teams.find(t => t.id === driver.teamId) : null;
     const mouvement = r.type === "FERIE_TRAVAILLE" ? RTGStore.getFerieMouvements(r.dateDebut, r.driverId) : null;
+    const auto = mvtByKey[r.driverId + "_" + r.dateDebut];
+    // Saisie explicite (férié) prioritaire, sinon total importé du TOS/manuel.
+    const total = mouvement && mouvement.mouvements != null ? mouvement.mouvements : (auto !== undefined ? auto : null);
     return {
       record: r, driver: driver, teamNom: team ? team.nom : (driver ? driver.teamId : ""),
-      mouvements: mouvement ? mouvement.mouvements : null,
+      mouvements: total,
       mouvementCommentaire: mouvement ? mouvement.commentaire || "" : ""
     };
   });
@@ -1654,7 +1666,6 @@ function RapportRHPage() {
   const dayIso = day === "all" ? null : RTGDate.toISO(RTGDate.makeDate(year, month, Number(day)));
 
   const report = useMemo(() => buildRapportRH(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
-  const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId), [state, month, year, effectiveTeamId]);
   const generatedAt = rtgNowInCasablanca();
 
   // Onglet "Mouvements RTG" : total par conducteur (import automatique TOS),
@@ -1663,7 +1674,7 @@ function RapportRHPage() {
   const [mvtLoading, setMvtLoading] = useState(false);
   const [mvtError, setMvtError] = useState("");
   useEffect(() => {
-    if (tab !== "mouvements") return;
+    if (tab !== "mouvements" && tab !== "feries") return;
     setMvtLoading(true);
     setMvtError("");
     const dim = RTGDate.daysInMonth(month, year);
@@ -1675,6 +1686,7 @@ function RapportRHPage() {
       .finally(() => setMvtLoading(false));
   }, [tab, month, year]);
 
+  const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows), [state, month, year, effectiveTeamId, mvtRows]);
   useEffect(() => { setDay("all"); }, [month, year]);
   // Détail jour par jour de chaque conducteur dans le rapport (activé par défaut).
   const [mvtDetail, setMvtDetail] = useState(true);
@@ -1759,8 +1771,8 @@ function RapportRHPage() {
       const rows = feriesReport.rows.map(r => [
         r.record.dateDebut, r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", r.teamNom,
         r.record.type === "FERIE_TRAVAILLE" ? "Férié travaillé" : "3ème shift dimanche", r.record.heures,
-        r.record.type === "FERIE_TRAVAILLE" ? (r.mouvements != null ? r.mouvements : "") : "",
-        r.record.type === "FERIE_TRAVAILLE" ? (r.mouvementCommentaire || r.record.commentaire || "") : (r.record.commentaire || "")
+        r.mouvements != null ? r.mouvements : "",
+        r.mouvementCommentaire || r.record.commentaire || ""
       ]);
       downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés");
       return;
@@ -1979,8 +1991,8 @@ function RapportRHPage() {
                   <td className={td}>{r.teamNom}</td>
                   <td className={td}>{r.record.type === "FERIE_TRAVAILLE" ? "Férié travaillé" : "3ème shift dimanche"}</td>
                   <td className={tdCenter}>{r.record.heures}h</td>
-                  <td className={tdCenter}>{r.record.type === "FERIE_TRAVAILLE" ? (r.mouvements != null ? r.mouvements : "—") : "—"}</td>
-                  <td className={td}>{r.record.type === "FERIE_TRAVAILLE" ? (r.mouvementCommentaire || r.record.commentaire || "") : (r.record.commentaire || "")}</td>
+                  <td className={tdCenter}>{r.mouvements != null ? r.mouvements : "—"}</td>
+                  <td className={td}>{r.mouvementCommentaire || r.record.commentaire || ""}</td>
                 </tr>
               ))}
               {feriesReport.rows.length === 0 && (
