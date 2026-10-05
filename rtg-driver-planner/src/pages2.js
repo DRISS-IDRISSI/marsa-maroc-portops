@@ -1657,16 +1657,23 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
   // et par jour : repris automatiquement pour les jours fériés travaillés ET
   // les 3èmes shifts dimanche (demande explicite de l'exploitant).
   const mvtByKey = {};
+  const mvtByKeyS3 = {};
   (mvtRows || []).forEach(m => {
     if (!m.driverId) return;
     const k = m.driverId + "_" + m.dateTravail;
     mvtByKey[k] = (mvtByKey[k] || 0) + (m.totalMvmt || 0);
+    if (String(m.shift || "").toUpperCase() === "S3") mvtByKeyS3[k] = (mvtByKeyS3[k] || 0) + (m.totalMvmt || 0);
   });
   const rows = records.map(r => {
     const driver = state.drivers.find(d => d.id === r.driverId);
     const team = driver ? state.teams.find(t => t.id === driver.teamId) : null;
     const mouvement = r.type === "FERIE_TRAVAILLE" ? RTGStore.getFerieMouvements(r.dateDebut, r.driverId) : null;
-    const auto = mvtByKey[r.driverId + "_" + r.dateDebut];
+    // 3ème shift dimanche : seuls les mouvements du SHIFT 3 comptent (un
+    // conducteur peut avoir aussi travaillé un autre shift ce même jour — ses
+    // mouvements de S1/S2 ne sont pas ceux du 3ème shift dimanche). À défaut
+    // de mouvements étiquetés S3, retombe sur le total de la journée.
+    const keyDay = r.driverId + "_" + r.dateDebut;
+    const auto = r.type === "DIMANCHE_S3" && mvtByKeyS3[keyDay] !== undefined ? mvtByKeyS3[keyDay] : mvtByKey[keyDay];
     // Saisie explicite (férié) prioritaire, sinon total importé du TOS/manuel.
     const total = mouvement && mouvement.mouvements != null ? mouvement.mouvements : (auto !== undefined ? auto : null);
     return {
