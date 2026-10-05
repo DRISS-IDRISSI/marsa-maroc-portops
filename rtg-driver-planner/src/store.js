@@ -754,7 +754,47 @@ const RTGStore = (function () {
       fetchAllRows("mouvements_tos", "date_travail", driverId, dateFrom, dateTo),
       fetchAllRows("mouvements_manuels", "date_travail", driverId, dateFrom, dateTo)
     ]);
-    return mergeMarginalShiftRows(tosRows.map(mapMouvementTosRow)).concat(manuelRows.map(mapMouvementManuelRow));
+    const tos = mergeMarginalShiftRows(tosRows.map(mapMouvementTosRow));
+    return tos.concat(fillManualMovementShifts(tos, manuelRows.map(mapMouvementManuelRow)));
+  }
+
+  // Un mouvement saisi à la main n'a pas de shift enregistré : on lui donne le
+  // shift que le conducteur a réellement travaillé ce jour-là — d'abord celui
+  // où il a le plus de mouvements TOS ce jour-là, à défaut le shift de son
+  // équipe pour cette date (rotation), ou le shift saisi à la main pour un
+  // CDI/stagiaire. Un shift déjà renseigné sur la saisie est conservé.
+  function fillManualMovementShifts(tosRows, manuals) {
+    const totals = {};
+    tosRows.forEach(r => {
+      if (!r.shift || !r.driverId) return;
+      const k = r.driverId + "|" + r.dateTravail;
+      const t = totals[k] || (totals[k] = {});
+      t[r.shift] = (t[r.shift] || 0) + (r.totalMvmt || 0);
+    });
+    return manuals.map(m => {
+      if (m.shift || !m.driverId) return m;
+      try {
+        const t = totals[m.driverId + "|" + m.dateTravail];
+        if (t) {
+          const main = Object.keys(t).sort((x, y) => t[y] - t[x])[0];
+          return Object.assign({}, m, { shift: main, shiftDeduit: true });
+        }
+        const driver = state.drivers.find(d => d.id === m.driverId);
+        const team = driver ? state.teams.find(tm => tm.id === driver.teamId) : null;
+        if (!team) return m;
+        const noRotation = !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
+        let shift = "";
+        if (!noRotation) {
+          shift = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(m.dateTravail), state.config) || "";
+        } else {
+          const ov = state.manualOverrides && state.manualOverrides[m.dateTravail + "_" + m.driverId];
+          shift = (ov && ov.shift) || "";
+        }
+        return shift ? Object.assign({}, m, { shift: shift, shiftDeduit: true }) : m;
+      } catch (e) {
+        return m;
+      }
+    });
   }
 
   // Règle de l'exploitant : un conducteur qui réalise des mouvements dans DEUX
