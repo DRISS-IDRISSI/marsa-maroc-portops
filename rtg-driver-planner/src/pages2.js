@@ -1150,6 +1150,32 @@ function HeuresExceptionnellesPage() {
   const [form, setForm] = useState(emptyHeureExceptionnelleForm());
   const [error, setError] = useState("");
   const [filterDriverId, setFilterDriverId] = useState("");
+  // Modification d'un enregistrement existant (Admin / Responsable / Responsable de Shift).
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const startEdit = r => {
+    setEditId(r.id);
+    setEditForm({ date: r.dateDebut, type: r.type, heures: r.heures, mouvements: r.mouvements != null ? String(r.mouvements) : "", commentaire: r.commentaire || "" });
+    setError("");
+  };
+  const saveEdit = async () => {
+    const heures = Number(editForm.heures);
+    if (!editForm.date) { setError("La date est obligatoire."); return; }
+    if (!heures || heures <= 0) { setError("Le nombre d'heures doit être supérieur à 0."); return; }
+    setEditBusy(true);
+    try {
+      await RTGStore.updateHeureExceptionnelle(editId, {
+        dateDebut: editForm.date, dateFin: editForm.date, type: editForm.type, heures: heures,
+        mouvements: editForm.mouvements === "" ? null : Number(editForm.mouvements), commentaire: editForm.commentaire
+      });
+      setEditId(null); setEditForm(null); setError("");
+    } catch (e) {
+      setError("Modification impossible : " + (e && e.message ? e.message : e));
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   // Bascule RTG/CC : un compte restreint (Responsable de Shift/Chef
   // d'Escale) reste sur sa (ou ses, binôme RTG+CC) propre équipe quelle
@@ -1238,6 +1264,7 @@ function HeuresExceptionnellesPage() {
         )}
       </div>
 
+      {editId && error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</div>}
       <p className="sm:hidden text-[11px] text-slate-500"><i className="fas fa-arrows-left-right mr-1"></i>Faites glisser le tableau pour voir plus de colonnes</p>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs">
@@ -1253,6 +1280,28 @@ function HeuresExceptionnellesPage() {
             )}
             {records.map(r => {
               const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-200 text-slate-600" };
+              if (canManage && editId === r.id && editForm) {
+                const upd = patch => setEditForm(f => Object.assign({}, f, patch));
+                return (
+                  <tr key={r.id} className="border-t border-slate-200 bg-orange-50/60">
+                    <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
+                    <td className="px-2 py-2"><input type="date" className={FIELD_CLS} value={editForm.date} onChange={e => upd({ date: e.target.value })} /></td>
+                    <td className="px-2 py-2">
+                      <select className={FIELD_CLS} value={editForm.type} onChange={e => upd({ type: e.target.value })}>
+                        {Object.entries(HEURE_EXCEPTIONNELLE_TYPES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-2 py-2"><input type="number" min="0" step="0.5" className={FIELD_CLS + " w-20"} value={editForm.heures} onChange={e => upd({ heures: e.target.value })} /></td>
+                    <td className="px-2 py-2"><input type="number" min="0" step="1" placeholder="—" className={FIELD_CLS + " w-24"} value={editForm.mouvements} onChange={e => upd({ mouvements: e.target.value })} /></td>
+                    <td className="hidden sm:table-cell px-2 py-2"><input className={FIELD_CLS} value={editForm.commentaire} onChange={e => upd({ commentaire: e.target.value })} /></td>
+                    <td className="hidden sm:table-cell px-3 py-2 text-slate-500">{r.utilisateur}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <button disabled={editBusy} onClick={saveEdit} className="text-emerald-600 hover:text-emerald-800 text-xs font-semibold mr-3 disabled:opacity-50">Enregistrer</button>
+                      <button disabled={editBusy} onClick={() => { setEditId(null); setEditForm(null); setError(""); }} className="text-slate-500 hover:text-slate-900 text-xs">Annuler</button>
+                    </td>
+                  </tr>
+                );
+              }
               return (
                 <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
@@ -1262,7 +1311,7 @@ function HeuresExceptionnellesPage() {
                   <td className="px-3 py-2 text-slate-600 text-center">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                   <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
-                  <td className="px-3 py-2">{canManage ? <ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /> : <span className="text-slate-400 text-[11px] italic">Lecture seule</span>}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{canManage ? <span className="inline-flex items-center gap-3"><button onClick={() => startEdit(r)} className="text-sky-600 hover:text-sky-800 text-xs font-semibold">Modifier</button><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></span> : <span className="text-slate-400 text-[11px] italic">Lecture seule</span>}</td>
                 </tr>
               );
             })}
