@@ -1676,6 +1676,8 @@ function RapportRHPage() {
   }, [tab, month, year]);
 
   useEffect(() => { setDay("all"); }, [month, year]);
+  // Détail jour par jour de chaque conducteur dans le rapport (activé par défaut).
+  const [mvtDetail, setMvtDetail] = useState(true);
 
   const mvtReport = useMemo(() => {
     const map = {};
@@ -1694,10 +1696,16 @@ function RapportRHPage() {
       if (effectiveTeamId !== "all" && (!d || d.teamId !== effectiveTeamId)) return;
       const key = r.driverId || ("_" + r.loginTos);
       if (!map[key]) {
-        map[key] = { driverId: r.driverId, loginTos: r.loginTos, nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, totalMvmt: 0 };
+        map[key] = { driverId: r.driverId, loginTos: r.loginTos, nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, totalMvmt: 0, rawRows: [] };
       }
       MOUVEMENTS_TOS_COLUMNS.forEach(c => { map[key][c.key] += r[c.key] || 0; });
       map[key].totalMvmt += r.totalMvmt || 0;
+      map[key].rawRows.push(r);
+    });
+    // Détail jour par jour : une ligne par jour + shift + provenance (TOS / Manuel).
+    Object.keys(map).forEach(key => {
+      map[key].days = groupMouvementsRows(map[key].rawRows, r => r.dateTravail + "|" + (r.shift || "") + "|" + (r.source === "MANUEL" ? "M" : "T"))
+        .sort((a, b) => a.dateTravail.localeCompare(b.dateTravail) || String(a.dominantShift || "").localeCompare(String(b.dominantShift || "")));
     });
     const rows = Object.values(map).sort((a, b) => {
       const da = a.driverId ? state.drivers.find(d => d.id === a.driverId) : null;
@@ -1712,6 +1720,22 @@ function RapportRHPage() {
   const tdCenter = td + " text-center";
 
   const exportExcel = () => {
+    if (tab === "mouvements" && mvtDetail) {
+      const headers = ["Mat", "Nom", "Prénom", "Équipe", "Date", "Shift", "Engin", "Provenance"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
+      const rows = [];
+      mvtReport.rows.forEach(g => {
+        const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
+        const teamNom = d ? ((state.teams.find(t => t.id === d.teamId) || {}).nom || "") : "";
+        g.days.forEach(day => {
+          const disp = withMouvementsDisplay(day);
+          rows.push([d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"), teamNom,
+            RTGDate.formatFr(RTGDate.parseISO(day.dateTravail)), day.dominantShift || "", day.engins.join(", "), day.sourceRows.some(sr => sr.source === "MANUEL") ? "Manuel" : "TOS"]
+            .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key])).concat([day.totalMvmt]));
+        });
+      });
+      downloadXLSX(`mouvements-rtg-detail-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.xlsx`, headers, rows, "Détail");
+      return;
+    }
     if (tab === "mouvements") {
       const headers = ["Mat", "Nom", "Prénom", "Équipe"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
       const rows = mvtReport.rows.map(g => {
@@ -1808,6 +1832,11 @@ function RapportRHPage() {
             ))}
           </select>
         </div>
+        )}
+        {tab === "mouvements" && (
+        <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none pb-2">
+          <input type="checkbox" checked={mvtDetail} onChange={e => setMvtDetail(e.target.checked)} />Détail par jour de chaque conducteur
+        </label>
         )}
         {(!shiftRestricted || restrictedIds.length > 1) && (
         <div>
@@ -1995,15 +2024,32 @@ function RapportRHPage() {
                 const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
                 const teamNom = d ? ((state.teams.find(t => t.id === d.teamId) || {}).nom || "") : "";
                 const disp = withMouvementsDisplay(g);
+                const sumBg = mvtDetail ? { backgroundColor: "#f1f5f9" } : undefined;
                 return (
-                  <tr key={g.driverId || g.loginTos}>
-                    <td className={td}>{d ? d.matricule : g.loginTos}</td>
-                    <td className={td + " font-medium"}>{d ? d.nom : "(non rattaché)"}</td>
-                    <td className={td}>{d ? d.prenom : ""}</td>
-                    <td className={td}>{teamNom}</td>
-                    {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className={tdCenter}>{disp[c.key]}</td>)}
-                    <td className={tdCenter + " font-semibold"}>{g.totalMvmt}</td>
+                  <React.Fragment key={g.driverId || g.loginTos}>
+                  <tr>
+                    <td className={td} style={sumBg}>{d ? d.matricule : g.loginTos}</td>
+                    <td className={td + " font-medium"} style={sumBg}>{d ? d.nom : "(non rattaché)"}</td>
+                    <td className={td} style={sumBg}>{d ? d.prenom : ""}</td>
+                    <td className={td} style={sumBg}>{teamNom}</td>
+                    {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className={tdCenter} style={sumBg}>{disp[c.key]}</td>)}
+                    <td className={tdCenter + " font-semibold"} style={sumBg}>{g.totalMvmt}</td>
                   </tr>
+                  {mvtDetail && g.days.map(day => {
+                    const dd = withMouvementsDisplay(day);
+                    const isManuel = day.sourceRows.some(sr => sr.source === "MANUEL");
+                    return (
+                      <tr key={g.driverId + "_" + day.id} style={{ fontSize: 11 }}>
+                        <td className={td}></td>
+                        <td className={td + " text-slate-700"}>{RTGDate.formatFr(RTGDate.parseISO(day.dateTravail))}</td>
+                        <td className={td + " text-slate-600"}>{day.dominantShift || "—"}</td>
+                        <td className={td + " text-slate-600"}>{day.engins.join(", ")}{isManuel ? " (manuel)" : ""}</td>
+                        {MOUVEMENTS_DISPLAY_COLUMNS.map(c => <td key={c.key} className={tdCenter + " text-slate-600"}>{dd[c.key]}</td>)}
+                        <td className={tdCenter}>{day.totalMvmt}</td>
+                      </tr>
+                    );
+                  })}
+                  </React.Fragment>
                 );
               })}
               {!mvtLoading && mvtReport.rows.length === 0 && (
