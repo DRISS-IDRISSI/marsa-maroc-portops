@@ -2930,10 +2930,15 @@ function Home() {
   const counts = { PRESENT: 0, REPOS: 0, CONGE: 0, MALADIE: 0, ABSENCE: 0, FORMATION: 0, OFF: 0 };
   todayAssignments.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
 
+  // Cartes triées par shift (S1, S2, S3), puis par nom d'équipe à shift égal.
   const byTeam = state.teams.map(t => ({
     team: t,
     shift: ShiftRotationEngine.getTeamShiftForDate(t, RTGDate.parseISO(todayIso), state.config)
-  }));
+  })).sort((x, y) => {
+    const sx = (String(x.shift || "").match(/^S(\d+)$/i) || [])[1], sy = (String(y.shift || "").match(/^S(\d+)$/i) || [])[1];
+    const kx = sx ? Number(sx) : 99, ky = sy ? Number(sy) : 99;
+    return kx - ky || String(x.team.nom || "").localeCompare(String(y.team.nom || ""));
+  });
 
   const validation = shiftRestricted
     ? (() => {
