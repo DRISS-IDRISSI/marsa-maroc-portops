@@ -404,6 +404,7 @@ Deno.serve(async _req => {
 
   let processedEmails = 0;
   let pushAlertsSent = 0;
+  const debugRecent: { recu?: string; objet: string; pieceJointe: boolean; retenu: boolean }[] = [];
   let importedRows = 0;
   let skippedNoAttachment = 0;
   let skippedAlreadyImported = 0;
@@ -425,7 +426,7 @@ Deno.serve(async _req => {
       `&$select=id,subject,receivedDateTime,internetMessageId,hasAttachments` +
       `&$orderby=receivedDateTime desc&$top=50`;
 
-    type GraphMessage = { id: string; subject?: string; internetMessageId?: string; hasAttachments?: boolean };
+    type GraphMessage = { id: string; subject?: string; internetMessageId?: string; hasAttachments?: boolean; receivedDateTime?: string };
     const matchingMessages: GraphMessage[] = [];
 
     while (url) {
@@ -441,7 +442,9 @@ Deno.serve(async _req => {
         // sujet, "(sans objet)") : retenu aussi, la pièce jointe est alors
         // vérifiée par son NOM ci-dessous avant tout traitement.
         const subj = (m.subject || "").trim();
-        if (m.hasAttachments && (subj.toUpperCase().includes(SUBJECT_FILTER) || subj === "")) matchingMessages.push(m);
+        const matched = !!m.hasAttachments && (subj.toUpperCase().includes(SUBJECT_FILTER) || subj === "");
+        if (matched) matchingMessages.push(m);
+        if (debugRecent.length < 10) debugRecent.push({ recu: m.receivedDateTime, objet: subj || "(sans objet)", pieceJointe: !!m.hasAttachments, retenu: matched });
       });
       url = json["@odata.nextLink"] || null;
     }
@@ -723,6 +726,8 @@ Deno.serve(async _req => {
     ok: errors.length === 0,
     processedEmails,
     pushAlertsSent,
+    version: "2026-10-07-debug-sans-objet",
+    debugRecent,
     skippedNoAttachment,
     skippedAlreadyImported,
     skippedInvalidShift,
