@@ -674,11 +674,20 @@ Deno.serve(async _req => {
               engins.RTG = [...new Set(engins.RTG)].sort();
               engins.CC = [...new Set(engins.CC)].sort();
               if (engins.RTG.length > 0 || engins.CC.length > 0) {
-                await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tos-passation-alert`, {
+                // NON BLOQUANT : le calcul du planning (tos-passation-alert) est
+                // lourd ; l'import ne doit JAMAIS attendre sa fin (risque de
+                // dépasser le temps imparti et de perdre le traitement des
+                // emails suivants). On lance l'appel et on poursuit ; waitUntil
+                // (si disponible) le laisse finir après la réponse.
+                const passationCall = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tos-passation-alert`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
                   body: JSON.stringify({ windowEnd, engins })
-                });
+                }).then(r => r.text()).catch(err => console.error("tos-passation-alert :", err));
+                // deno-lint-ignore no-explicit-any
+                const rt = (globalThis as any).EdgeRuntime;
+                if (rt && typeof rt.waitUntil === "function") rt.waitUntil(passationCall);
+                else await Promise.race([passationCall, new Promise(res => setTimeout(res, 8000))]);
                 pushAlertsSent++;
               }
             }
