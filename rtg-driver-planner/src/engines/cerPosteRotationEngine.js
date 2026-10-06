@@ -347,10 +347,9 @@ const CerPosteRotationEngine = {
 //     automatique — demande explicite de l'exploitant) : même partition
 //     avant/arrière que les titulaires (quai -> repasse dernier).
 //   - Sinon (personne au quai) :
-//       - toute la file tourne d'un cran : celui en tête descend en bas, les
-//         autres remontent (même si le premier était en REPOS/RC la veille —
-//         précision de l'exploitant du 06/10, remplace l'ancienne règle "le
-//         premier en repos reste figé en tête").
+//       - ceux en REPOS/RC la veille remontent en TÊTE de liste ; parmi ceux
+//         qui étaient au PARC, le 1er descend en bas et les autres remontent
+//         d'un cran (règle de l'exploitant du 06/10).
 //
 // Les CDI n'ont JAMAIS de zone automatique écrite (cf. planningEngine.js,
 // isNoRotationTeam) — cette file ne sert qu'à calculer un RANG (getRankForDate)
@@ -514,13 +513,15 @@ const CerCdiRotationEngine = {
             order.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
             newOrder = front.concat(back);
           } else {
-            // Personne au quai la veille (tous au PARC, en repos ou en RC) :
-            // celui qui est en TÊTE descend tout en bas et les autres
-            // remontent d'un cran — y compris quand le premier était en
-            // repos/RC la veille (précision explicite de l'exploitant du
-            // 06/10 : "si les CDI étaient tous au PARC ou RC la veille, le
-            // seul en tête descend en bas et les autres montent en haut").
-            newOrder = order.slice(1).concat(order.slice(0, 1));
+            // Personne au quai la veille. Règle de l'exploitant (06/10) :
+            //   - ceux qui étaient en REPOS ou RC la veille remontent EN TÊTE
+            //     de la liste (dans leur ordre relatif) ;
+            //   - parmi ceux qui étaient au PARC, le 1er descend tout en bas
+            //     et les autres remontent d'un cran.
+            const reposGroup = order.filter(id => wasOnRepos[id]);
+            const parcGroup = order.filter(id => !wasOnRepos[id]);
+            const parcRotated = parcGroup.slice(1).concat(parcGroup.slice(0, 1));
+            newOrder = reposGroup.concat(parcRotated);
           }
           newOrder = newOrder.concat(toAppend);
         }
