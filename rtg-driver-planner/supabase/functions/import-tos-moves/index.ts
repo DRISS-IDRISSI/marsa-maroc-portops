@@ -406,7 +406,12 @@ Deno.serve(async _req => {
         break;
       }
       ((json.value || []) as GraphMessage[]).forEach(m => {
-        if (m.hasAttachments && (m.subject || "").toUpperCase().includes(SUBJECT_FILTER)) matchingMessages.push(m);
+        // Sujet "DRIVER MOVES PER SHIFT" (email TOS d'origine) — OU email SANS
+        // objet avec pièce jointe (cas d'un transfert manuel qui a perdu son
+        // sujet, "(sans objet)") : retenu aussi, la pièce jointe est alors
+        // vérifiée par son NOM ci-dessous avant tout traitement.
+        const subj = (m.subject || "").trim();
+        if (m.hasAttachments && (subj.toUpperCase().includes(SUBJECT_FILTER) || subj === "")) matchingMessages.push(m);
       });
       url = json["@odata.nextLink"] || null;
     }
@@ -428,8 +433,9 @@ Deno.serve(async _req => {
         const attJson = await attResp.json();
         if (!attResp.ok) throw new Error("Récupération des pièces jointes échouée : " + (attJson.error ? attJson.error.message : attResp.status));
 
+        const noSubject = !(message.subject || "").trim();
         const xlsAttachment = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
-          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes);
+          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && (!noSubject || /DRIVER.?MOVES|LATEST.?SHIFT/i.test(a.name || "")));
 
         if (!xlsAttachment) {
           skippedNoAttachment++;
