@@ -2786,6 +2786,17 @@ function MonPlanningPage() {
     return planning.days.map(day => ({ iso: day.iso, assignment: day.assignments.find(a => a.driverId === driver.id) || null }));
   }, [state, month, year, driver]);
 
+  // Alerte "session TOS non fermée" pour le conducteur lui-même (hier + aujourd'hui).
+  const [unclosedOwn, setUnclosedOwn] = useState([]);
+  useEffect(() => {
+    if (!driver) return;
+    const today = RTGDate.toISO(now);
+    const yest = RTGDate.toISO(RTGDate.addDays(now, -1));
+    RTGStore.fetchMouvementsTos({ driverId: driver.id, dateFrom: yest, dateTo: today })
+      .then(rs => setUnclosedOwn(rs.filter(r => r.source !== "MANUEL" && r.driverId === driver.id && isUnclosedSession(r))))
+      .catch(() => {});
+  }, [driver && driver.id]);
+
   if (!driver) {
     return (
       <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-700 rounded-xl px-4 py-3 text-sm">
@@ -2802,6 +2813,17 @@ function MonPlanningPage() {
         <h1 className="text-2xl font-bold text-slate-900">Mon planning</h1>
         <p className="text-slate-400 text-sm mt-0.5">{driver.matricule} — {driver.nom} {driver.prenom}{team ? " — " + team.nom : ""}</p>
       </div>
+
+      {unclosedOwn.length > 0 && (
+        <div className="flex items-start gap-2 text-sm text-red-700 bg-red-500/10 border border-red-500/40 rounded-xl px-4 py-3">
+          <i className="fas fa-triangle-exclamation mt-0.5"></i>
+          <div>
+            <strong>Session TOS non fermée.</strong> Vous n'avez pas fermé votre session à la fin de votre shift :{" "}
+            {unclosedOwn.map((r, i) => <span key={r.id}>{i > 0 ? " · " : ""}{sessionRealShift(r)} du {RTGDate.formatFr(RTGDate.parseISO(r.dateTravail))}, engin {r.engin}</span>)}.
+            Pensez à vous déconnecter du TOS à la fin de chaque shift.
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <div>
@@ -3561,23 +3583,40 @@ function emptyMouvementManuelForm(teamId) {
 
 // ---- Sessions TOS (login/logout, 1er/dernier mouvement, alerte "session non
 // fermée") : horodatages "YYYY-MM-DD HH:MM:SS" (heure locale du terminal). ----
-const SESSION_SHIFT_END_HOUR = { S1: 15, S2: 23, S3: 7 };
+// Le rapport TOS étiquette une session avec le shift de LA FENÊTRE du rapport
+// (ex. S1 07:00-15:00) dès qu'elle la touche : un conducteur de nuit connecté
+// à 03:02 et déconnecté à 07:03 apparaît donc en "S1" alors qu'il a fait le
+// S3. Le shift RÉEL se déduit de l'heure de login (avec 10 min de tolérance :
+// un login à 06:52 est déjà le shift de 07:00) — à défaut de login, de l'heure
+// de logout moins 60 min.
+function sessionShiftInfo(r) {
+  let refMs = null;
+  const parse = ts => Date.parse(String(ts).replace(" ", "T") + "Z");
+  if (r.heureLogin) refMs = parse(r.heureLogin);
+  else if (r.heureLogout) refMs = parse(r.heureLogout) - 60 * 60 * 1000;
+  if (refMs == null || isNaN(refMs)) return null;
+  const adj = new Date(refMs + 10 * 60 * 1000);
+  const h = adj.getUTCHours();
+  const endOf = (addDays, hour) => Date.UTC(adj.getUTCFullYear(), adj.getUTCMonth(), adj.getUTCDate() + addDays, hour, 0, 0);
+  if (h >= 7 && h < 15) return { shift: "S1", endMs: endOf(0, 15) };
+  if (h >= 15 && h < 23) return { shift: "S2", endMs: endOf(0, 23) };
+  return { shift: "S3", endMs: endOf(h >= 23 ? 1 : 0, 7) };
+}
+function sessionRealShift(r) {
+  const info = sessionShiftInfo(r);
+  return info ? info.shift : r.shift;
+}
 function fmtSessionTime(ts, dateIso) {
   if (!ts) return "—";
   const day = String(ts).slice(0, 10), hm = String(ts).slice(11, 19);
   return day === dateIso ? hm : (day.slice(8, 10) + "/" + day.slice(5, 7) + " " + hm);
 }
-// Une session OUVERTE à la fin du shift = le conducteur n'a pas fermé sa
-// session. Exception : une ouverture dans les 10 dernières minutes du shift
-// est l'arrivée du shift SUIVANT (relève), pas un oubli de logout.
+// Session OUVERTE alors que son shift RÉEL est terminé = session non fermée.
 function isUnclosedSession(r) {
   if (r.statutSession !== "OPEN" || !r.heureLogin) return false;
-  const endHour = SESSION_SHIFT_END_HOUR[r.shift];
-  if (endHour == null) return true;
-  const end = new Date(r.dateTravail + "T" + String(endHour).padStart(2, "0") + ":00:00Z");
-  if (r.shift === "S3") end.setUTCDate(end.getUTCDate() + 1);
-  const login = new Date(String(r.heureLogin).replace(" ", "T") + "Z");
-  return login.getTime() < end.getTime() - 10 * 60 * 1000;
+  const info = sessionShiftInfo(r);
+  if (!info) return false;
+  return rtgNowInCasablanca().getTime() >= info.endMs;
 }
 
 function MouvementsRtgPage() {
@@ -3755,8 +3794,8 @@ function MouvementsRtgPage() {
   // manuelles n'ont ni login ni logout).
   const sessionRows = useMemo(() => sessionsRows
     .filter(r => r.source !== "MANUEL" && r.statutSession)
-    .filter(fleetFilterRow).filter(sourceFilterRow)
-    .slice().sort((a, b) => String(a.shift).localeCompare(String(b.shift)) || String(a.heureLogin || "~").localeCompare(String(b.heureLogin || "~"))),
+    .filter(fleetFilterRow).filter(r => sourceFilterRow(Object.assign({}, r, { shift: sessionRealShift(r) })))
+    .slice().sort((a, b) => String(sessionRealShift(a)).localeCompare(String(sessionRealShift(b))) || String(a.heureLogin || "~").localeCompare(String(b.heureLogin || "~"))),
     [sessionsRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamsSel]);
   const unclosedSessions = sessionRows.filter(isUnclosedSession);
   const sessionsDataMissing = sessionsRows.length > 0 && sessionsRows.every(r => r.source === "MANUEL" || !r.statutSession);
@@ -3765,9 +3804,9 @@ function MouvementsRtgPage() {
     const out = sessionRows.map(r => {
       const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
       const team = d ? state.teams.find(t => t.id === d.teamId) : null;
-      return [d ? d.matricule : "", d ? d.nom : r.loginTos, d ? d.prenom : "(non rattaché)", team ? team.nom : "", r.dateTravail, r.shift, r.engin,
+      return [d ? d.matricule : "", d ? d.nom : r.loginTos, d ? d.prenom : "(non rattaché)", team ? team.nom : "", r.dateTravail, sessionRealShift(r), r.engin,
         r.heureLogin || "", r.heureLogout || "", r.premierMvmt || "", r.dernierMvmt || "", r.dureeMin != null ? r.dureeMin : "", r.totalMvmt,
-        isUnclosedSession(r) ? "Session non fermée" : (r.statutSession === "NO_LOGIN_EVENT" ? "Sans login" : (r.statutSession === "OPEN" ? "Ouverte (relève)" : "Fermée"))];
+        isUnclosedSession(r) ? "Session non fermée" : (r.statutSession === "NO_LOGIN_EVENT" ? "Sans login" : (r.statutSession === "OPEN" ? "En cours" : "Fermée"))];
     });
     downloadXLSX(`sessions-tos-${sessionsDate}.xlsx`, headers, out, "Sessions");
   };
@@ -4111,7 +4150,7 @@ function MouvementsRtgPage() {
           <strong>{unclosedSessions.length} session{unclosedSessions.length > 1 ? "s" : ""} non fermée{unclosedSessions.length > 1 ? "s" : ""} à la fin du shift :</strong>{" "}
           {unclosedSessions.map((r, i) => {
             const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
-            return <span key={r.id}>{i > 0 ? " · " : ""}{d ? `${d.nom} ${d.prenom}` : r.loginTos} ({r.shift}, {r.engin}, login {fmtSessionTime(r.heureLogin, r.dateTravail).slice(-8, -3)})</span>;
+            return <span key={r.id}>{i > 0 ? " · " : ""}{d ? `${d.nom} ${d.prenom}` : r.loginTos} ({sessionRealShift(r)}, {r.engin}, login {fmtSessionTime(r.heureLogin, r.dateTravail).slice(-8, -3)})</span>;
           })}
         </div>
       )}
@@ -4143,13 +4182,13 @@ function MouvementsRtgPage() {
                   : r.statutSession === "NO_LOGIN_EVENT"
                     ? <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-300">Sans login</span>
                     : r.statutSession === "OPEN"
-                      ? <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300" title="Ouverte dans les 10 dernières minutes du shift : relève">Ouverte (relève)</span>
+                      ? <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300" title="Session ouverte dont le shift n'est pas encore terminé">En cours</span>
                       : <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300">Fermée</span>;
                 return (
                   <tr key={r.id} className={`border-t border-slate-200 ${unclosed ? "bg-red-50/60" : ""}`}>
                     <td className="px-3 py-1.5 text-slate-900">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
                     <td className="px-3 py-1.5 text-slate-600">{team ? team.nom : "—"}</td>
-                    <td className="px-3 py-1.5 text-slate-600">{r.shift}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{sessionRealShift(r)}{sessionRealShift(r) !== r.shift && <span className="ml-1 text-[10px] text-slate-400" title="Le rapport TOS a classé cette session dans le shift de sa fenêtre ; le shift réel est déduit de l'heure de login">(TOS : {r.shift})</span>}</td>
                     <td className="px-3 py-1.5 text-slate-600">{r.engin}</td>
                     <td className="px-3 py-1.5 text-slate-900">{fmtSessionTime(r.heureLogin, r.dateTravail)}</td>
                     <td className="px-3 py-1.5 text-slate-900">{fmtSessionTime(r.heureLogout, r.dateTravail)}</td>

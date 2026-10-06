@@ -209,6 +209,35 @@ function toDateTimeText(v: unknown): string | null {
   return m ? `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}:${m[6] || "00"}` : null;
 }
 
+// Shift RÉEL d'une session TOS (déduit de l'heure de login, tolérance 10 min ;
+// à défaut de login, logout - 60 min) et heure de FIN de ce shift, en
+// millisecondes "heure locale du terminal" (même repère que les timestamps
+// du rapport, lus comme de l'UTC). Le rapport étiquette une session de nuit
+// (login 03:02) "S1" parce qu'elle touche la fenêtre S1 : seul le login fait foi.
+function sessionShiftInfoText(login: string | null, logout: string | null): { shift: string; endMs: number } | null {
+  const parse = (t: string) => Date.parse(t.replace(" ", "T") + "Z");
+  let refMs: number | null = null;
+  if (login) refMs = parse(login);
+  else if (logout) refMs = parse(logout) - 60 * 60 * 1000;
+  if (refMs == null || isNaN(refMs)) return null;
+  const adj = new Date(refMs + 10 * 60 * 1000);
+  const h = adj.getUTCHours();
+  const endOf = (addDays: number, hour: number) => Date.UTC(adj.getUTCFullYear(), adj.getUTCMonth(), adj.getUTCDate() + addDays, hour, 0, 0);
+  if (h >= 7 && h < 15) return { shift: "S1", endMs: endOf(0, 15) };
+  if (h >= 15 && h < 23) return { shift: "S2", endMs: endOf(0, 23) };
+  return { shift: "S3", endMs: endOf(h >= 23 ? 1 : 0, 7) };
+}
+
+// "Maintenant" à Casablanca, dans le même repère (composantes locales lues comme UTC).
+function nowCasablancaMs(): number {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Casablanca", hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"
+  }).formatToParts(new Date());
+  const g = (t: string) => Number(parts.find(p => p.type === t)!.value);
+  return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second"));
+}
+
 function toInt(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.round(n) : 0;
@@ -374,6 +403,7 @@ Deno.serve(async _req => {
   const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
 
   let processedEmails = 0;
+  let pushAlertsSent = 0;
   let importedRows = 0;
   let skippedNoAttachment = 0;
   let skippedAlreadyImported = 0;
@@ -543,6 +573,42 @@ Deno.serve(async _req => {
             }
             importedRows += chunk.length;
           }
+
+          // Alerte PUSH au conducteur qui n'a pas fermé sa session TOS à la
+          // fin de son shift RÉEL (session OUVERTE alors que ce shift est
+          // terminé) : une notification par conducteur et par email traité
+          // (chaque email n'est traité qu'une fois — pas de répétition toutes
+          // les 5 min). Best-effort : jamais bloquant pour l'import.
+          try {
+            const nowMs = nowCasablancaMs();
+            const byDriver = new Map<string, string[]>();
+            for (const rec of records) {
+              if (!rec.driver_id || rec.statut_session !== "OPEN" || !rec.heure_login) continue;
+              const info = sessionShiftInfoText(rec.heure_login, rec.heure_logout);
+              if (!info || nowMs < info.endMs) continue;
+              const list = byDriver.get(rec.driver_id) || [];
+              list.push(`${info.shift} (${rec.engin})`);
+              byDriver.set(rec.driver_id, list);
+            }
+            for (const [driverId, shifts] of byDriver) {
+              await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push-notification`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
+                },
+                body: JSON.stringify({
+                  target: "driver", driverId,
+                  title: "Session TOS non fermée",
+                  body: "Vous n'avez pas fermé votre session à la fin du shift : " + shifts.join(", ") + ". Pensez à vous déconnecter du TOS.",
+                  url: "./", tag: "tos-session-" + driverId + "-" + (records[0] ? records[0].date_travail : "")
+                })
+              });
+              pushAlertsSent++;
+            }
+          } catch (e) {
+            console.error("Alerte push session non fermée (non bloquant) :", e);
+          }
           markRead = true;
         }
       } catch (e) {
@@ -567,6 +633,7 @@ Deno.serve(async _req => {
   return new Response(JSON.stringify({
     ok: errors.length === 0,
     processedEmails,
+    pushAlertsSent,
     skippedNoAttachment,
     skippedAlreadyImported,
     skippedInvalidShift,
