@@ -127,6 +127,10 @@ const RTGStore = (function () {
       engin: r.engin, facility: r.facility,
       nombreIn: r.nombre_in, nombreOut: r.nombre_out, nombreMove: r.nombre_move, nombreShifting: r.nombre_shifting,
       nombreDisch: r.nombre_disch, nombreLoad: r.nombre_load, nombreAutre: r.nombre_autre, totalMvmt: r.total_mvmt,
+      heureLogin: r.heure_login || null, heureLogout: r.heure_logout || null,
+      premierMvmt: r.premier_mvmt || null, dernierMvmt: r.dernier_mvmt || null,
+      dureeMin: r.duree_min != null ? Number(r.duree_min) : null, statutSession: r.statut_session || null,
+      nbSessions: r.nb_sessions != null ? r.nb_sessions : null,
       matchNote: r.match_note, createdAt: r.created_at, source: "TOS"
     };
   }

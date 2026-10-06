@@ -196,6 +196,19 @@ function excelDateToIso(v: unknown): string | null {
   return s.slice(0, 10) || null;
 }
 
+// Date+heure du rapport TOS ("06/10/2026 07:35:27" ou objet Date) -> chaîne
+// "YYYY-MM-DD HH:MM:SS" (timestamp SANS fuseau, heure locale du terminal,
+// telle qu'affichée dans le rapport), ou null si vide/illisible.
+function toDateTimeText(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${v.getUTCFullYear()}-${p(v.getUTCMonth() + 1)}-${p(v.getUTCDate())} ${p(v.getUTCHours())}:${p(v.getUTCMinutes())}:${p(v.getUTCSeconds())}`;
+  }
+  const m = String(v).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  return m ? `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}:${m[6] || "00"}` : null;
+}
+
 function toInt(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.round(n) : 0;
@@ -490,6 +503,13 @@ Deno.serve(async _req => {
                 nombre_load: toInt(row.NOMBRE_LOAD),
                 nombre_autre: toInt(row.NOMBRE_AUTRE),
                 total_mvmt: toInt(row.TOTAL_MVMT),
+                heure_login: toDateTimeText(row.HEURE_LOGIN),
+                heure_logout: toDateTimeText(row.HEURE_LOGOUT),
+                premier_mvmt: toDateTimeText(row.PREMIER_MVMT),
+                dernier_mvmt: toDateTimeText(row.DERNIER_MVMT),
+                duree_min: Number.isFinite(Number(row.DUREE_MIN)) ? Number(row.DUREE_MIN) : null,
+                statut_session: row.STATUT_SESSION ? String(row.STATUT_SESSION).trim().toUpperCase() : null,
+                nb_sessions: toInt(row.NB_SESSIONS),
                 match_note: matchNote,
                 source_message_id: messageId
               });

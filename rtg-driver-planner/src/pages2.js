@@ -3559,6 +3559,27 @@ function emptyMouvementManuelForm(teamId) {
   return { driverId: "", dateTravail: RTGDate.toISO(new Date()), shift: "", nombreIn: 0, nombreOut: 0, nombreMove: 0, nombreShifting: 0, nombreDisch: 0, nombreLoad: 0, nombreAutre: 0, commentaire: "" };
 }
 
+// ---- Sessions TOS (login/logout, 1er/dernier mouvement, alerte "session non
+// fermée") : horodatages "YYYY-MM-DD HH:MM:SS" (heure locale du terminal). ----
+const SESSION_SHIFT_END_HOUR = { S1: 15, S2: 23, S3: 7 };
+function fmtSessionTime(ts, dateIso) {
+  if (!ts) return "—";
+  const day = String(ts).slice(0, 10), hm = String(ts).slice(11, 19);
+  return day === dateIso ? hm : (day.slice(8, 10) + "/" + day.slice(5, 7) + " " + hm);
+}
+// Une session OUVERTE à la fin du shift = le conducteur n'a pas fermé sa
+// session. Exception : une ouverture dans les 10 dernières minutes du shift
+// est l'arrivée du shift SUIVANT (relève), pas un oubli de logout.
+function isUnclosedSession(r) {
+  if (r.statutSession !== "OPEN" || !r.heureLogin) return false;
+  const endHour = SESSION_SHIFT_END_HOUR[r.shift];
+  if (endHour == null) return true;
+  const end = new Date(r.dateTravail + "T" + String(endHour).padStart(2, "0") + ":00:00Z");
+  if (r.shift === "S3") end.setUTCDate(end.getUTCDate() + 1);
+  const login = new Date(String(r.heureLogin).replace(" ", "T") + "Z");
+  return login.getTime() < end.getTime() - 10 * 60 * 1000;
+}
+
 function MouvementsRtgPage() {
   const rawState = useRtgState();
   const currentUser = useCurrentUser();
@@ -3607,6 +3628,22 @@ function MouvementsRtgPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // ---- Onglet "Sessions & alertes" : horaires de session par conducteur pour
+  // une date donnée + alerte des sessions non fermées en fin de shift. ----
+  const [sessionsDate, setSessionsDate] = useState(RTGDate.toISO(now));
+  const [sessionsRows, setSessionsRows] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState("");
+  useEffect(() => {
+    if (tab !== "sessions") return;
+    setSessionsLoading(true);
+    setSessionsError("");
+    RTGStore.fetchMouvementsTos({ dateFrom: sessionsDate, dateTo: sessionsDate })
+      .then(setSessionsRows)
+      .catch(e => setSessionsError(e && e.message ? e.message : "Chargement impossible."))
+      .finally(() => setSessionsLoading(false));
+  }, [tab, sessionsDate]);
 
   const refreshDetailRows = () => {
     setLoading(true);
@@ -3713,6 +3750,27 @@ function MouvementsRtgPage() {
   const sourceFilterRow = r => (sourceFilter === "tous" || (sourceFilter === "manuel" ? r.source === "MANUEL" : r.source !== "MANUEL")) && (!(shiftsSel.S1 || shiftsSel.S2 || shiftsSel.S3) || (shiftsSel.S1 && shiftsSel.S2 && shiftsSel.S3) || !!shiftsSel[r.shift]) && (!Object.keys(teamsSel).some(k => teamsSel[k]) || (() => { const d = r.driverId ? rawState.drivers.find(dr => dr.id === r.driverId) : null; return !!d && !!teamsSel[d.teamId]; })());
   const visibleRows = useMemo(() => rows.filter(fleetFilterRow).filter(sourceFilterRow), [rows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamsSel]);
   const visibleTotalRows = useMemo(() => totalRows.filter(fleetFilterRow).filter(sourceFilterRow), [totalRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamsSel]);
+
+  // Sessions du jour (lignes issues du rapport TOS uniquement — les saisies
+  // manuelles n'ont ni login ni logout).
+  const sessionRows = useMemo(() => sessionsRows
+    .filter(r => r.source !== "MANUEL" && r.statutSession)
+    .filter(fleetFilterRow).filter(sourceFilterRow)
+    .slice().sort((a, b) => String(a.shift).localeCompare(String(b.shift)) || String(a.heureLogin || "~").localeCompare(String(b.heureLogin || "~"))),
+    [sessionsRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamsSel]);
+  const unclosedSessions = sessionRows.filter(isUnclosedSession);
+  const sessionsDataMissing = sessionsRows.length > 0 && sessionsRows.every(r => r.source === "MANUEL" || !r.statutSession);
+  const exportSessionsExcel = () => {
+    const headers = ["Matricule", "Nom", "Prénom", "Équipe", "Date", "Shift", "Engin", "Login", "Logout", "1er mouvement", "Dernier mouvement", "Durée (min)", "Mouvements", "Statut"];
+    const out = sessionRows.map(r => {
+      const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
+      const team = d ? state.teams.find(t => t.id === d.teamId) : null;
+      return [d ? d.matricule : "", d ? d.nom : r.loginTos, d ? d.prenom : "(non rattaché)", team ? team.nom : "", r.dateTravail, r.shift, r.engin,
+        r.heureLogin || "", r.heureLogout || "", r.premierMvmt || "", r.dernierMvmt || "", r.dureeMin != null ? r.dureeMin : "", r.totalMvmt,
+        isUnclosedSession(r) ? "Session non fermée" : (r.statutSession === "NO_LOGIN_EVENT" ? "Sans login" : (r.statutSession === "OPEN" ? "Ouverte (relève)" : "Fermée"))];
+    });
+    downloadXLSX(`sessions-tos-${sessionsDate}.xlsx`, headers, out, "Sessions");
+  };
 
   const totalByDriver = useMemo(() => {
     const map = {};
@@ -3879,6 +3937,7 @@ function MouvementsRtgPage() {
       <div className="flex gap-2">
         <button onClick={() => setTab("detail")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "detail" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Détail par jour/shift</button>
         <button onClick={() => setTab("total")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "total" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Total par conducteur (période)</button>
+        <button onClick={() => setTab("sessions")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "sessions" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}><i className="fas fa-clock mr-1.5"></i>Sessions &amp; alertes</button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -4028,6 +4087,82 @@ function MouvementsRtgPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+      </>
+      )}
+
+      {tab === "sessions" && (
+      <>
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
+        <div>
+          <label className={LABEL_CLS}>Date de travail</label>
+          <input type="date" value={sessionsDate} onChange={e => setSessionsDate(e.target.value)} className={FIELD_CLS} />
+        </div>
+        <button onClick={() => setSessionsDate(RTGDate.toISO(now))} className="px-3 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Aujourd'hui</button>
+        {sessionRows.length > 0 && <button onClick={exportSessionsExcel} className="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel mr-1.5"></i>Excel</button>}
+        {sessionRows.length > 0 && <div className="ml-auto text-xs text-slate-400">{sessionRows.length} session{sessionRows.length > 1 ? "s" : ""}</div>}
+      </div>
+      {sessionsError && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{sessionsError}</div>}
+      {sessionsLoading && <div className="text-xs text-slate-500 italic px-1">Chargement...</div>}
+      {!sessionsLoading && unclosedSessions.length > 0 && (
+        <div className="text-xs text-red-700 bg-red-500/10 border border-red-500/40 rounded-lg px-3 py-2">
+          <i className="fas fa-triangle-exclamation mr-1.5"></i>
+          <strong>{unclosedSessions.length} session{unclosedSessions.length > 1 ? "s" : ""} non fermée{unclosedSessions.length > 1 ? "s" : ""} à la fin du shift :</strong>{" "}
+          {unclosedSessions.map((r, i) => {
+            const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
+            return <span key={r.id}>{i > 0 ? " · " : ""}{d ? `${d.nom} ${d.prenom}` : r.loginTos} ({r.shift}, {r.engin}, login {fmtSessionTime(r.heureLogin, r.dateTravail).slice(-8, -3)})</span>;
+          })}
+        </div>
+      )}
+      {!sessionsLoading && sessionsDataMissing && (
+        <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+          <i className="fas fa-circle-info mr-1.5"></i>Les horaires de session ne sont pas encore enregistrés pour cette date : ils arrivent avec le prochain rapport TOS (après exécution de la migration 036 et redéploiement de la fonction d'import).
+        </div>
+      )}
+      {!sessionsLoading && sessionRows.length === 0 && !sessionsDataMissing && (
+        <div className="text-xs text-slate-500 italic px-1">Aucune session importée pour cette date.</div>
+      )}
+      {!sessionsLoading && sessionRows.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr className="text-left">
+                <th className="px-3 py-2">Conducteur</th><th className="px-3 py-2">Équipe</th><th className="px-3 py-2">Shift</th><th className="px-3 py-2">Engin</th>
+                <th className="px-3 py-2">Login</th><th className="px-3 py-2">Logout</th><th className="px-3 py-2">1er mvt</th><th className="px-3 py-2">Dernier mvt</th>
+                <th className="px-3 py-2 text-center">Durée</th><th className="px-3 py-2 text-center">Mvts</th><th className="px-3 py-2">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessionRows.map(r => {
+                const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
+                const team = d ? state.teams.find(t => t.id === d.teamId) : null;
+                const unclosed = isUnclosedSession(r);
+                const badge = unclosed
+                  ? <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-semibold">Session non fermée</span>
+                  : r.statutSession === "NO_LOGIN_EVENT"
+                    ? <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-300">Sans login</span>
+                    : r.statutSession === "OPEN"
+                      ? <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-700 border border-sky-300" title="Ouverte dans les 10 dernières minutes du shift : relève">Ouverte (relève)</span>
+                      : <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300">Fermée</span>;
+                return (
+                  <tr key={r.id} className={`border-t border-slate-200 ${unclosed ? "bg-red-50/60" : ""}`}>
+                    <td className="px-3 py-1.5 text-slate-900">{d ? `${d.matricule} — ${d.nom} ${d.prenom}` : <span className="text-amber-400">{r.loginTos} (non rattaché)</span>}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{team ? team.nom : "—"}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{r.shift}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{r.engin}</td>
+                    <td className="px-3 py-1.5 text-slate-900">{fmtSessionTime(r.heureLogin, r.dateTravail)}</td>
+                    <td className="px-3 py-1.5 text-slate-900">{fmtSessionTime(r.heureLogout, r.dateTravail)}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{fmtSessionTime(r.premierMvmt, r.dateTravail)}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{fmtSessionTime(r.dernierMvmt, r.dateTravail)}</td>
+                    <td className="px-3 py-1.5 text-center text-slate-600">{r.dureeMin != null ? `${Math.floor(r.dureeMin / 60)}h${String(Math.round(r.dureeMin % 60)).padStart(2, "0")}` : "—"}</td>
+                    <td className="px-3 py-1.5 text-center text-slate-900 font-semibold">{r.totalMvmt}</td>
+                    <td className="px-3 py-1.5">{badge}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
       </>
