@@ -436,13 +436,31 @@ const CerCdiRotationEngine = {
       // détachement) ou un changement RÉEL de shift (S1<->S2) déplace un CDI
       // d'une file à l'autre — cf. plus bas.
       const byBlock = {};
+      // Shift dominant de chaque équipe CDI ce jour-là : un CDI en repos/RC
+      // sans shift saisi suit la file des autres CDI de son équipe (un seul
+      // groupe visible pour l'exploitant) au lieu de rester dans l'ancienne
+      // file d'un autre shift jusqu'au jour où son shift est enfin saisi.
+      const shiftCountByTeam = {};
+      Object.keys(driversById).forEach(id => {
+        const sh = cdiShiftForDate(driversById[id], iso, state);
+        if (!sh) return;
+        const tk = cerBlockKey(driversById[id]);
+        shiftCountByTeam[tk] = shiftCountByTeam[tk] || {};
+        shiftCountByTeam[tk][sh] = (shiftCountByTeam[tk][sh] || 0) + 1;
+      });
+      const dominantShift = teamKey => {
+        const counts = shiftCountByTeam[teamKey];
+        if (!counts) return null;
+        return Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))[0];
+      };
       Object.keys(driversById).forEach(id => {
         const shift = cdiShiftForDate(driversById[id], iso, state);
         let key;
         if (shift) {
           key = cerBlockKey(driversById[id]) + "::" + shift;
         } else {
-          key = Object.keys(this._order).find(k => this._order[k].indexOf(id) !== -1);
+          const dom = dominantShift(cerBlockKey(driversById[id]));
+          key = dom ? cerBlockKey(driversById[id]) + "::" + dom : Object.keys(this._order).find(k => this._order[k].indexOf(id) !== -1);
         }
         if (!key) return;
         (byBlock[key] = byBlock[key] || []).push(id);
@@ -521,26 +539,32 @@ const CerCdiRotationEngine = {
             wasOnRepos[id] = statusYesterday === "REPOS" || statusYesterday === "REPOS_COMPENSATOIRE";
             return onQuai;
           };
-          order.forEach(id => { if (readYesterday(id)) quaiExists = true; });
-          // Les CDI qui rejoignent cette file aujourd'hui (changement de
-          // shift, retour de congé) sont évalués de la même façon : un
-          // arrivant en REPOS/RC la veille monte en TÊTE comme les autres.
-          toAppend.forEach(id => { readYesterday(id); });
+          // Les arrivants (changement de file, retour de congé) rejoignent la
+          // file AVANT l'application de la règle, dans le rang qu'ils avaient
+          // hier (toAppend est déjà trié ainsi) : la file continue au lieu de
+          // repartir à zéro.
+          const full = order.concat(toAppend);
+          full.forEach(id => { if (readYesterday(id)) quaiExists = true; });
 
           if (quaiExists) {
             const front = [], back = [];
-            order.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
-            newOrder = front.concat(back).concat(toAppend);
+            full.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
+            newOrder = front.concat(back);
           } else {
             // Personne au quai la veille. Règle de l'exploitant (06/10) :
             //   - ceux qui étaient en REPOS ou RC la veille remontent EN TÊTE
             //     de la liste (dans leur ordre relatif) ;
             //   - parmi ceux qui étaient au PARC, le 1er descend tout en bas
-            //     et les autres remontent d'un cran.
-            const reposGroup = order.filter(id => wasOnRepos[id]).concat(toAppend.filter(id => wasOnRepos[id]));
-            const parcGroup = order.filter(id => !wasOnRepos[id]);
-            const parcRotated = parcGroup.slice(1).concat(parcGroup.slice(0, 1));
-            newOrder = reposGroup.concat(parcRotated).concat(toAppend.filter(id => !wasOnRepos[id]));
+            //     et les autres remontent d'un cran ;
+            //   - si TOUS étaient en repos/RC (aucun au PARC) : le 1er de la
+            //     liste descend en bas et les autres remontent d'un cran.
+            const reposGroup = full.filter(id => wasOnRepos[id]);
+            const parcGroup = full.filter(id => !wasOnRepos[id]);
+            if (parcGroup.length === 0) {
+              newOrder = full.slice(1).concat(full.slice(0, 1));
+            } else {
+              newOrder = reposGroup.concat(parcGroup.slice(1).concat(parcGroup.slice(0, 1)));
+            }
           }
         }
 
