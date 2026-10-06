@@ -945,6 +945,18 @@ Deno.serve(async req => {
     if (!target) return new Response(JSON.stringify({ ok: true, skipped: "fenêtre sans passation (heure de fin " + endHour + ")" }), { headers: JSON_HEADERS });
     const planIso = RTGDate.toISO(RTGDate.addDays(RTGDate.parseISO(endIso), target.dayOffset));
 
+    // Verrou anti-doublon AVANT tout calcul lourd : une ligne par (fenêtre, flotte).
+    const fleetsToDo: string[] = [];
+    const result: Record<string, number> = {};
+    for (const fleet of ["RTG", "CC"]) {
+      const list: string[] = (engins && engins[fleet]) || [];
+      if (list.length === 0) continue;
+      const { error: dupError } = await admin.from("tos_passation_alertes").insert({ cle: `${windowEnd}|${fleet}` });
+      if (dupError) { result[fleet] = -1; continue; } // déjà alerté (clé unique) ou table absente
+      fleetsToDo.push(fleet);
+    }
+    if (fleetsToDo.length === 0) return new Response(JSON.stringify({ ok: true, skipped: "déjà alerté", notified: result }), { headers: JSON_HEADERS });
+
     RestDayEngine.clearCache();
     ZoneRotationEngine.clearCache();
     VacationRotationEngine.clearCache();
@@ -953,13 +965,9 @@ Deno.serve(async req => {
     state.teams.forEach((t: any) => { teamById[t.id] = t; });
     const assignments = PlanningEngine.generateDailyAssignments(planIso, state);
 
-    const result: Record<string, number> = {};
-    for (const fleet of ["RTG", "CC"]) {
+    for (const fleet of fleetsToDo) {
       const list: string[] = (engins && engins[fleet]) || [];
-      if (list.length === 0) continue;
       const key = `${windowEnd}|${fleet}`;
-      const { error: dupError } = await admin.from("tos_passation_alertes").insert({ cle: key });
-      if (dupError) { result[fleet] = -1; continue; } // déjà alerté (clé unique) ou table absente
       const recipients = assignments.filter((a: any) =>
         a.status === "PRESENT" && a.shift === target.shift &&
         (a.vacation === target.vac || (target.vac === "V1" && a.vacation === "V1+V2")) &&

@@ -586,6 +586,15 @@ Deno.serve(async _req => {
               if (!rec.driver_id || rec.statut_session !== "OPEN" || !rec.heure_login) continue;
               const info = sessionShiftInfoText(rec.heure_login, rec.heure_logout);
               if (!info || nowMs < info.endMs) continue;
+              // ANTI-RÉPÉTITION : une alerte par (conducteur, jour, shift, engin),
+              // quel que soit l'email qui la porte. Sans ça, deux emails portant
+              // les MÊMES lignes (rapport d'origine + transfert) se repassent la
+              // main à chaque exécution (source_message_id réécrit par l'un puis
+              // par l'autre) et ré-alertent toutes les 5 minutes. La clé unique
+              // de tos_passation_alertes (migration_037) sert de verrou.
+              const claimKey = `unclosed|${rec.driver_id}|${rec.date_travail}|${info.shift}|${rec.engin}`;
+              const { error: claimError } = await admin.from("tos_passation_alertes").insert({ cle: claimKey });
+              if (claimError) continue; // déjà alerté (ou table absente)
               const list = byDriver.get(rec.driver_id) || [];
               list.push(`${info.shift} (${rec.engin})`);
               byDriver.set(rec.driver_id, list);
