@@ -451,6 +451,14 @@ const CerCdiRotationEngine = {
       const dayRank = {};
       const yesterdayIso = RTGDate.toISO(RTGDate.addDays(cursor, -1));
 
+      // Position de chaque CDI dans la file de la VEILLE (quel que soit son
+      // shift d'hier) : un CDI qui change de file (ex. S2 hier -> S1
+      // aujourd'hui) doit garder son rang relatif, pas repartir dans l'ordre
+      // des matricules (demande explicite de l'exploitant : "tous en repos la
+      // veille -> ils gardent le même ordre").
+      const prevPos = {};
+      Object.keys(this._order).forEach(k => { this._order[k].forEach((id, idx) => { prevPos[id] = idx; }); });
+
       Object.keys(byBlock).forEach(key => {
         const blockDriverIds = byBlock[key];
         // "blockDriverIds.indexOf" (pas seulement "driversById[id]") : un CDI
@@ -472,7 +480,13 @@ const CerCdiRotationEngine = {
             toAppend.push(id);
           }
         });
-        toAppend.sort((a, b) => String(driversById[a].matricule).localeCompare(String(driversById[b].matricule)));
+        toAppend.sort((a, b) => {
+          const pa = prevPos[a], pb = prevPos[b];
+          if (pa !== undefined && pb !== undefined && pa !== pb) return pa - pb;
+          if (pa !== undefined && pb === undefined) return -1;
+          if (pa === undefined && pb !== undefined) return 1;
+          return String(driversById[a].matricule).localeCompare(String(driversById[b].matricule));
+        });
 
         order = order.filter(id => {
           if (!this._frozen[id] && CER_FROZEN_STATUSES.indexOf(statusToday[id]) !== -1) {
