@@ -264,7 +264,7 @@ Deno.serve(async _req => {
   // chacun n'apparaît que dans l'onglet de sa propre flotte.
   const { data: drivers, error: driversError } = await admin
     .from("drivers")
-    .select("id,nom,prenom,actif,login_tos,teams!inner(type_engin)")
+    .select("id,nom,prenom,actif,login_tos,team_id,teams!inner(type_engin)")
     .eq("actif", true);
   if (driversError) {
     return new Response(JSON.stringify({ ok: false, error: "Chargement conducteurs échoué : " + driversError.message }), {
@@ -589,6 +589,38 @@ Deno.serve(async _req => {
               const list = byDriver.get(rec.driver_id) || [];
               list.push(`${info.shift} (${rec.engin})`);
               byDriver.set(rec.driver_id, list);
+            }
+            // Alerte aux RESPONSABLES : ADMIN/RESPONSABLE (toutes équipes) +
+            // RESPONSABLE_SHIFT de l'équipe du conducteur — même périmètre que
+            // les demandes de congé (target "conge_reviewers", send-push-
+            // notification), un message regroupé par équipe.
+            const driverInfo = new Map<string, { nom: string; prenom: string; teamId: string | null }>();
+            for (const d of (drivers || []) as { id: string; nom: string; prenom: string; team_id: string | null }[]) {
+              driverInfo.set(d.id, { nom: d.nom, prenom: d.prenom, teamId: d.team_id });
+            }
+            const byTeam = new Map<string, string[]>();
+            for (const [driverId, shifts] of byDriver) {
+              const info = driverInfo.get(driverId);
+              if (!info || !info.teamId) continue;
+              const list = byTeam.get(info.teamId) || [];
+              list.push(`${info.nom} ${info.prenom} (${shifts.join(", ")})`);
+              byTeam.set(info.teamId, list);
+            }
+            for (const [teamId, names] of byTeam) {
+              await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push-notification`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
+                },
+                body: JSON.stringify({
+                  target: "conge_reviewers", teamId,
+                  title: names.length + " session(s) TOS non fermée(s)",
+                  body: names.join(" · "),
+                  url: "./", tag: "tos-sessions-resp-" + teamId + "-" + (records[0] ? records[0].date_travail : "")
+                })
+              });
+              pushAlertsSent++;
             }
             for (const [driverId, shifts] of byDriver) {
               await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push-notification`, {

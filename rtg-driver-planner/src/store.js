@@ -878,6 +878,16 @@ const RTGStore = (function () {
     addAuditEntry({ action: "Login TOS ignoré", details: loginTos + (note ? " — " + note : "") });
   }
 
+  // Notification push (best-effort) à UN conducteur — passe par l'Edge
+  // Function send-push-notification (target "driver"). Retourne { sent, recipients }.
+  async function notifyDriverPush(driverId, title, body, tag) {
+    const { data, error } = await sb.functions.invoke("send-push-notification", {
+      body: { target: "driver", driverId: driverId, title: title, body: body, url: "./", tag: tag || undefined }
+    });
+    if (error) { console.warn("RTGStore: notification push impossible.", error); return { sent: 0, recipients: 0 }; }
+    return { sent: (data && data.sent) || 0, recipients: (data && data.recipients) || 0 };
+  }
+
   async function addMouvementManuel(input) {
     const row = {
       driver_id: input.driverId, date_travail: input.dateTravail, shift: input.shift || null,
@@ -1149,7 +1159,7 @@ const RTGStore = (function () {
     submitCongeRequest, validateCongeRequest, getCongeJustificatifUrl,
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
-    addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle,
+    addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle, notifyDriverPush,
     setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank, bulkClearStaleVacationOverrides,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,

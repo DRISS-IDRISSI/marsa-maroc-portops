@@ -3797,6 +3797,57 @@ function MouvementsRtgPage() {
     .filter(fleetFilterRow).filter(r => sourceFilterRow(Object.assign({}, r, { shift: sessionRealShift(r) })))
     .slice().sort((a, b) => String(sessionRealShift(a)).localeCompare(String(sessionRealShift(b))) || String(a.heureLogin || "~").localeCompare(String(b.heureLogin || "~"))),
     [sessionsRows, fTeamIds, ownTeamId, shiftRestricted, rawState.drivers, rawState.currentFleet, filterDriverId, sourceFilter, shiftsSel, teamsSel]);
+  // ---- Passation : alerter les conducteurs qui prennent la suite (fin de
+  // vacation -> V2 du même shift ; fin de shift -> V1 du shift suivant) que la
+  // session TOS de leur engin est restée ouverte sous le compte du précédent. ----
+  const [passationMode, setPassationMode] = useState("shift");
+  const [passationMsg, setPassationMsg] = useState("");
+  const [passationBusy, setPassationBusy] = useState(false);
+  const canAlertSuccessors = !shiftRestricted && canManage;
+  const passationGroups = useMemo(() => {
+    if (!canAlertSuccessors) return [];
+    const byShift = {};
+    sessionRows.filter(r => r.statutSession === "OPEN" && r.heureLogin).forEach(r => {
+      const info = sessionShiftInfo(r);
+      if (!info) return;
+      (byShift[info.shift] = byShift[info.shift] || { shift: info.shift, endMs: info.endMs, engins: [] }).engins.push(r.engin);
+    });
+    return Object.values(byShift).map(g => {
+      const startMs = g.endMs - 8 * 60 * 60 * 1000;
+      const iso = ms => new Date(ms).toISOString().slice(0, 10);
+      let targetShift, targetVac, dateIso;
+      if (passationMode === "vacation") {
+        targetShift = g.shift; targetVac = "V2"; dateIso = iso(startMs);
+      } else {
+        targetShift = g.shift === "S1" ? "S2" : (g.shift === "S2" ? "S3" : "S1"); targetVac = "V1"; dateIso = iso(g.endMs);
+      }
+      let successors = [];
+      try {
+        successors = PlanningEngine.generateDailyAssignments(dateIso, rawState)
+          .filter(a => a.status === "PRESENT" && a.shift === targetShift && (a.vacation === targetVac || (targetVac === "V1" && a.vacation === "V1+V2")))
+          .filter(a => { const t = rawState.teams.find(tt => tt.id === a.teamId); return !!t && (t.typeEngin || "RTG") === rawState.currentFleet && fleetHasVacation(rawState.currentFleet); });
+      } catch (e) { successors = []; }
+      return { shift: g.shift, engins: [...new Set(g.engins)].sort(), targetShift, targetVac, dateIso, successors };
+    }).filter(g => g.successors.length > 0 || g.engins.length > 0).sort((a, b) => a.shift.localeCompare(b.shift));
+  }, [sessionRows, passationMode, rawState, canAlertSuccessors]);
+  const sendPassationAlert = async group => {
+    setPassationBusy(true);
+    setPassationMsg("");
+    try {
+      let sent = 0;
+      for (const a of group.successors) {
+        const res = await RTGStore.notifyDriverPush(a.driverId, "Session TOS ouverte sur votre engin",
+          "Engin(s) " + group.engins.join(", ") + " : la session est restée ouverte sous le compte du conducteur précédent. Fermez-la puis rouvrez-la avec VOTRE compte avant de commencer.",
+          "tos-passation-" + group.dateIso + "-" + group.targetShift + "-" + group.targetVac);
+        sent += res.sent;
+      }
+      setPassationMsg(`Alerte envoyée à ${group.successors.length} conducteur(s) (${group.targetShift} ${group.targetVac}) — ${sent} notification(s) reçue(s) sur appareil.` + (sent === 0 ? " Aucun n'a activé les notifications : prévenez-les par WhatsApp." : ""));
+    } catch (e) {
+      setPassationMsg("Envoi impossible : " + (e && e.message ? e.message : "réessayez."));
+    } finally {
+      setPassationBusy(false);
+    }
+  };
   const unclosedSessions = sessionRows.filter(isUnclosedSession);
   const sessionsDataMissing = sessionsRows.length > 0 && sessionsRows.every(r => r.source === "MANUEL" || !r.statutSession);
   const exportSessionsExcel = () => {
@@ -4152,6 +4203,29 @@ function MouvementsRtgPage() {
             const d = r.driverId ? state.drivers.find(dr => dr.id === r.driverId) : null;
             return <span key={r.id}>{i > 0 ? " · " : ""}{d ? `${d.nom} ${d.prenom}` : r.loginTos} ({sessionRealShift(r)}, {r.engin}, login {fmtSessionTime(r.heureLogin, r.dateTravail).slice(-8, -3)})</span>;
           })}
+        </div>
+      )}
+      {!sessionsLoading && canAlertSuccessors && passationGroups.length > 0 && (
+        <div className="bg-white rounded-xl border border-orange-300 p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold text-slate-900"><i className="fas fa-bell mr-1.5 text-orange-500"></i>Alerter les conducteurs qui prennent la suite</div>
+            <div className="ml-auto flex gap-2">
+              {[["vacation", "Fin de V1 → V2 du même shift"], ["shift", "Fin de shift → V1 du shift suivant"]].map(([v, label]) => (
+                <button key={v} onClick={() => { setPassationMode(v); setPassationMsg(""); }} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${passationMode === v ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{label}</button>
+              ))}
+            </div>
+          </div>
+          {passationGroups.map(g => (
+            <div key={g.shift} className="flex flex-wrap items-start gap-3 border-t border-slate-200 pt-3 text-xs">
+              <div className="flex-1 min-w-[260px]">
+                <div className="text-slate-900"><strong>{g.shift}</strong> — engins encore ouverts : <span className="font-semibold text-red-700">{g.engins.join(", ")}</span></div>
+                <div className="text-slate-500 mt-0.5">À alerter : <strong>{g.targetShift} {g.targetVac}</strong> du {RTGDate.formatFr(RTGDate.parseISO(g.dateIso))} — {g.successors.length} conducteur{g.successors.length > 1 ? "s" : ""}{g.successors.length > 0 ? " : " + g.successors.map(a => a.nom).join(", ") : ""}</div>
+              </div>
+              <button disabled={passationBusy || g.successors.length === 0} onClick={() => sendPassationAlert(g)} className="px-3 py-2 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"><i className="fas fa-paper-plane mr-1.5"></i>Envoyer l'alerte</button>
+            </div>
+          ))}
+          {passationMsg && <div className="text-xs text-emerald-700 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">{passationMsg}</div>}
+          <p className="text-[11px] text-slate-400">Message envoyé : « Fermez la session de l'engin puis rouvrez-la avec VOTRE compte ». Le rapport TOS n'arrivant qu'en fin de shift, la passation « V1 → V2 » ne peut être déclenchée qu'avec un rapport reçu à la fin de V1.</p>
         </div>
       )}
       {!sessionsLoading && sessionsDataMissing && (
