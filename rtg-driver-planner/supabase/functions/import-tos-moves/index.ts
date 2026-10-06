@@ -641,6 +641,41 @@ Deno.serve(async _req => {
           } catch (e) {
             console.error("Alerte push session non fermée (non bloquant) :", e);
           }
+
+          // Alerte AUTOMATIQUE de passation : les conducteurs qui PRENNENT LA
+          // SUITE (V2 du même shift, ou V1 du shift suivant, déduits de
+          // l'heure de fin de la fenêtre du rapport) sont prévenus que la
+          // session de l'engin est restée ouverte — voir tos-passation-alert.
+          // Best-effort : jamais bloquant pour l'import.
+          try {
+            const firstSheet = wb.Sheets[wb.SheetNames[0]];
+            const topRows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, range: 0, defval: "" });
+            const windowText = String((topRows[1] || [])[0] || "");
+            const wm = windowText.match(/<\s*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+            if (wm) {
+              const windowEnd = `${wm[3]}-${wm[2]}-${wm[1]} ${wm[4]}:${wm[5]}:${wm[6] || "00"}`;
+              const endMs = Date.parse(windowEnd.replace(" ", "T") + "Z");
+              const engins: Record<string, string[]> = { RTG: [], CC: [] };
+              for (const rec of records) {
+                if (rec.statut_session !== "OPEN" || !rec.heure_login) continue;
+                // ouverte dans les 10 dernières minutes = arrivée de la relève, pas un oubli
+                if (Date.parse(rec.heure_login.replace(" ", "T") + "Z") >= endMs - 10 * 60 * 1000) continue;
+                (/^RTG/i.test(rec.engin) ? engins.RTG : engins.CC).push(rec.engin);
+              }
+              engins.RTG = [...new Set(engins.RTG)].sort();
+              engins.CC = [...new Set(engins.CC)].sort();
+              if (engins.RTG.length > 0 || engins.CC.length > 0) {
+                await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tos-passation-alert`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+                  body: JSON.stringify({ windowEnd, engins })
+                });
+                pushAlertsSent++;
+              }
+            }
+          } catch (e) {
+            console.error("Alerte passation (non bloquant) :", e);
+          }
           markRead = true;
         }
       } catch (e) {

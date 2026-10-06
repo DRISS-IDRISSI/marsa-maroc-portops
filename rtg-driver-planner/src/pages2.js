@@ -4208,7 +4208,7 @@ function MouvementsRtgPage() {
       {!sessionsLoading && canAlertSuccessors && passationGroups.length > 0 && (
         <div className="bg-white rounded-xl border border-orange-300 p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-semibold text-slate-900"><i className="fas fa-bell mr-1.5 text-orange-500"></i>Alerter les conducteurs qui prennent la suite</div>
+            <div className="text-sm font-semibold text-slate-900"><i className="fas fa-bell mr-1.5 text-orange-500"></i>Alerter les conducteurs qui prennent la suite <span className="ml-2 text-[11px] font-normal text-emerald-700">(envoyée automatiquement à chaque rapport — bouton de secours)</span></div>
             <div className="ml-auto flex gap-2">
               {[["vacation", "Fin de V1 → V2 du même shift"], ["shift", "Fin de shift → V1 du shift suivant"]].map(([v, label]) => (
                 <button key={v} onClick={() => { setPassationMode(v); setPassationMsg(""); }} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${passationMode === v ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>{label}</button>
