@@ -510,7 +510,7 @@ const CerCdiRotationEngine = {
           // défaut déjà affichée quand rien n'a été saisi (planningEngine.js).
           const wasOnQuai = {}, wasOnRepos = {};
           let quaiExists = false;
-          order.forEach(id => {
+          const readYesterday = id => {
             const manualYesterday = state.manualOverrides && state.manualOverrides[yesterdayIso + "_" + id];
             const statusYesterday = manualYesterday && manualYesterday.status !== undefined
               ? manualYesterday.status
@@ -519,25 +519,29 @@ const CerCdiRotationEngine = {
             const onQuai = statusYesterday === "PRESENT" && !!zYesterday && CER_NON_PHYSICAL_ZONES.indexOf(String(zYesterday).toUpperCase()) === -1;
             wasOnQuai[id] = onQuai;
             wasOnRepos[id] = statusYesterday === "REPOS" || statusYesterday === "REPOS_COMPENSATOIRE";
-            if (onQuai) quaiExists = true;
-          });
+            return onQuai;
+          };
+          order.forEach(id => { if (readYesterday(id)) quaiExists = true; });
+          // Les CDI qui rejoignent cette file aujourd'hui (changement de
+          // shift, retour de congé) sont évalués de la même façon : un
+          // arrivant en REPOS/RC la veille monte en TÊTE comme les autres.
+          toAppend.forEach(id => { readYesterday(id); });
 
           if (quaiExists) {
             const front = [], back = [];
             order.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
-            newOrder = front.concat(back);
+            newOrder = front.concat(back).concat(toAppend);
           } else {
             // Personne au quai la veille. Règle de l'exploitant (06/10) :
             //   - ceux qui étaient en REPOS ou RC la veille remontent EN TÊTE
             //     de la liste (dans leur ordre relatif) ;
             //   - parmi ceux qui étaient au PARC, le 1er descend tout en bas
             //     et les autres remontent d'un cran.
-            const reposGroup = order.filter(id => wasOnRepos[id]);
+            const reposGroup = order.filter(id => wasOnRepos[id]).concat(toAppend.filter(id => wasOnRepos[id]));
             const parcGroup = order.filter(id => !wasOnRepos[id]);
             const parcRotated = parcGroup.slice(1).concat(parcGroup.slice(0, 1));
-            newOrder = reposGroup.concat(parcRotated);
+            newOrder = reposGroup.concat(parcRotated).concat(toAppend.filter(id => !wasOnRepos[id]));
           }
-          newOrder = newOrder.concat(toAppend);
         }
 
         const cdiShift = key.split("::")[1];
