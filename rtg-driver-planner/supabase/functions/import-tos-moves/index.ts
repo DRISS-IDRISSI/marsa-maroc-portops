@@ -585,7 +585,10 @@ Deno.serve(async _req => {
             for (const rec of records) {
               if (!rec.driver_id || rec.statut_session !== "OPEN" || !rec.heure_login) continue;
               const info = sessionShiftInfoText(rec.heure_login, rec.heure_logout);
-              if (!info || nowMs < info.endMs) continue;
+              // Alerte seulement pour un shift qui vient de se terminer (moins de
+              // 3 h) : un ancien rapport retraité (fenêtre de 7 jours) ne doit
+              // JAMAIS réveiller des conducteurs pour une session d'un autre jour.
+              if (!info || nowMs < info.endMs || nowMs - info.endMs > 3 * 60 * 60 * 1000) continue;
               // ANTI-RÉPÉTITION : une alerte par (conducteur, jour, shift, engin),
               // quel que soit l'email qui la porte. Sans ça, deux emails portant
               // les MÊMES lignes (rapport d'origine + transfert) se repassent la
@@ -664,6 +667,7 @@ Deno.serve(async _req => {
             if (wm) {
               const windowEnd = `${wm[3]}-${wm[2]}-${wm[1]} ${wm[4]}:${wm[5]}:${wm[6] || "00"}`;
               const endMs = Date.parse(windowEnd.replace(" ", "T") + "Z");
+              const recentWindow = nowCasablancaMs() - endMs <= 3 * 60 * 60 * 1000 && nowCasablancaMs() >= endMs;
               const engins: Record<string, string[]> = { RTG: [], CC: [] };
               for (const rec of records) {
                 if (rec.statut_session !== "OPEN" || !rec.heure_login) continue;
@@ -673,7 +677,7 @@ Deno.serve(async _req => {
               }
               engins.RTG = [...new Set(engins.RTG)].sort();
               engins.CC = [...new Set(engins.CC)].sort();
-              if (engins.RTG.length > 0 || engins.CC.length > 0) {
+              if (recentWindow && (engins.RTG.length > 0 || engins.CC.length > 0)) {
                 // NON BLOQUANT : le calcul du planning (tos-passation-alert) est
                 // lourd ; l'import ne doit JAMAIS attendre sa fin (risque de
                 // dépasser le temps imparti et de perdre le traitement des
