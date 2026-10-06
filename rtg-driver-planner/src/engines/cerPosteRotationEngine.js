@@ -347,9 +347,10 @@ const CerPosteRotationEngine = {
 //     automatique — demande explicite de l'exploitant) : même partition
 //     avant/arrière que les titulaires (quai -> repasse dernier).
 //   - Sinon (personne au quai) :
-//       - si le premier de la file était en REPOS la veille : il reste
-//         figé en tête, les autres tournent d'un cran entre eux ;
-//       - sinon : toute la file tourne d'un cran.
+//       - toute la file tourne d'un cran : celui en tête descend en bas, les
+//         autres remontent (même si le premier était en REPOS/RC la veille —
+//         précision de l'exploitant du 06/10, remplace l'ancienne règle "le
+//         premier en repos reste figé en tête").
 //
 // Les CDI n'ont JAMAIS de zone automatique écrite (cf. planningEngine.js,
 // isNoRotationTeam) — cette file ne sert qu'à calculer un RANG (getRankForDate)
@@ -512,10 +513,13 @@ const CerCdiRotationEngine = {
             const front = [], back = [];
             order.forEach(id => { (wasOnQuai[id] ? back : front).push(id); });
             newOrder = front.concat(back);
-          } else if (order.length > 0 && wasOnRepos[order[0]]) {
-            const rest = order.slice(1);
-            newOrder = [order[0]].concat(rest.slice(1)).concat(rest.slice(0, 1));
           } else {
+            // Personne au quai la veille (tous au PARC, en repos ou en RC) :
+            // celui qui est en TÊTE descend tout en bas et les autres
+            // remontent d'un cran — y compris quand le premier était en
+            // repos/RC la veille (précision explicite de l'exploitant du
+            // 06/10 : "si les CDI étaient tous au PARC ou RC la veille, le
+            // seul en tête descend en bas et les autres montent en haut").
             newOrder = order.slice(1).concat(order.slice(0, 1));
           }
           newOrder = newOrder.concat(toAppend);
