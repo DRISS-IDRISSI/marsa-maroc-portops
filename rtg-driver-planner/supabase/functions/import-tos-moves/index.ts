@@ -511,7 +511,7 @@ Deno.serve(async _req => {
         // sujet, "(sans objet)") : retenu aussi, la pièce jointe est alors
         // vérifiée par son NOM ci-dessous avant tout traitement.
         const subj = (m.subject || "").trim();
-        const matched = !!m.hasAttachments && (subj.toUpperCase().includes(SUBJECT_FILTER) || subj.toUpperCase().includes(HOURLY_SUBJECT) || subj === "");
+        const matched = !!m.hasAttachments && (subj.toUpperCase().includes(SUBJECT_FILTER) || subj.toUpperCase().includes(HOURLY_SUBJECT) || subj === "" || /MOUVEMENT|MOVES|DRIVER/i.test(subj));
         if (matched) matchingMessages.push(m);
         if (debugRecent.length < 10) debugRecent.push({ recu: m.receivedDateTime, objet: subj || "(sans objet)", pieceJointe: !!m.hasAttachments, retenu: matched });
       });
@@ -537,7 +537,7 @@ Deno.serve(async _req => {
 
         const noSubject = !(message.subject || "").trim();
         const xlsAttachment = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
-          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && (!noSubject || /DRIVER.?MOVES|LATEST.?SHIFT/i.test(a.name || "")));
+          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && (!(noSubject || !(message.subject || "").toUpperCase().includes(SUBJECT_FILTER)) || /DRIVERS?.?MOVES|LATEST.?SHIFT/i.test(a.name || "")));
 
         const cadenceAtt = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
           .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && /MOVES_?HOURLY|RTG_?MOVES/i.test(a.name || ""));
