@@ -932,7 +932,36 @@ Deno.serve(async req => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
     // windowEnd : "YYYY-MM-DD HH:MM:SS" (heure locale, fin de la fenêtre du rapport) ;
     // engins : { RTG: ["RTG05", ...], CC: ["SC64", ...] } (sessions restées ouvertes).
-    const { windowEnd, engins } = await req.json();
+    const reqBody = await req.json();
+    const { windowEnd, engins } = reqBody;
+    if (reqBody.mode === "cadence") {
+      // Alerte de CADENCE RTG : prévient ADMIN/RESPONSABLE + les RESPONSABLES DE
+      // SHIFT des équipes RTG qui travaillaient pendant la fenêtre (shift déduit
+      // du milieu de la fenêtre ; une fenêtre après minuit appartient au S3 de la veille).
+      const cm = String(windowEnd || "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+      if (!cm) throw new Error("windowEnd invalide.");
+      const midMs = Date.UTC(+cm[1], +cm[2] - 1, +cm[3], +cm[4], +cm[5]) - 30 * 60 * 1000;
+      const mid = new Date(midMs);
+      const h = mid.getUTCHours();
+      const cShift = h >= 7 && h < 15 ? "S1" : (h >= 15 && h < 23 ? "S2" : "S3");
+      const workDay = new Date(midMs - (h < 7 ? 24 * 60 * 60 * 1000 : 0));
+      const workIso = `${workDay.getUTCFullYear()}-${String(workDay.getUTCMonth() + 1).padStart(2, "0")}-${String(workDay.getUTCDate()).padStart(2, "0")}`;
+      const cState: any = await loadState(admin);
+      const teamIds: string[] = cState.teams
+        .filter((t: any) => (t.typeEngin || "RTG") === "RTG" &&
+          ShiftRotationEngine.getTeamShiftForDate(t, RTGDate.parseISO(workIso), cState.config) === cShift)
+        .map((t: any) => t.id);
+      let sent = 0;
+      for (const teamId of teamIds) {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/send-push-notification`, {
+          method: "POST",
+          headers: Object.assign({ Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, JSON_HEADERS),
+          body: JSON.stringify({ target: "conge_reviewers", teamId, title: reqBody.title, body: reqBody.body, url: "./", tag: reqBody.tag })
+        });
+        if (r.ok) sent++;
+      }
+      return new Response(JSON.stringify({ ok: true, mode: "cadence", shift: cShift, workIso, teams: teamIds.length, sent }), { headers: JSON_HEADERS });
+    }
     const m = String(windowEnd || "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
     if (!m) throw new Error("windowEnd invalide.");
     const endIso = `${m[1]}-${m[2]}-${m[3]}`;

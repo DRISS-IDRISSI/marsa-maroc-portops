@@ -573,16 +573,28 @@ Deno.serve(async _req => {
               const { error: claimErr } = await admin.from("tos_passation_alertes").insert({ cle: `cadence|${cad.windowEnd}` });
               if (!claimErr) {
                 const hh = (t: string) => t.slice(11, 16).replace(":", "h");
-                await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push-notification`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-                  body: JSON.stringify({
-                    target: "conge_reviewers",
-                    title: `Cadence RTG faible (${hh(cad.windowStart || cad.windowEnd)}–${hh(cad.windowEnd)})`,
-                    body: low.map(r => `${r.rtg} : ${r.moves}/${cad.minMoves}`).join(" · "),
-                    url: "./", tag: "cadence-rtg-" + cad.windowEnd
-                  })
-                });
+                const cadTitle = `Cadence RTG faible (${hh(cad.windowStart || cad.windowEnd)}–${hh(cad.windowEnd)})`;
+                const cadBody = low.map(r => `${r.rtg} : ${r.moves}/${cad.minMoves}`).join(" · ");
+                const cadTag = "cadence-rtg-" + cad.windowEnd;
+                const sbUrl = Deno.env.get("SUPABASE_URL");
+                const authH = { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` };
+                // Responsables de l'équipe en poste (+ ADMIN/RESPONSABLE) via tos-passation-alert ;
+                // à défaut, repli : ADMIN/RESPONSABLE seulement.
+                let routed = false;
+                try {
+                  const rr = await fetch(`${sbUrl}/functions/v1/tos-passation-alert`, {
+                    method: "POST", headers: authH,
+                    body: JSON.stringify({ mode: "cadence", windowEnd: cad.windowEnd, title: cadTitle, body: cadBody, tag: cadTag })
+                  });
+                  const rj = await rr.json().catch(() => ({}));
+                  routed = rr.ok && rj.sent > 0;
+                } catch { /* repli ci-dessous */ }
+                if (!routed) {
+                  await fetch(`${sbUrl}/functions/v1/send-push-notification`, {
+                    method: "POST", headers: authH,
+                    body: JSON.stringify({ target: "conge_reviewers", title: cadTitle, body: cadBody, url: "./", tag: cadTag })
+                  });
+                }
                 pushAlertsSent++;
               }
             }
@@ -862,7 +874,7 @@ Deno.serve(async _req => {
     processedEmails,
     pushAlertsSent,
     cadenceImported,
-    version: "2026-10-07-cadence-rtg",
+    version: "2026-10-07-cadence-rtg-resp-shift",
     debugRecent,
     skippedNoAttachment,
     skippedAlreadyImported,
