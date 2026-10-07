@@ -91,6 +91,10 @@ const SUBJECT_FILTER = "DRIVER MOVES PER SHIFT";
 // Rapport horaire "Quay Crane and RTG Moves per hour" (pièce jointe
 // REP_RTG_MOVES_HOURLY_*.xls) : cadence des RTG sur une fenêtre glissante de 60 min.
 const HOURLY_SUBJECT = "RTG MOVES PER HOUR";
+// Alertes push de cadence horaire DÉSACTIVÉES (demande exploitant : alertes uniquement
+// pour les sessions TOS restées ouvertes en fin de vacation / fin de shift). Le rapport
+// horaire reste importé et consultable dans l'onglet "Cadence RTG".
+const CADENCE_ALERTS_ENABLED = false;
 const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
 
@@ -569,7 +573,7 @@ Deno.serve(async _req => {
             const endMs = Date.parse(cad.windowEnd.replace(" ", "T") + "Z");
             const ageMs = nowCasablancaMs() - endMs;
             const low = cad.rtgRows.filter(r => r.statut && r.statut.includes("LOW"));
-            if (low.length > 0 && ageMs >= 0 && ageMs <= 90 * 60 * 1000) {
+            if (CADENCE_ALERTS_ENABLED && low.length > 0 && ageMs >= 0 && ageMs <= 90 * 60 * 1000) {
               const { error: claimErr } = await admin.from("tos_passation_alertes").insert({ cle: `cadence|${cad.windowEnd}` });
               if (!claimErr) {
                 const hh = (t: string) => t.slice(11, 16).replace(":", "h");
@@ -874,7 +878,7 @@ Deno.serve(async _req => {
     processedEmails,
     pushAlertsSent,
     cadenceImported,
-    version: "2026-10-07-cadence-rtg-resp-shift",
+    version: "2026-10-07-cadence-rtg-sans-alerte",
     debugRecent,
     skippedNoAttachment,
     skippedAlreadyImported,
