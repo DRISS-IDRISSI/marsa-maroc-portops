@@ -78,7 +78,8 @@ Deno.serve(async req => {
 
     let userIds: string[] = [];
     if (target === "conge_reviewers") {
-      if (!teamId) throw new Error("teamId requis pour target=conge_reviewers.");
+      // Sans teamId : seuls ADMIN/RESPONSABLE (toutes équipes) sont ciblés
+      // (alertes de cadence RTG, non rattachées à une équipe précise).
       // Même périmètre que la policy RLS "conges_write" (schema.sql) : ADMIN/
       // RESPONSABLE (toutes équipes) + RESPONSABLE_SHIFT de l'équipe concernée
       // (team_id OU team_id_2, binôme RTG/CC) — jamais CHEF_ESCALE, qui ne
@@ -87,7 +88,7 @@ Deno.serve(async req => {
         .eq("actif", true).in("role", ["ADMIN", "RESPONSABLE", "RESPONSABLE_SHIFT"]);
       if (error) throw error;
       userIds = (data || [])
-        .filter(p => p.role === "ADMIN" || p.role === "RESPONSABLE" || (p.role === "RESPONSABLE_SHIFT" && (p.team_id === teamId || p.team_id_2 === teamId)))
+        .filter(p => p.role === "ADMIN" || p.role === "RESPONSABLE" || (!!teamId && p.role === "RESPONSABLE_SHIFT" && (p.team_id === teamId || p.team_id_2 === teamId)))
         .map(p => p.id);
     } else if (target === "driver") {
       if (!driverId) throw new Error("driverId requis pour target=driver.");

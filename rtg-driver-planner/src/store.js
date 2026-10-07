@@ -878,6 +878,30 @@ const RTGStore = (function () {
     addAuditEntry({ action: "Login TOS ignoré", details: loginTos + (note ? " — " + note : "") });
   }
 
+  // Cadence horaire des RTG (rapport TOS "Quay Crane and RTG Moves per hour",
+  // table cadence_rtg_horaire) : une ligne par (fin de fenêtre, RTG) sur
+  // [dateFrom 00:00 ; dateTo+1 00:00[ (dates "YYYY-MM-DD").
+  async function fetchCadenceRtg(dateFrom, dateTo) {
+    const next = new Date(dateTo + "T00:00:00Z");
+    next.setUTCDate(next.getUTCDate() + 1);
+    const upper = next.toISOString().slice(0, 10) + "T00:00:00";
+    const PAGE_SIZE = 1000;
+    const rows = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await sb.from("cadence_rtg_horaire").select("*")
+        .gt("window_end", dateFrom + "T00:00:00").lte("window_end", upper)
+        .order("window_end").order("rtg").range(offset, offset + PAGE_SIZE - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE_SIZE) break;
+    }
+    return rows.map(r => ({
+      windowStart: r.window_start, windowEnd: r.window_end, rtg: r.rtg, moves: r.moves || 0,
+      statut: r.statut || "", minMoves: r.min_moves || 15, totalEvents: r.total_events,
+      vesselEvents: r.vessel_events, yardEvents: r.yard_events, gateEvents: r.gate_events
+    }));
+  }
+
   // Notification push (best-effort) à UN conducteur — passe par l'Edge
   // Function send-push-notification (target "driver"). Retourne { sent, recipients }.
   async function notifyDriverPush(driverId, title, body, tag) {
@@ -1159,7 +1183,7 @@ const RTGStore = (function () {
     submitCongeRequest, validateCongeRequest, getCongeJustificatifUrl,
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
-    addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle, notifyDriverPush,
+    addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle, notifyDriverPush, fetchCadenceRtg,
     setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank, bulkClearStaleVacationOverrides,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,

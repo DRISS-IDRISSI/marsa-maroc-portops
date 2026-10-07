@@ -88,6 +88,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 
 const SUBJECT_FILTER = "DRIVER MOVES PER SHIFT";
+// Rapport horaire "Quay Crane and RTG Moves per hour" (pièce jointe
+// REP_RTG_MOVES_HOURLY_*.xls) : cadence des RTG sur une fenêtre glissante de 60 min.
+const HOURLY_SUBJECT = "RTG MOVES PER HOUR";
 const GRAPH_TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const GRAPH_SCOPE = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access";
 
@@ -236,6 +239,60 @@ function nowCasablancaMs(): number {
   }).formatToParts(new Date());
   const g = (t: string) => Number(parts.find(p => p.type === t)!.value);
   return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second"));
+}
+
+// Date/heure d'une cellule du rapport horaire (Date, numéro de série Excel ou
+// texte "jj/mm/aaaa hh:mm:ss") -> "YYYY-MM-DD HH:MM:00" arrondi à la minute
+// (heure locale du terminal, lue comme de l'UTC).
+function cadenceTime(v: unknown): string | null {
+  let ms: number | null = null;
+  if (v instanceof Date) ms = v.getTime();
+  else if (typeof v === "number" && Number.isFinite(v)) ms = Math.round((v - 25569) * 86400000);
+  else if (typeof v === "string") {
+    const t = toDateTimeText(v);
+    if (t) ms = Date.parse(t.replace(" ", "T") + "Z");
+  }
+  if (ms == null || isNaN(ms)) return null;
+  const d = new Date(Math.round(ms / 60000) * 60000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:00`;
+}
+
+// Lecture du rapport horaire RTG : fenêtre glissante, totaux, et une ligne par
+// RTG (deux blocs RTG01-07 / RTG08-14 côte à côte). Repérage par le CONTENU
+// des cellules (pas par des positions figées) pour résister à un décalage.
+function parseCadenceWorkbook(wb: XLSX.WorkBook) {
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: true }) as unknown[][];
+  let windowStart: string | null = null, windowEnd: string | null = null, generatedAt: string | null = null;
+  let minMoves = 15;
+  let totals: { total: number | null; vessel: number | null; yard: number | null; gate: number | null } = { total: null, vessel: null, yard: null, gate: null };
+  const rtgRows: { rtg: string; moves: number; statut: string | null }[] = [];
+  const num = (v: unknown) => (v === "" || v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v)));
+  rows.forEach((row, ri) => {
+    row.forEach((cell, ci) => {
+      const t = typeof cell === "string" ? cell.trim() : "";
+      if (/^Rolling window/i.test(t)) {
+        windowStart = cadenceTime(row[ci + 2]);
+        const toIdx = row.findIndex((c, i) => i > ci && String(c).trim().toLowerCase() === "to");
+        if (toIdx >= 0) windowEnd = cadenceTime(row[toIdx + 1]);
+      } else if (/^Generated\s/i.test(t)) {
+        const m = t.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+        if (m) generatedAt = `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}:${m[6]}`;
+      } else if (/Minimum:\s*(\d+)/i.test(t)) {
+        minMoves = Number(t.match(/Minimum:\s*(\d+)/i)![1]);
+      } else if (/^TOTAL RTG EVENTS/i.test(t)) {
+        const vals = rows[ri + 1] || [];
+        const idx = (label: RegExp) => row.findIndex(c => label.test(String(c).trim()));
+        const at = (label: RegExp) => { const i = idx(label); return i >= 0 ? num(vals[i]) : null; };
+        totals = { total: at(/^TOTAL RTG EVENTS/i), vessel: at(/^VESSEL RTG EVENTS/i), yard: at(/^YARD RTG EVENTS/i), gate: at(/^GATE/i) };
+      } else if (/^RTG\d+$/i.test(t)) {
+        const moves = num(row[ci + 1]);
+        if (moves != null) rtgRows.push({ rtg: t.toUpperCase(), moves, statut: String(row[ci + 3] || "").trim().toUpperCase() || null });
+      }
+    });
+  });
+  return { windowStart, windowEnd, generatedAt, minMoves, totals, rtgRows };
 }
 
 function toInt(v: unknown) {
@@ -402,6 +459,14 @@ Deno.serve(async _req => {
     .gte("date_travail", since.toISOString().slice(0, 10));
   const alreadyImportedMessageIds = new Set((alreadyImportedRows || []).map(r => r.source_message_id));
 
+  // Rapports horaires RTG déjà importés (évite de re-télécharger la pièce jointe).
+  const cadenceKnownIds = new Set<string>();
+  try {
+    const { data: cadKnown } = await admin.from("cadence_rtg_horaire").select("source_message_id")
+      .not("source_message_id", "is", null).gte("window_end", since.toISOString().slice(0, 10));
+    (cadKnown || []).forEach((r: { source_message_id: string }) => cadenceKnownIds.add(r.source_message_id));
+  } catch { /* table absente : migration_038 pas encore exécutée */ }
+  let cadenceImported = 0;
   let processedEmails = 0;
   let pushAlertsSent = 0;
   const debugRecent: { recu?: string; objet: string; pieceJointe: boolean; retenu: boolean }[] = [];
@@ -442,7 +507,7 @@ Deno.serve(async _req => {
         // sujet, "(sans objet)") : retenu aussi, la pièce jointe est alors
         // vérifiée par son NOM ci-dessous avant tout traitement.
         const subj = (m.subject || "").trim();
-        const matched = !!m.hasAttachments && (subj.toUpperCase().includes(SUBJECT_FILTER) || subj === "");
+        const matched = !!m.hasAttachments && (subj.toUpperCase().includes(SUBJECT_FILTER) || subj.toUpperCase().includes(HOURLY_SUBJECT) || subj === "");
         if (matched) matchingMessages.push(m);
         if (debugRecent.length < 10) debugRecent.push({ recu: m.receivedDateTime, objet: subj || "(sans objet)", pieceJointe: !!m.hasAttachments, retenu: matched });
       });
@@ -453,7 +518,7 @@ Deno.serve(async _req => {
       let markRead = false;
       try {
         const messageId = message.internetMessageId || null;
-        if (messageId && alreadyImportedMessageIds.has(messageId)) {
+        if (messageId && (alreadyImportedMessageIds.has(messageId) || cadenceKnownIds.has(messageId))) {
           skippedAlreadyImported++;
           processedEmails++;
           continue;
@@ -470,7 +535,62 @@ Deno.serve(async _req => {
         const xlsAttachment = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
           .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && (!noSubject || /DRIVER.?MOVES|LATEST.?SHIFT/i.test(a.name || "")));
 
-        if (!xlsAttachment) {
+        const cadenceAtt = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
+          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && /MOVES_?HOURLY|RTG_?MOVES/i.test(a.name || ""));
+
+        if (cadenceAtt) {
+          // ---- Rapport horaire de cadence des RTG ----
+          const cwb = XLSX.read(base64ToBytes(cadenceAtt.contentBytes!), { type: "array", cellDates: true });
+          const cad = parseCadenceWorkbook(cwb);
+          if (!cad.windowEnd || cad.rtgRows.length === 0) throw new Error("Rapport horaire RTG illisible (fenêtre ou lignes RTG introuvables).");
+          const cadRecords = cad.rtgRows.map(r => ({
+            window_start: cad.windowStart || cad.windowEnd,
+            window_end: cad.windowEnd,
+            rtg: r.rtg,
+            moves: r.moves,
+            statut: r.statut,
+            min_moves: cad.minMoves,
+            total_events: cad.totals.total,
+            vessel_events: cad.totals.vessel,
+            yard_events: cad.totals.yard,
+            gate_events: cad.totals.gate,
+            generated_at: cad.generatedAt,
+            source_message_id: messageId
+          }));
+          const { error: cadError } = await admin.from("cadence_rtg_horaire").upsert(cadRecords, { onConflict: "window_end,rtg" });
+          if (cadError) throw new Error("Insertion cadence RTG échouée : " + cadError.message);
+          cadenceImported += cadRecords.length;
+
+          // Alerte AUTOMATIQUE aux responsables : au moins un RTG sous le minimum
+          // (statut "LOW - ALERT") sur une fenêtre récente — une seule fois par
+          // fenêtre (verrou tos_passation_alertes). "CHECK ASSIGN." (aucun
+          // mouvement : engin à l'arrêt/non affecté) n'alerte pas.
+          try {
+            const endMs = Date.parse(cad.windowEnd.replace(" ", "T") + "Z");
+            const ageMs = nowCasablancaMs() - endMs;
+            const low = cad.rtgRows.filter(r => r.statut && r.statut.includes("LOW"));
+            if (low.length > 0 && ageMs >= 0 && ageMs <= 90 * 60 * 1000) {
+              const { error: claimErr } = await admin.from("tos_passation_alertes").insert({ cle: `cadence|${cad.windowEnd}` });
+              if (!claimErr) {
+                const hh = (t: string) => t.slice(11, 16).replace(":", "h");
+                await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push-notification`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+                  body: JSON.stringify({
+                    target: "conge_reviewers",
+                    title: `Cadence RTG faible (${hh(cad.windowStart || cad.windowEnd)}–${hh(cad.windowEnd)})`,
+                    body: low.map(r => `${r.rtg} : ${r.moves}/${cad.minMoves}`).join(" · "),
+                    url: "./", tag: "cadence-rtg-" + cad.windowEnd
+                  })
+                });
+                pushAlertsSent++;
+              }
+            }
+          } catch (e) {
+            console.error("Alerte cadence RTG (non bloquant) :", e);
+          }
+          markRead = true;
+        } else if (!xlsAttachment) {
           skippedNoAttachment++;
           markRead = true; // pour la propreté visuelle de la boîte, sans effet sur le traitement
         } else {
@@ -741,7 +861,8 @@ Deno.serve(async _req => {
     ok: errors.length === 0,
     processedEmails,
     pushAlertsSent,
-    version: "2026-10-07-horaires-preserves",
+    cadenceImported,
+    version: "2026-10-07-cadence-rtg",
     debugRecent,
     skippedNoAttachment,
     skippedAlreadyImported,

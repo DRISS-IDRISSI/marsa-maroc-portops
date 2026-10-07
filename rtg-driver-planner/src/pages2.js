@@ -3684,6 +3684,53 @@ function MouvementsRtgPage() {
       .finally(() => setSessionsLoading(false));
   }, [tab, sessionsDate]);
 
+  // ---- Onglet "Cadence RTG" : mouvements par heure et par RTG (rapport TOS
+  // horaire), alerte sous le minimum (15 mouvements/heure). ----
+  const [cadenceDate, setCadenceDate] = useState(RTGDate.toISO(now));
+  const [cadenceRows, setCadenceRows] = useState([]);
+  const [cadenceLoading, setCadenceLoading] = useState(false);
+  const [cadenceError, setCadenceError] = useState("");
+  useEffect(() => {
+    if (tab !== "cadence") return;
+    setCadenceLoading(true);
+    setCadenceError("");
+    RTGStore.fetchCadenceRtg(cadenceDate, cadenceDate)
+      .then(setCadenceRows)
+      .catch(e => setCadenceError(e && e.message ? e.message : "Chargement impossible (migration_038 exécutée ?)."))
+      .finally(() => setCadenceLoading(false));
+  }, [tab, cadenceDate]);
+  const cadenceView = useMemo(() => {
+    const rtgs = Array.from(new Set(cadenceRows.map(r => r.rtg))).sort();
+    const byWindow = {};
+    cadenceRows.forEach(r => {
+      const w = byWindow[r.windowEnd] || (byWindow[r.windowEnd] = { windowEnd: r.windowEnd, windowStart: r.windowStart, cells: {}, total: 0, low: 0 });
+      w.cells[r.rtg] = r;
+      w.total += r.moves;
+      if (/LOW/i.test(r.statut)) w.low += 1;
+    });
+    const windows = Object.values(byWindow).sort((a, b) => String(a.windowEnd).localeCompare(String(b.windowEnd)));
+    const perRtg = rtgs.map(g => {
+      const rs = cadenceRows.filter(r => r.rtg === g);
+      return { rtg: g, total: rs.reduce((a, r) => a + r.moves, 0), low: rs.filter(r => /LOW/i.test(r.statut)).length, idle: rs.filter(r => r.moves === 0).length };
+    });
+    const totalLow = windows.reduce((a, w) => a + w.low, 0);
+    const best = windows.slice().sort((a, b) => b.total - a.total)[0];
+    return { rtgs, windows, perRtg, totalLow, best, minMoves: cadenceRows[0] ? cadenceRows[0].minMoves : 15 };
+  }, [cadenceRows]);
+  const hhmm = (t) => String(t || "").slice(11, 16);
+  const cadenceCellCls = (r) => {
+    if (!r) return "text-slate-300";
+    if (/LOW/i.test(r.statut)) return "bg-red-100 text-red-700 font-bold";
+    if (r.moves === 0) return "bg-amber-50 text-amber-600";
+    return "bg-emerald-100 text-emerald-700 font-semibold";
+  };
+  const exportCadenceExcel = () => {
+    const headers = ["Fenêtre (début)", "Fenêtre (fin)", ...cadenceView.rtgs, "Total RTG", "RTG sous le minimum"];
+    const out = cadenceView.windows.map(w => [hhmm(w.windowStart), hhmm(w.windowEnd), ...cadenceView.rtgs.map(g => w.cells[g] ? w.cells[g].moves : ""), w.total, w.low]);
+    out.push(["Total jour", "", ...cadenceView.perRtg.map(p => p.total), cadenceView.perRtg.reduce((a, p) => a + p.total, 0), cadenceView.totalLow]);
+    downloadXLSX(`cadence-rtg-${cadenceDate}.xlsx`, headers, out, "Cadence RTG");
+  };
+
   const refreshDetailRows = () => {
     setLoading(true);
     setError("");
@@ -4028,6 +4075,7 @@ function MouvementsRtgPage() {
         <button onClick={() => setTab("detail")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "detail" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Détail par jour/shift</button>
         <button onClick={() => setTab("total")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "total" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Total par conducteur (période)</button>
         <button onClick={() => setTab("sessions")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "sessions" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}><i className="fas fa-clock mr-1.5"></i>Sessions &amp; alertes</button>
+        {state.currentFleet === "RTG" && <button onClick={() => setTab("cadence")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "cadence" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}><i className="fas fa-gauge-high mr-1.5"></i>Cadence RTG</button>}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -4178,6 +4226,65 @@ function MouvementsRtgPage() {
             </table>
           </div>
         </div>
+      )}
+      </>
+      )}
+
+      {tab === "cadence" && (
+      <>
+      <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-slate-200 p-4">
+        <div>
+          <label className={LABEL_CLS}>Date</label>
+          <input type="date" value={cadenceDate} onChange={e => setCadenceDate(e.target.value)} className={FIELD_CLS} />
+        </div>
+        <button onClick={() => setCadenceDate(RTGDate.toISO(now))} className="px-3 py-2 text-xs font-semibold rounded-lg bg-marine-800 text-slate-400 hover:text-white">Aujourd'hui</button>
+        {cadenceView.windows.length > 0 && <button onClick={exportCadenceExcel} className="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel mr-1.5"></i>Excel</button>}
+        <div className="ml-auto text-[11px] text-slate-400">Mouvements des 60 dernières minutes, par RTG — minimum attendu : {cadenceView.minMoves}/h</div>
+      </div>
+      {cadenceError && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{cadenceError}</div>}
+      {cadenceLoading && <div className="text-xs text-slate-500 italic px-1">Chargement...</div>}
+      {!cadenceLoading && !cadenceError && cadenceView.windows.length === 0 && (
+        <div className="text-xs text-slate-500 italic bg-white rounded-xl border border-slate-200 px-4 py-6 text-center">Aucun rapport horaire reçu pour cette date (fenêtres importées automatiquement toutes les heures).</div>
+      )}
+      {cadenceView.windows.length > 0 && (
+      <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-slate-200 p-3"><div className="text-[10px] uppercase tracking-wider text-slate-400">Fenêtres reçues</div><div className="text-2xl font-bold text-slate-900">{cadenceView.windows.length}</div></div>
+        <div className="bg-white rounded-xl border border-slate-200 p-3"><div className="text-[10px] uppercase tracking-wider text-slate-400">Mouvements RTG (jour)</div><div className="text-2xl font-bold text-slate-900">{cadenceView.perRtg.reduce((a, p) => a + p.total, 0)}</div></div>
+        <div className="bg-white rounded-xl border border-slate-200 p-3"><div className="text-[10px] uppercase tracking-wider text-slate-400">Alertes « sous le minimum »</div><div className={`text-2xl font-bold ${cadenceView.totalLow > 0 ? "text-red-600" : "text-emerald-600"}`}>{cadenceView.totalLow}</div></div>
+        <div className="bg-white rounded-xl border border-slate-200 p-3"><div className="text-[10px] uppercase tracking-wider text-slate-400">Meilleure heure</div><div className="text-2xl font-bold text-slate-900">{cadenceView.best ? cadenceView.best.total : "-"}<span className="text-xs font-normal text-slate-400 ml-1">{cadenceView.best ? "(" + hhmm(cadenceView.best.windowStart) + "–" + hhmm(cadenceView.best.windowEnd) + ")" : ""}</span></div></div>
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-500">
+              <th className="px-2 py-2 text-left font-semibold">Fenêtre</th>
+              {cadenceView.rtgs.map(g => <th key={g} className="px-1.5 py-2 text-center font-semibold">{g.replace("RTG", "")}</th>)}
+              <th className="px-2 py-2 text-center font-semibold">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cadenceView.windows.map(w => (
+              <tr key={w.windowEnd} className="border-t border-slate-100">
+                <td className="px-2 py-1.5 whitespace-nowrap text-slate-700 font-semibold">{hhmm(w.windowStart)}–{hhmm(w.windowEnd)}</td>
+                {cadenceView.rtgs.map(g => <td key={g} className={`px-1.5 py-1.5 text-center ${cadenceCellCls(w.cells[g])}`}>{w.cells[g] ? w.cells[g].moves : "·"}</td>)}
+                <td className="px-2 py-1.5 text-center font-bold text-slate-900">{w.total}{w.low > 0 && <span className="ml-1 text-red-600"><i className="fas fa-triangle-exclamation"></i></span>}</td>
+              </tr>
+            ))}
+            <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
+              <td className="px-2 py-2">Total jour</td>
+              {cadenceView.perRtg.map(p => <td key={p.rtg} className="px-1.5 py-2 text-center">{p.total}</td>)}
+              <td className="px-2 py-2 text-center">{cadenceView.perRtg.reduce((a, p) => a + p.total, 0)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap gap-3 text-[11px] text-slate-500 px-1">
+        <span><span className="inline-block w-3 h-3 rounded bg-red-100 border border-red-300 align-middle mr-1"></span>Sous le minimum (alerte envoyée)</span>
+        <span><span className="inline-block w-3 h-3 rounded bg-amber-50 border border-amber-300 align-middle mr-1"></span>0 mouvement (engin à l'arrêt / à vérifier)</span>
+        <span><span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300 align-middle mr-1"></span>Minimum atteint</span>
+      </div>
+      </>
       )}
       </>
       )}
