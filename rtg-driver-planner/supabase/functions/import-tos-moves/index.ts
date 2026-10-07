@@ -537,10 +537,10 @@ Deno.serve(async _req => {
 
         const noSubject = !(message.subject || "").trim();
         const xlsAttachment = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
-          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && (!(noSubject || !(message.subject || "").toUpperCase().includes(SUBJECT_FILTER)) || /DRIVERS?.?MOVES|LATEST.?SHIFT/i.test(a.name || "")));
+          .find(a => /\.xls[xm]?$/i.test(a.name || "") && a.contentBytes && (!(noSubject || !(message.subject || "").toUpperCase().includes(SUBJECT_FILTER)) || /DRIVERS?.?MOVES|LATEST.?SHIFT/i.test(a.name || "")));
 
         const cadenceAtt = ((attJson.value || []) as { name?: string; contentBytes?: string }[])
-          .find(a => /\.xls$/i.test(a.name || "") && a.contentBytes && /MOVES_?HOURLY|RTG_?MOVES/i.test(a.name || ""));
+          .find(a => /\.xls[xm]?$/i.test(a.name || "") && a.contentBytes && /MOVES_?HOURLY|RTG_?MOVES/i.test(a.name || ""));
 
         if (cadenceAtt) {
           // ---- Rapport horaire de cadence des RTG ----
@@ -878,7 +878,7 @@ Deno.serve(async _req => {
     processedEmails,
     pushAlertsSent,
     cadenceImported,
-    version: "2026-10-07-cadence-rtg-sans-alerte",
+    version: "2026-10-07-xlsx-objet-libre",
     debugRecent,
     skippedNoAttachment,
     skippedAlreadyImported,
