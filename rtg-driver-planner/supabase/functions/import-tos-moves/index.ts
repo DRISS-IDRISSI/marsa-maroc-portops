@@ -565,16 +565,31 @@ Deno.serve(async _req => {
           // jointe — un paquet qui échoue (taille, verrou temporaire...)
           // ne doit pas faire perdre les paquets déjà insérés avec succès.
           const CHUNK_SIZE = 200;
-          for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-            const chunk = records.slice(i, i + CHUNK_SIZE);
-            const { error: upsertError } = await admin
-              .from("mouvements_tos")
-              .upsert(chunk, { onConflict: "login_tos,date_travail,shift,engin" });
-            if (upsertError) {
-              errors.push(`Email id=${message.id} (paquet ${i}-${i + chunk.length}) : Insertion échouée : ` + upsertError.message);
-              continue;
+          // Deux familles de lignes, upsertées SÉPARÉMENT : (1) lignes AVEC
+          // colonnes de session (format "REP_LATESTSHIFT…", sans objet) ; (2)
+          // lignes SANS ces colonnes (ancien format "DRIVER MOVES PER SHIFT") —
+          // pour celles-ci on OMET les 7 colonnes de session, sinon l'upsert les
+          // remettait à NULL et EFFAÇAIT les horaires déjà importés par l'autre
+          // email (les deux emails du même shift se réécrasaient en boucle :
+          // horaires qui apparaissent puis disparaissent).
+          const withSession = records.filter(r => r.statut_session);
+          const withoutSession = records.filter(r => !r.statut_session).map(r => {
+            // deno-lint-ignore no-unused-vars
+            const { heure_login, heure_logout, premier_mvmt, dernier_mvmt, duree_min, statut_session, nb_sessions, ...rest } = r;
+            return rest;
+          });
+          for (const list of [withSession, withoutSession]) {
+            for (let i = 0; i < list.length; i += CHUNK_SIZE) {
+              const chunk = list.slice(i, i + CHUNK_SIZE);
+              const { error: upsertError } = await admin
+                .from("mouvements_tos")
+                .upsert(chunk, { onConflict: "login_tos,date_travail,shift,engin" });
+              if (upsertError) {
+                errors.push(`Email id=${message.id} (paquet ${i}-${i + chunk.length}) : Insertion échouée : ` + upsertError.message);
+                continue;
+              }
+              importedRows += chunk.length;
             }
-            importedRows += chunk.length;
           }
 
           // Alerte PUSH au conducteur qui n'a pas fermé sa session TOS à la
@@ -726,7 +741,7 @@ Deno.serve(async _req => {
     ok: errors.length === 0,
     processedEmails,
     pushAlertsSent,
-    version: "2026-10-07-debug-sans-objet",
+    version: "2026-10-07-horaires-preserves",
     debugRecent,
     skippedNoAttachment,
     skippedAlreadyImported,
