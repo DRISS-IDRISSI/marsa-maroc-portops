@@ -1806,7 +1806,7 @@ function RapportRHPage() {
             .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key])).concat([day.totalMvmt]));
         });
       });
-      downloadXLSX(`mouvements-rtg-detail-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.xlsx`, headers, rows, "Détail");
+      downloadXLSX(`mouvements-rtg-detail-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.xlsx`, headers, rows, "Détail", { title: "Détail des mouvements — " + (dayIso ? dayIso : RAPPORT_MOIS_LABELS[month - 1] + " " + year), subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
       return;
     }
     if (tab === "mouvements") {
@@ -1819,7 +1819,7 @@ function RapportRHPage() {
           .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key]))
           .concat([g.totalMvmt]);
       });
-      downloadXLSX(`mouvements-rtg-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.xlsx`, headers, rows, "Mouvements");
+      downloadXLSX(`mouvements-rtg-${dayIso || (RAPPORT_MOIS_LABELS[month - 1] + "-" + year)}.xlsx`, headers, rows, "Mouvements", { title: "Mouvements — " + (dayIso ? dayIso : RAPPORT_MOIS_LABELS[month - 1] + " " + year), subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes"), totals: true, highlightCols: [] });
       return;
     }
     if (tab === "feries") {
@@ -1830,7 +1830,7 @@ function RapportRHPage() {
         r.mouvements != null ? r.mouvements : "",
         r.mouvementCommentaire || r.record.commentaire || ""
       ]);
-      downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés");
+      downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés", { title: "Jours fériés & 3ème shift dimanche — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
       return;
     }
     const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)"];
@@ -1838,7 +1838,7 @@ function RapportRHPage() {
       r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.PRESENT, r.counts.REPOS, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE, r.counts.FORMATION,
       r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures
     ]);
-    downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH");
+    downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH", { title: "Rapport RH — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes"), totals: true, highlightCols: [10, 11, 12, 13, 14, 15] });
   };
 
   const printRef = useRef(null);

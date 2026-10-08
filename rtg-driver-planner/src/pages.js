@@ -1556,19 +1556,130 @@ const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin",
 // même bibliothèque, réutilisée ici pour l'écriture. Largeurs de colonnes
 // ajustées au contenu le plus long de chaque colonne pour rester lisible à
 // l'ouverture, sans réglage manuel côté utilisateur.
-async function downloadXLSX(filename, headers, rows, sheetName) {
+async function downloadXLSX(filename, headers, rows, sheetName, opts) {
+  const o = opts || {};
   try {
-    const XLSX = await loadXlsxLib();
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws["!cols"] = headers.map((h, i) => {
-      const maxLen = rows.reduce((m, r) => Math.max(m, r[i] == null ? 0 : String(r[i]).length), String(h == null ? "" : h).length);
-      return { wch: Math.min(Math.max(maxLen + 2, 8), 40) };
+    const ExcelJS = await loadExcelJsLib();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "TC3PC — CES Driver Planner";
+    const ws = wb.addWorksheet((sheetName || "Feuille1").slice(0, 31), {
+      views: [{ state: "frozen", ySplit: 5, showGridLines: false }],
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } }
     });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, (sheetName || "Feuille1").slice(0, 31));
-    XLSX.writeFile(wb, filename);
+    const nCols = headers.length;
+    const NAVY = "FF0B3B6B", SKY = "FF1E90D6", SKY_LIGHT = "FFEAF4FC", ZEBRA = "FFF5F9FD", GRID = "FFC9D8E6";
+    const border = { top: { style: "thin", color: { argb: GRID } }, left: { style: "thin", color: { argb: GRID } }, bottom: { style: "thin", color: { argb: GRID } }, right: { style: "thin", color: { argb: GRID } } };
+    const isNumCol = headers.map((h, i) => {
+      let any = false;
+      for (const r of rows) { const v = r[i]; if (v === "" || v == null) continue; if (typeof v !== "number") return false; any = true; }
+      return any;
+    });
+
+    // Bandeau (lignes 1 à 3) : titre, périmètre, date de génération.
+    const gen = typeof rtgNowInCasablanca === "function" ? rtgNowInCasablanca() : new Date();
+    const genTxt = (() => { try { return new Date(gen).toLocaleString("fr-FR", { timeZone: "UTC", dateStyle: "short", timeStyle: "short" }); } catch (e) { return ""; } })();
+    ws.mergeCells(1, 1, 1, nCols);
+    ws.getCell(1, 1).value = "MARSA MAROC — TC3PC  |  " + (o.title || sheetName || "Rapport");
+    ws.getCell(1, 1).font = { name: "Calibri", size: 16, bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+    ws.getCell(1, 1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(1).height = 32;
+    ws.mergeCells(2, 1, 2, nCols);
+    ws.getCell(2, 1).value = o.subtitle || "Terminal à Conteneurs 3 du Port de Casablanca";
+    ws.getCell(2, 1).font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getCell(2, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: SKY } };
+    ws.getCell(2, 1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(2).height = 22;
+    ws.mergeCells(3, 1, 3, nCols);
+    ws.getCell(3, 1).value = "Généré le " + genTxt + "  —  " + rows.length + " ligne" + (rows.length > 1 ? "s" : "");
+    ws.getCell(3, 1).font = { name: "Calibri", size: 9, italic: true, color: { argb: "FF64748B" } };
+    ws.getCell(3, 1).alignment = { vertical: "middle", horizontal: "right", indent: 1 };
+    ws.getRow(4).height = 6;
+
+    // En-tête du tableau (ligne 5).
+    const headRow = ws.getRow(5);
+    headers.forEach((h, i) => {
+      const c = headRow.getCell(i + 1);
+      c.value = h;
+      c.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+      c.alignment = { vertical: "middle", horizontal: isNumCol[i] ? "center" : "left", wrapText: true };
+      c.border = border;
+    });
+    headRow.height = 34;
+
+    // Données : lignes alternées, nombres centrés (zéro estompé), surbrillance optionnelle.
+    const hi = new Set(o.highlightCols || []);
+    rows.forEach((r, ri) => {
+      const row = ws.getRow(6 + ri);
+      headers.forEach((h, i) => {
+        const c = row.getCell(i + 1);
+        const v = r[i] == null ? "" : r[i];
+        c.value = v;
+        c.border = border;
+        c.font = { name: "Calibri", size: 10, color: { argb: "FF1E293B" } };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ri % 2 ? ZEBRA : "FFFFFFFF" } };
+        if (isNumCol[i]) {
+          c.alignment = { vertical: "middle", horizontal: "center" };
+          if (typeof v === "number") {
+            c.numFmt = Number.isInteger(v) ? '0;-0;"–"' : '0.0#;-0.0#;"–"';
+            if (v === 0) c.font = { name: "Calibri", size: 10, color: { argb: "FF94A3B8" } };
+            else if (hi.has(i)) { c.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FF0B3B6B" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD6EBFA" } }; }
+          }
+        } else {
+          c.alignment = { vertical: "middle", horizontal: "left", wrapText: false };
+        }
+      });
+      row.height = 18;
+    });
+
+    // Ligne de total (colonnes numériques).
+    let lastRow = 5 + rows.length;
+    if (o.totals && rows.length > 0) {
+      lastRow++;
+      const tr = ws.getRow(lastRow);
+      headers.forEach((h, i) => {
+        const c = tr.getCell(i + 1);
+        if (i === 0) c.value = "TOTAL";
+        else if (isNumCol[i]) {
+          const sum = rows.reduce((a, r) => a + (typeof r[i] === "number" ? r[i] : 0), 0);
+          c.value = Math.round(sum * 100) / 100;
+          c.numFmt = Number.isInteger(c.value) ? '0;-0;"–"' : '0.0#;-0.0#;"–"';
+        }
+        c.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SKY } };
+        c.border = border;
+        c.alignment = { vertical: "middle", horizontal: isNumCol[i] ? "center" : "left" };
+      });
+      tr.height = 22;
+    }
+
+    // Largeurs ajustées, filtre, impression (en-tête répété, pagination).
+    headers.forEach((h, i) => {
+      const maxLen = rows.reduce((m, r) => Math.max(m, r[i] == null ? 0 : String(r[i]).length), 0);
+      const hLen = String(h == null ? "" : h).length;
+      ws.getColumn(i + 1).width = isNumCol[i] ? Math.min(Math.max(hLen * 0.8, maxLen + 3, 9), 16) : Math.min(Math.max(maxLen + 3, hLen + 2, 10), 42);
+    });
+    ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5 + rows.length, column: nCols } };
+    ws.pageSetup.printTitlesRow = "5:5";
+    ws.headerFooter.oddFooter = "&LMarsa Maroc — TC3PC&CPage &P / &N&R&D";
+    const buf = await wb.xlsx.writeBuffer();
+    downloadArrayBuffer(buf, filename);
   } catch (e) {
-    alert("Erreur d'export Excel : " + (e && e.message ? e.message : "réessayez."));
+    // Repli : classeur simple (SheetJS) si la bibliothèque de mise en forme est indisponible.
+    try {
+      const XLSX = await loadXlsxLib();
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws["!cols"] = headers.map((h, i) => {
+        const maxLen = rows.reduce((m, r) => Math.max(m, r[i] == null ? 0 : String(r[i]).length), String(h == null ? "" : h).length);
+        return { wch: Math.min(Math.max(maxLen + 2, 8), 40) };
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, (sheetName || "Feuille1").slice(0, 31));
+      XLSX.writeFile(wb, filename);
+    } catch (e2) {
+      alert("Erreur d'export Excel : " + (e2 && e2.message ? e2.message : "réessayez."));
+    }
   }
 }
 
