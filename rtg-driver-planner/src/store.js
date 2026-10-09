@@ -275,6 +275,7 @@ const RTGStore = (function () {
       throw new Error("Ce compte a été désactivé.");
     }
     set(s => Object.assign({}, s, loaded, { currentUserId: me.id, loading: false, authChecked: true }));
+    try { syncPushSubscription().catch(() => {}); } catch (e) { /* non bloquant */ }
     return me;
   }
 
@@ -294,6 +295,7 @@ const RTGStore = (function () {
         const me = loaded.users.find(u => u.id === data.session.user.id);
         if (me && me.actif !== false) {
           set(s => Object.assign({}, s, loaded, { currentUserId: me.id, loading: false, authChecked: true }));
+    try { syncPushSubscription().catch(() => {}); } catch (e) { /* non bloquant */ }
           return;
         }
         await sb.auth.signOut();
@@ -1169,6 +1171,24 @@ const RTGStore = (function () {
     return true;
   }
 
+  // Auto-réparation de l'abonnement push de CET appareil (appelée à chaque connexion) :
+  // l'Edge Function supprime la ligne en base dès que le service de push répond
+  // 404/410 (abonnement expiré), alors que le navigateur peut afficher
+  // "Notifications activées" — d'où des alertes qui cessent d'arriver sans aucun
+  // message. Si la permission est déjà accordée, on (ré)abonne l'appareil et on
+  // réécrit la ligne, sans aucune action de l'utilisateur.
+  async function syncPushSubscription() {
+    if (!pushSupported() || !state.currentUserId || Notification.permission !== "granted") return false;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(RTG_PUSH_VAPID_PUBLIC_KEY) });
+    const json = sub.toJSON();
+    const { error } = await sb.from("push_subscriptions").upsert({
+      user_id: state.currentUserId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth_key: json.keys.auth
+    }, { onConflict: "endpoint" });
+    return !error;
+  }
+
   async function unsubscribeFromPush() {
     if (!pushSupported()) return;
     const reg = await navigator.serviceWorker.ready;
@@ -1193,6 +1213,6 @@ const RTGStore = (function () {
     addTeam, updateTeam, setCurrentFleet,
     getFerieMouvements, setFerieMouvements,
     fetchMouvementsTos, fetchRendementLeaderboard, addMouvementManuel, deleteMouvementManuel, ignoreTosLogin,
-    getPushSubscriptionState, subscribeToPush, unsubscribeFromPush
+    getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, syncPushSubscription
   };
 })();
