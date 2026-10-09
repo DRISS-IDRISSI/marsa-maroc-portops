@@ -782,6 +782,24 @@ const RTGStore = (function () {
     return tos.concat(fillManualMovementShifts(tos, manuelRows.map(mapMouvementManuelRow)));
   }
 
+  // Shift prévu au planning pour un conducteur à une date (rotation de son
+  // équipe, ou shift saisi à la main pour un CDI/stagiaire). "" si inconnu.
+  function plannedShiftFor(driverId, dateTravail) {
+    try {
+      const driver = state.drivers.find(d => d.id === driverId);
+      const team = driver ? state.teams.find(tm => tm.id === driver.teamId) : null;
+      if (!team) return "";
+      const noRotation = !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
+      if (!noRotation) {
+        return ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(dateTravail), state.config) || "";
+      }
+      const ov = state.manualOverrides && state.manualOverrides[dateTravail + "_" + driverId];
+      return (ov && ov.shift) || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
   // Un mouvement saisi à la main n'a pas de shift enregistré : on lui donne le
   // shift que le conducteur a réellement travaillé ce jour-là — d'abord celui
   // où il a le plus de mouvements TOS ce jour-là, à défaut le shift de son
@@ -803,17 +821,7 @@ const RTGStore = (function () {
           const main = Object.keys(t).sort((x, y) => t[y] - t[x])[0];
           return Object.assign({}, m, { shift: main, shiftDeduit: true });
         }
-        const driver = state.drivers.find(d => d.id === m.driverId);
-        const team = driver ? state.teams.find(tm => tm.id === driver.teamId) : null;
-        if (!team) return m;
-        const noRotation = !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
-        let shift = "";
-        if (!noRotation) {
-          shift = ShiftRotationEngine.getTeamShiftForDate(team, RTGDate.parseISO(m.dateTravail), state.config) || "";
-        } else {
-          const ov = state.manualOverrides && state.manualOverrides[m.dateTravail + "_" + m.driverId];
-          shift = (ov && ov.shift) || "";
-        }
+        const shift = plannedShiftFor(m.driverId, m.dateTravail);
         return shift ? Object.assign({}, m, { shift: shift, shiftDeduit: true }) : m;
       } catch (e) {
         return m;
@@ -827,7 +835,9 @@ const RTGStore = (function () {
   // où il en a réalisé le plus ce jour-là). Appliqué ici, à la source, pour
   // que tous les écrans et rapports (détail, total, PDF, Excel, vue conducteur)
   // restent cohérents. Deux shifts à 6 mouvements ou plus chacun = vrai
-  // double shift, conservé tel quel. Les mouvements manuels ne sont jamais
+  // double shift, conservé tel quel. Un conducteur qui n'a QU'UN shift ce jour-là
+  // avec moins de 6 mouvements est rattaché à son shift prévu au planning.
+  // Les mouvements manuels ne sont jamais
   // touchés (leur shift est un choix volontaire, et n'est pas fusionné ici).
   const MARGINAL_SHIFT_THRESHOLD = 6;
   function mergeMarginalShiftRows(rows) {
@@ -843,7 +853,15 @@ const RTGStore = (function () {
       if (!r.shift) return r;
       const t = totals[keyOf(r)];
       const shifts = Object.keys(t);
-      if (shifts.length < 2) return r;
+      if (shifts.length < 2) {
+        // Un seul shift ce jour-là, mais marginal (< 6 mvts, ex. session
+        // restée ouverte d'un shift précédent, ou connexion sans mouvement) :
+        // rattaché au shift RÉEL prévu au planning pour ce conducteur.
+        if (!r.driverId || t[r.shift] >= MARGINAL_SHIFT_THRESHOLD) return r;
+        const planned = plannedShiftFor(r.driverId, r.dateTravail);
+        if (!planned || planned === r.shift) return r;
+        return Object.assign({}, r, { shift: planned, shiftFusionneDepuis: r.shift });
+      }
       const main = shifts.slice().sort((x, y) => t[y] - t[x])[0];
       if (r.shift === main || t[r.shift] >= MARGINAL_SHIFT_THRESHOLD) return r;
       return Object.assign({}, r, { shift: main, shiftFusionneDepuis: r.shift });
