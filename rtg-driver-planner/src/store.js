@@ -420,9 +420,11 @@ const RTGStore = (function () {
     if ("heures" in patch) dbPatch.heures = patch.heures;
     if ("mouvements" in patch) dbPatch.mouvements = patch.mouvements;
     if ("commentaire" in patch) dbPatch.commentaire = patch.commentaire;
-    const { data, error } = await sb.from(table).update(dbPatch).eq("id", id).select().single();
+    const { data: updRows, error } = await sb.from(table).update(dbPatch).eq("id", id).select();
     if (error) { console.error(error); throw error; }
-    const updated = recordRowMapper(table)(data);
+    // Aucune ligne modifiée = refus de la politique RLS (conducteur d'une autre équipe que la vôtre).
+    if (!updRows || updRows.length === 0) throw new Error("vous n'avez pas le droit de modifier cet enregistrement (conducteur d'une autre équipe que la vôtre). Demandez à un Responsable ou à un Admin.");
+    const updated = recordRowMapper(table)(updRows[0]);
     set(s => Object.assign({}, s, { [listKey]: s[listKey].map(r => r.id === id ? updated : r) }));
     const d = state.drivers.find(dr => dr.id === updated.driverId);
     addAuditEntry({ driverId: updated.driverId, matricule: d ? d.matricule : "", action: auditAction, details: "" });
@@ -430,8 +432,9 @@ const RTGStore = (function () {
 
   async function deleteRecord(table, listKey, id, auditAction) {
     const r = state[listKey].find(rec => rec.id === id);
-    const { error } = await sb.from(table).delete().eq("id", id);
+    const { data: delRows, error } = await sb.from(table).delete().eq("id", id).select("id");
     if (error) { console.error(error); throw error; }
+    if (!delRows || delRows.length === 0) throw new Error("vous n'avez pas le droit de supprimer cet enregistrement (conducteur d'une autre équipe que la vôtre). Demandez à un Responsable ou à un Admin.");
     set(s => Object.assign({}, s, { [listKey]: s[listKey].filter(rec => rec.id !== id) }));
     if (r) {
       const d = state.drivers.find(dr => dr.id === r.driverId);

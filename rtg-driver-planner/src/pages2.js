@@ -1146,6 +1146,14 @@ function HeuresExceptionnellesPage() {
   // pas le droit de saisir des Over Times") — RLS bloque de toute façon
   // l'écriture côté serveur (heures_exceptionnelles_write, migration_019).
   const canManage = canManageHrRecords(currentUser);
+  // Droit RÉEL par ligne (même règle que la RLS) : Admin/Responsable = tout ;
+  // Responsable de Shift = uniquement les conducteurs de SES équipes.
+  const canEditRow = r => {
+    if (!canManage) return false;
+    if (currentUser.role === "ADMIN" || currentUser.role === "RESPONSABLE") return true;
+    const d = rawState.drivers.find(dr => dr.id === r.driverId);
+    return !!d && [currentUser.teamId, currentUser.teamId2, currentUser.teamId3].filter(Boolean).includes(d.teamId);
+  };
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyHeureExceptionnelleForm());
   const [error, setError] = useState("");
@@ -1311,7 +1319,7 @@ function HeuresExceptionnellesPage() {
                   <td className="px-3 py-2 text-slate-600 text-center">{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{r.commentaire}</td>
                   <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{canManage ? <span className="inline-flex items-center gap-3"><button onClick={() => startEdit(r)} className="text-sky-600 hover:text-sky-800 text-xs font-semibold">Modifier</button><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></span> : <span className="text-slate-400 text-[11px] italic">Lecture seule</span>}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{canEditRow(r) ? <span className="inline-flex items-center gap-3"><button onClick={() => startEdit(r)} className="text-sky-600 hover:text-sky-800 text-xs font-semibold">Modifier</button><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></span> : <span className="text-slate-400 text-[11px] italic">Lecture seule</span>}</td>
                 </tr>
               );
             })}
