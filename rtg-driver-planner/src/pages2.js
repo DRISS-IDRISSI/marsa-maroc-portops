@@ -1686,7 +1686,13 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
     // mouvements de S1/S2 ne sont pas ceux du 3ème shift dimanche). À défaut
     // de mouvements étiquetés S3, retombe sur le total de la journée.
     const keyDay = r.driverId + "_" + r.dateDebut;
-    const auto = r.type === "DIMANCHE_S3" && mvtByKeyS3[keyDay] !== undefined ? mvtByKeyS3[keyDay] : mvtByKey[keyDay];
+    // Doublage : le total du jour inclut les mouvements de la vacation
+    // OFFICIELLE du conducteur — seuls ceux réalisés HORS de ses heures de
+    // travail comptent, et le TOS importé n'est pas ventilé par vacation
+    // (V1/V2) : on n'affiche donc rien plutôt qu'un chiffre faux, sauf
+    // saisie explicite.
+    const auto = r.type === "DOUBLAGE" ? undefined
+      : r.type === "DIMANCHE_S3" && mvtByKeyS3[keyDay] !== undefined ? mvtByKeyS3[keyDay] : mvtByKey[keyDay];
     // Saisie explicite (férié) prioritaire, sinon total importé du TOS/manuel.
     const total = mouvement && mouvement.mouvements != null ? mouvement.mouvements : (auto !== undefined ? auto : null);
     return {
