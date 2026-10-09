@@ -1645,10 +1645,15 @@ function buildRapportRH(state, month, year, teamId) {
 // Rapport jours fériés travaillés & 3ème shift dimanche (§29/§31) — recense les
 // dérogations "nécessité de service" du mois, avec les mouvements réalisés
 // pour chaque jour férié travaillé (cf. FerieMouvementsPanel, pages.js).
+// Libellé du type d'une ligne du rapport (férié / 3ème shift dimanche / doublage).
+function rapportFeriesTypeLabel(type) {
+  return type === "FERIE_TRAVAILLE" ? "Férié travaillé" : type === "DOUBLAGE" ? "Doublage" : "3ème shift dimanche";
+}
+
 function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
   const prefix = year + "-" + String(month).padStart(2, "0");
   const records = state.heuresExceptionnelles
-    .filter(r => (r.type === "FERIE_TRAVAILLE" || r.type === "DIMANCHE_S3") && r.dateDebut.slice(0, 7) === prefix)
+    .filter(r => (r.type === "FERIE_TRAVAILLE" || r.type === "DIMANCHE_S3" || r.type === "DOUBLAGE") && r.dateDebut.slice(0, 7) === prefix)
     .filter(r => {
       // state.drivers est déjà filtré sur la flotte affichée (RTG ou CC) par
       // l'appelant — sans cette vérification, "Tous" (aucune équipe précise)
@@ -1695,6 +1700,7 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
     rows: rows,
     totalFerie: rows.filter(r => r.record.type === "FERIE_TRAVAILLE").length,
     totalS3: rows.filter(r => r.record.type === "DIMANCHE_S3").length,
+    totalDoublage: rows.filter(r => r.record.type === "DOUBLAGE").length,
     totalMouvements: rows.reduce((sum, r) => sum + (r.mouvements || 0), 0)
   };
 }
@@ -1834,11 +1840,11 @@ function RapportRHPage() {
       const headers = ["Date", "Mat", "Nom", "Prénom", "Équipe", "Type", "Heures", "Mouvements réalisés", "Commentaire"];
       const rows = feriesReport.rows.map(r => [
         r.record.dateDebut, r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", r.teamNom,
-        r.record.type === "FERIE_TRAVAILLE" ? "Férié travaillé" : "3ème shift dimanche", r.record.heures,
+        rapportFeriesTypeLabel(r.record.type), r.record.heures,
         r.mouvements != null ? r.mouvements : "",
         r.mouvementCommentaire || r.record.commentaire || ""
       ]);
-      downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés", { title: "Jours fériés & 3ème shift dimanche — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
+      downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés", { title: "Jours fériés, 3ème shift dimanche & doublages — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
       return;
     }
     const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)"];
@@ -1883,7 +1889,7 @@ function RapportRHPage() {
 
       <div className="flex gap-2 print:hidden">
         <button onClick={() => setTab("rh")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "rh" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Rapport RH</button>
-        <button onClick={() => setTab("feries")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "feries" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Jours fériés &amp; 3ème shift dimanche</button>
+        <button onClick={() => setTab("feries")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${tab === "feries" ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>Fériés, 3ème shift &amp; doublages</button>
         {/* Mouvements (CC/RTG) : demande explicite de l'exploitant, un Chef
             d'Escale n'a pas le droit d'y accéder, même en lecture (voir
             migration_021_chef_escale_no_mouvements.sql). */}
@@ -2020,12 +2026,12 @@ function RapportRHPage() {
             <img src={rawState.currentFleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg"} alt={rawState.currentFleet === "CC" ? "Marsa Maroc" : "TC3PC"} className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
-              <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés &amp; 3ème shift dimanche — {rawState.currentFleet} — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+              <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés, 3ème shift dimanche &amp; doublages — {rawState.currentFleet} — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
             <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
-            <div>{feriesReport.totalFerie} jour(s) férié(s) travaillé(s) · {feriesReport.totalS3} 3ème shift dimanche</div>
+            <div>{feriesReport.totalFerie} jour(s) férié(s) travaillé(s) · {feriesReport.totalS3} 3ème shift dimanche · {feriesReport.totalDoublage} doublage(s)</div>
           </div>
         </div>
 
@@ -2053,20 +2059,20 @@ function RapportRHPage() {
                   <td className={td + " font-medium"}>{r.driver ? r.driver.nom : "—"}</td>
                   <td className={td}>{r.driver ? r.driver.prenom : ""}</td>
                   <td className={td}>{r.teamNom}</td>
-                  <td className={td}>{r.record.type === "FERIE_TRAVAILLE" ? "Férié travaillé" : "3ème shift dimanche"}</td>
+                  <td className={td}>{rapportFeriesTypeLabel(r.record.type)}</td>
                   <td className={tdCenter}>{r.record.heures}h</td>
                   <td className={tdCenter}>{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className={td}>{r.mouvementCommentaire || r.record.commentaire || ""}</td>
                 </tr>
               ))}
               {feriesReport.rows.length === 0 && (
-                <tr><td colSpan="9" className="px-2 py-6 text-center text-slate-500 italic">Aucun jour férié travaillé ni 3ème shift dimanche pour cette sélection.</td></tr>
+                <tr><td colSpan="9" className="px-2 py-6 text-center text-slate-500 italic">Aucun jour férié travaillé, 3ème shift dimanche ni doublage pour cette sélection.</td></tr>
               )}
             </tbody>
             {feriesReport.rows.length > 0 && (
               <tfoot>
                 <tr>
-                  <td colSpan="6" className={td + " text-right font-semibold"}>Total mouvements réalisés (jours fériés) :</td>
+                  <td colSpan="6" className={td + " text-right font-semibold"}>Total mouvements réalisés :</td>
                   <td colSpan="3" className={td + " font-semibold"}>{feriesReport.totalMouvements}</td>
                 </tr>
               </tfoot>
