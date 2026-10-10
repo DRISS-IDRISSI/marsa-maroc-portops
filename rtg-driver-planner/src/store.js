@@ -904,6 +904,42 @@ const RTGStore = (function () {
   // Cadence horaire des RTG (rapport TOS "Quay Crane and RTG Moves per hour",
   // table cadence_rtg_horaire) : une ligne par (fin de fenêtre, RTG) sur
   // [dateFrom 00:00 ; dateTo+1 00:00[ (dates "YYYY-MM-DD").
+  // ---------- Mouvements par vacation (fichier mensuel "DRIVER MOVE") ----------
+  // Une ligne par (login TOS, jour, shift, vacation). Sert à détecter les
+  // doublages (mouvements hors vacation officielle) — voir
+  // buildRapportFeriesS3 (pages2.js).
+  async function fetchMouvementsVacations(dateFrom, dateTo) {
+    const PAGE_SIZE = 1000;
+    const rows = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await sb.from("mouvements_vacations").select("*")
+        .gte("date_travail", dateFrom).lte("date_travail", dateTo)
+        .order("date_travail").order("id").range(offset, offset + PAGE_SIZE - 1);
+      if (error) { console.error(error); throw error; }
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE_SIZE) break;
+    }
+    return rows.map(r => ({ driverId: r.driver_id, loginTos: r.login_tos, dateTravail: r.date_travail, shift: r.shift, vacation: r.vacation, mouvements: r.mouvements || 0 }));
+  }
+
+  // Remplace TOUT le mois couvert par le fichier : réimporter un fichier
+  // corrigé ne laisse ainsi jamais d'anciennes valeurs.
+  async function replaceMouvementsVacations(rows, dateFrom, dateTo, sourceFichier) {
+    const del = await sb.from("mouvements_vacations").delete().gte("date_travail", dateFrom).lte("date_travail", dateTo);
+    if (del.error) { console.error(del.error); throw del.error; }
+    const payload = rows.map(r => ({
+      driver_id: r.driverId || null, login_tos: r.loginTos, date_travail: r.dateTravail,
+      shift: r.shift, vacation: r.vacation, mouvements: r.mouvements,
+      source_fichier: sourceFichier || null, created_by: state.currentUserId
+    }));
+    for (let i = 0; i < payload.length; i += 500) {
+      const { error } = await sb.from("mouvements_vacations").insert(payload.slice(i, i + 500));
+      if (error) { console.error(error); throw error; }
+    }
+    addAuditEntry({ action: "Import mouvements par vacation", details: dateFrom + " → " + dateTo + " — " + payload.length + " ligne(s) (" + (sourceFichier || "fichier") + ")" });
+    return payload.length;
+  }
+
   async function fetchCadenceRtg(dateFrom, dateTo) {
     const next = new Date(dateTo + "T00:00:00Z");
     next.setUTCDate(next.getUTCDate() + 1);
@@ -1224,7 +1260,7 @@ const RTGStore = (function () {
     submitCongeRequest, validateCongeRequest, getCongeJustificatifUrl,
     addMaladie, updateMaladie, deleteMaladie,
     addAbsence, updateAbsence, deleteAbsence,
-    addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle, notifyDriverPush, fetchCadenceRtg,
+    addHeureExceptionnelle, updateHeureExceptionnelle, deleteHeureExceptionnelle, notifyDriverPush, fetchCadenceRtg, fetchMouvementsVacations, replaceMouvementsVacations,
     setManualOverride, deleteManualOverride, resetImportedRestData, resetMonthPlanningToBlank, bulkClearStaleVacationOverrides,
     getCurrentUser, login, logout,
     isUsernameTaken, addUser, updateUser, setUserActive, deleteUser, sendCredentialsEmail, resetAndSendCredentials,

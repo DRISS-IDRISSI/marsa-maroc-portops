@@ -1656,6 +1656,95 @@ function rapportFeriesTypeLabel(type, detecte) {
 // SHIFT : le TOS ne donne pas le détail V1/V2 d'un même shift).
 const DOUBLAGE_MVT_THRESHOLD = 15;
 
+function normalizeLoginPart(s) {
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+}
+// Login TOS d'un conducteur : saisie manuelle (loginTos) sinon convention
+// 1ère lettre du prénom + nom + suffixe du terminal (tc3 RTG / tce CC).
+function expectedTosLogin(driver, fleet) {
+  if (driver.loginTos) return String(driver.loginTos).trim().toLowerCase();
+  const p = normalizeLoginPart(driver.prenom), n = normalizeLoginPart(driver.nom);
+  if (!p || !n) return null;
+  return p.charAt(0) + n + (fleet === "CC" ? "tce" : "tc3");
+}
+
+// Lit le classeur "Mensuel V1 V2" : 3 lignes d'en-tête (jour / S1-S2-S3 /
+// V1-V2), 6 colonnes par jour à partir de la colonne G, le login TOS est la
+// 2ème ligne de la cellule "Conductor". Retourne { year, month, rows } où
+// rows = [{loginTos, dateTravail, shift, vacation, mouvements}] (valeurs > 0).
+function parseMouvementsVacations(XLSX, buf) {
+  const wb = XLSX.read(buf, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const grid = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const title = String((grid[0] && grid[0][0]) || "");
+  const tm = title.match(/(\d{4})-(\d{2})/);
+  if (!tm) throw new Error("Titre du fichier illisible (attendu : « MOUVEMENTS MENSUELS - … - AAAA-MM »).");
+  const year = Number(tm[1]), month = Number(tm[2]);
+  const headerIdx = grid.findIndex(r => r && String(r[0] || "").trim().toLowerCase() === "conductor");
+  if (headerIdx === -1) throw new Error("Ligne d'en-tête « Conductor » introuvable.");
+  const dayRow = grid[headerIdx];
+  const FIRST = 6;
+  const dayStarts = [];
+  for (let c = FIRST; c < dayRow.length; c++) {
+    const v = dayRow[c];
+    if (v != null && /^\d{1,2}$/.test(String(v).trim())) dayStarts.push({ col: c, day: Number(String(v).trim()) });
+  }
+  if (dayStarts.length === 0) throw new Error("Aucune colonne de jour trouvée dans l'en-tête.");
+  const rows = [];
+  for (let i = headerIdx + 3; i < grid.length; i++) {
+    const r = grid[i];
+    if (!r || !r[0]) continue;
+    const lines = String(r[0]).split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    if (lines.length < 1) continue;
+    // "NOM Prénom\nlogin" — ou le login seul sur une ligne.
+    const loginTos = lines[lines.length - 1].toLowerCase();
+    dayStarts.forEach(ds => {
+      const iso = year + "-" + String(month).padStart(2, "0") + "-" + String(ds.day).padStart(2, "0");
+      for (let j = 0; j < 6; j++) {
+        const n = Number(r[ds.col + j]);
+        if (!n || n < 0) continue;
+        rows.push({ loginTos: loginTos, dateTravail: iso, shift: "S" + (1 + Math.floor(j / 2)), vacation: "V" + (1 + (j % 2)), mouvements: Math.round(n) });
+      }
+    });
+  }
+  return { year: year, month: month, rows: rows };
+}
+
+// Mouvements hors VACATION officielle (shift + V1/V2 du planning), par
+// conducteur et par jour ("jour|driverId") — à partir du fichier par vacation.
+function detectDoublagesFromVacations(state, teamId, vacRows, planning) {
+  const official = {};
+  planning.days.forEach(d => d.assignments.forEach(a => { official[d.iso + "|" + a.driverId] = a; }));
+  const groups = {};
+  vacRows.forEach(v => {
+    if (!v.driverId) return;
+    const k = v.dateTravail + "|" + v.driverId;
+    (groups[k] = groups[k] || []).push(v);
+  });
+  const out = {};
+  Object.keys(groups).forEach(k => {
+    const list = groups[k];
+    const driver = state.drivers.find(d => d.id === list[0].driverId);
+    if (!driver) return;
+    if (teamId !== "all" && driver.teamId !== teamId) return;
+    const team = state.teams.find(t => t.id === driver.teamId);
+    const a = official[k];
+    const noRotation = !team || !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
+    const hasRef = !!(a && a.status === "PRESENT" && a.shift);
+    if (!hasRef && noRotation && (!a || a.status === "PRESENT")) return;
+    let outside = 0;
+    list.forEach(v => {
+      const inOfficial = hasRef && v.shift === a.shift && (!a.vacation || a.vacation === "V1+V2" || a.vacation === v.vacation);
+      if (!inOfficial) outside += v.mouvements;
+    });
+    out[k] = {
+      driverId: driver.id, date: list[0].dateTravail, outside: outside,
+      official: hasRef ? a.shift + (a.vacation && a.vacation !== "V1+V2" ? " " + a.vacation : "") : (a ? String(a.status || "—") : "—")
+    };
+  });
+  return out;
+}
+
 // Mouvements hors shift officiel, par conducteur et par jour ("jour|driverId").
 function detectDoublagesFromTos(state, teamId, mvtRows, planning) {
   const official = {};
@@ -1685,7 +1774,7 @@ function detectDoublagesFromTos(state, teamId, mvtRows, planning) {
   return out;
 }
 
-function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning) {
+function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vacRows) {
   const prefix = year + "-" + String(month).padStart(2, "0");
   const records = state.heuresExceptionnelles
     .filter(r => (r.type === "FERIE_TRAVAILLE" || r.type === "DIMANCHE_S3" || r.type === "DOUBLAGE") && r.dateDebut.slice(0, 7) === prefix)
@@ -1712,7 +1801,11 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning) {
     mvtByKey[k] = (mvtByKey[k] || 0) + (m.totalMvmt || 0);
     if (String(m.shift || "").toUpperCase() === "S3") mvtByKeyS3[k] = (mvtByKeyS3[k] || 0) + (m.totalMvmt || 0);
   });
-  const detection = planning ? detectDoublagesFromTos(state, teamId, mvtRows, planning) : null;
+  // Fichier par vacation importé pour ce mois : calcul précis (hors vacation
+  // officielle) ; sinon repli sur les mouvements TOS par shift (hors shift).
+  const parVacation = !!(planning && vacRows && vacRows.length > 0);
+  const horsLabel = parVacation ? "vacation" : "shift";
+  const detection = !planning ? null : parVacation ? detectDoublagesFromVacations(state, teamId, vacRows, planning) : detectDoublagesFromTos(state, teamId, mvtRows, planning);
   // Doublages réalisés (> 15 mvts hors shift officiel) mais absents d'Over Time.
   const declaredKeys = {};
   records.forEach(r => { if (r.type === "DOUBLAGE") declaredKeys[r.dateDebut + "|" + r.driverId] = true; });
@@ -1740,14 +1833,15 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning) {
     // (V1/V2) : on n'affiche donc rien plutôt qu'un chiffre faux, sauf
     // saisie explicite.
     const dbl = r.type === "DOUBLAGE" && detection ? detection[r.dateDebut + "|" + r.driverId] : null;
-    const auto = r.type === "DOUBLAGE" ? (dbl && dbl.outside > 0 ? dbl.outside : undefined)
+    const auto = r.type === "DOUBLAGE" ? (dbl && (parVacation || dbl.outside > 0) ? dbl.outside : undefined)
       : r.type === "DIMANCHE_S3" && mvtByKeyS3[keyDay] !== undefined ? mvtByKeyS3[keyDay] : mvtByKey[keyDay];
     // Saisie explicite (férié) prioritaire, sinon total importé du TOS/manuel.
     const total = mouvement && mouvement.mouvements != null ? mouvement.mouvements : (auto !== undefined ? auto : null);
     let note = mouvement ? mouvement.commentaire || "" : "";
     if (r.type === "DOUBLAGE" && detection) {
-      if (r.detecte) note = "Détecté (non saisi dans Over Time) : " + dbl.outside + " mvts hors shift officiel (" + dbl.official + ")";
-      else if (!dbl || dbl.outside === 0) note = [r.commentaire, "Mouvements non isolables : réalisés dans le shift officiel (TOS ventilé par shift)"].filter(Boolean).join(" — ");
+      if (r.detecte) note = "Détecté (non saisi dans Over Time) : " + dbl.outside + " mvts hors " + horsLabel + " officiel" + (parVacation ? "le" : "") + " (" + dbl.official + ")";
+      else if (parVacation && (!dbl || dbl.outside <= DOUBLAGE_MVT_THRESHOLD)) note = [r.commentaire, "À vérifier : " + (dbl ? dbl.outside : 0) + " mvts seulement hors vacation officielle (seuil > " + DOUBLAGE_MVT_THRESHOLD + ")"].filter(Boolean).join(" — ");
+      else if (!parVacation && (!dbl || dbl.outside === 0)) note = [r.commentaire, "Mouvements non isolables : réalisés dans le shift officiel (TOS ventilé par shift)"].filter(Boolean).join(" — ");
     }
     return {
       record: r, driver: driver, teamNom: team ? team.nom : (driver ? driver.teamId : ""),
@@ -1762,6 +1856,7 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning) {
     totalS3: rows.filter(r => r.record.type === "DIMANCHE_S3").length,
     totalDoublage: rows.filter(r => r.record.type === "DOUBLAGE" && !r.record.detecte).length,
     totalDetectes: rows.filter(r => r.record.detecte).length,
+    parVacation: parVacation,
     totalMouvements: rows.reduce((sum, r) => sum + (r.mouvements || 0), 0)
   };
 }
@@ -1817,8 +1912,56 @@ function RapportRHPage() {
       .finally(() => setMvtLoading(false));
   }, [tab, month, year]);
 
+  // Mouvements par vacation (fichier mensuel) : calcul précis des doublages.
+  const [vacRows, setVacRows] = useState([]);
+  const [vacLoading, setVacLoading] = useState(false);
+  const [vacMsg, setVacMsg] = useState("");
+  const canImportVac = !!currentUser && ["ADMIN", "RESPONSABLE"].indexOf(currentUser.role) !== -1;
+  const loadVacRows = () => {
+    const dim = RTGDate.daysInMonth(month, year);
+    const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
+    const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
+    return RTGStore.fetchMouvementsVacations(dateFrom, dateTo).then(setVacRows)
+      .catch(e => { setVacRows([]); setVacMsg("Mouvements par vacation indisponibles (migration 039 exécutée ?) : " + (e && e.message ? e.message : "")); });
+  };
+  useEffect(() => {
+    if (tab !== "feries") return;
+    setVacMsg("");
+    loadVacRows();
+  }, [tab, month, year]);
+  const handleVacFile = async (file) => {
+    setVacLoading(true);
+    setVacMsg("");
+    try {
+      const XLSX = await loadXlsxLib();
+      const parsed = parseMouvementsVacations(XLSX, await file.arrayBuffer());
+      if (parsed.month !== month || parsed.year !== year) {
+        throw new Error("Ce fichier concerne " + RAPPORT_MOIS_LABELS[parsed.month - 1] + " " + parsed.year + " : sélectionnez ce mois dans la liste avant d'importer.");
+      }
+      // Rattachement conducteur par login TOS (saisie manuelle, sinon convention prénom+nom+suffixe).
+      const byLogin = {};
+      rawState.drivers.forEach(d => {
+        const team = rawState.teams.find(t => t.id === d.teamId);
+        const login = expectedTosLogin(d, (team && team.typeEngin) === "CC" ? "CC" : "RTG");
+        if (!login) return;
+        byLogin[login] = byLogin[login] === undefined ? d.id : null; // ambigu -> non rattaché
+      });
+      const rows = parsed.rows.map(r => Object.assign({}, r, { driverId: byLogin[r.loginTos] || null }));
+      const unmatched = Array.from(new Set(rows.filter(r => !r.driverId).map(r => r.loginTos)));
+      const dim = RTGDate.daysInMonth(month, year);
+      const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
+      const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
+      const n = await RTGStore.replaceMouvementsVacations(rows, dateFrom, dateTo, file.name);
+      await loadVacRows();
+      setVacMsg(n + " ligne(s) importée(s) pour " + RAPPORT_MOIS_LABELS[month - 1] + " " + year + "." + (unmatched.length ? " Logins non rattachés à un conducteur (ignorés dans le rapport) : " + unmatched.slice(0, 12).join(", ") + (unmatched.length > 12 ? "…" : "") : ""));
+    } catch (e) {
+      setVacMsg("Import impossible : " + (e && e.message ? e.message : e));
+    } finally {
+      setVacLoading(false);
+    }
+  };
   const doublagePlanning = useMemo(() => tab === "feries" ? PlanningEngine.generateMonthlyPlanning(month, year, state) : null, [tab, state, month, year]);
-  const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, doublagePlanning), [state, month, year, effectiveTeamId, mvtRows, doublagePlanning]);
+  const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows), [state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows]);
   useEffect(() => { setDay("all"); }, [month, year]);
   // Détail jour par jour de chaque conducteur dans le rapport (activé par défaut).
   const [mvtDetail, setMvtDetail] = useState(true);
@@ -2081,6 +2224,22 @@ function RapportRHPage() {
       </div>
       )}
 
+      {tab === "feries" && (
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-3 print:hidden text-xs text-slate-700">
+        <div className="font-semibold text-slate-900 mb-1"><i className="fas fa-layer-group mr-1.5 text-amber-600"></i>Doublages — mouvements par vacation</div>
+        <p className="mb-2">Règle : mouvements réalisés <b>hors de la vacation officielle</b> du planning ; plus de {DOUBLAGE_MVT_THRESHOLD} le même jour = doublage. {vacRows.length > 0
+          ? <span className="text-emerald-700 font-medium">{vacRows.length} ligne(s) par vacation chargées pour {RAPPORT_MOIS_LABELS[month - 1]} {year}.</span>
+          : <span className="text-amber-700 font-medium">Aucun fichier importé pour ce mois : calcul approché par shift (le détail V1/V2 d'un même shift n'est pas mesurable).</span>}</p>
+        {canImportVac
+          ? <label className="inline-flex items-center gap-2 flex-wrap">
+              <span className="text-slate-600">Fichier mensuel « DRIVER MOVE » (.xlsx) :</span>
+              <input type="file" accept=".xlsx" disabled={vacLoading} onChange={e => { const f = e.target.files[0]; e.target.value = ""; if (f) handleVacFile(f); }} className="text-xs" />
+              {vacLoading && <span className="text-slate-500">Import en cours…</span>}
+            </label>
+          : <span className="italic text-slate-500">Import réservé aux comptes Admin / Responsable.</span>}
+        {vacMsg && <p className="mt-2 text-slate-800">{vacMsg}</p>}
+      </div>
+      )}
       {tab === "feries" && (
       <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
