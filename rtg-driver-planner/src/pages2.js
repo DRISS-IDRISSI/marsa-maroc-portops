@@ -1727,9 +1727,14 @@ function parseMouvementsVacationsLong(grid, headerIdx, year, month) {
   for (let i = headerIdx + 1; i < grid.length; i++) {
     const r = grid[i];
     if (!r) continue;
-    if (r[cMat] != null && String(r[cMat]).trim() !== "") {
-      const login = cLogin !== -1 && r[cLogin] ? String(r[cLogin]).trim().toLowerCase() : "";
-      cur = { matricule: String(r[cMat]).trim().toUpperCase(), loginTos: login || String(r[cMat]).trim().toLowerCase() };
+    // Nouveau conducteur dès que TYPE / MATRICULE / LOGIN est renseigné (un
+    // conducteur sans matricule dans le rapport — ex. login seul — ne doit
+    // jamais être rattaché au conducteur précédent).
+    const cell = c => (c !== -1 && r[c] != null ? String(r[c]).trim() : "");
+    if (cell(cMat) || cell(cLogin) || cell(col("TYPE"))) {
+      const login = cell(cLogin).toLowerCase();
+      const mat = cell(cMat).toUpperCase();
+      cur = { matricule: mat, loginTos: login || mat.toLowerCase() };
     }
     const shift = String(r[cShift] == null ? "" : r[cShift]).trim().toUpperCase();
     const vacation = String(r[cVac] == null ? "" : r[cVac]).trim().toUpperCase();
@@ -1981,6 +1986,9 @@ function RapportRHPage() {
         const login = expectedTosLogin(d, (team && team.typeEngin) === "CC" ? "CC" : "RTG");
         if (!login) return;
         byLogin[login] = byLogin[login] === undefined ? d.id : null; // ambigu -> non rattaché
+        // Certains logins du rapport n'ont pas le suffixe terminal (ex. « aharis ») : repli sans suffixe.
+        const bare = login.replace(/(tc3|tce)$/, "");
+        if (bare !== login) byLogin[bare] = byLogin[bare] === undefined ? d.id : null;
       });
       const rows = parsed.rows.map(r => Object.assign({}, r, { driverId: (r.matricule && byMatricule[r.matricule]) || byLogin[r.loginTos] || null }));
       const unmatched = Array.from(new Set(rows.filter(r => !r.driverId).map(r => (r.matricule ? r.matricule + " " : "") + r.loginTos)));
