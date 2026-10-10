@@ -1158,6 +1158,8 @@ function HeuresExceptionnellesPage() {
   const [form, setForm] = useState(emptyHeureExceptionnelleForm());
   const [error, setError] = useState("");
   const [filterDriverId, setFilterDriverId] = useState("");
+  // Filtre par mois : null = pas encore choisi (mois en cours s'il a des enregistrements, sinon tous).
+  const [filterMonth, setFilterMonth] = useState(null);
   // Modification d'un enregistrement existant (Admin / Responsable / Responsable de Shift).
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -1196,7 +1198,7 @@ function HeuresExceptionnellesPage() {
     drivers: rawState.drivers.filter(d => fTeamIds.has(d.teamId))
   }), [rawState, fTeams]);
 
-  const records = state.heuresExceptionnelles
+  const baseRecords = state.heuresExceptionnelles
     .filter(r => {
       if (filterDriverId && r.driverId !== filterDriverId) return false;
       const d = state.drivers.find(dr => dr.id === r.driverId);
@@ -1205,6 +1207,10 @@ function HeuresExceptionnellesPage() {
       return restrictedIds.indexOf(d.teamId) !== -1;
     })
     .slice().sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+  const monthsAvailable = Array.from(new Set(baseRecords.map(r => String(r.dateDebut).slice(0, 7)))).sort().reverse();
+  const currentMonthKey = RTGDate.toISO(new Date()).slice(0, 7);
+  const monthSel = filterMonth !== null ? filterMonth : (monthsAvailable.indexOf(currentMonthKey) !== -1 ? currentMonthKey : "all");
+  const records = monthSel === "all" ? baseRecords : baseRecords.filter(r => String(r.dateDebut).slice(0, 7) === monthSel);
 
   const submit = () => {
     if (!form.driverId) { setError("Sélectionnez un conducteur."); return; }
@@ -1265,9 +1271,18 @@ function HeuresExceptionnellesPage() {
           <label className={LABEL_CLS}>Filtrer par conducteur</label>
           <DriverSelect state={state} value={filterDriverId} onChange={setFilterDriverId} teamId={shiftRestricted ? restrictedIds : null} />
         </div>
-        {filterDriverId && (
-          <button onClick={() => setFilterDriverId("")} className="text-xs text-slate-400 hover:text-slate-900 underline">
-            Réinitialiser le filtre
+        <div className="w-full sm:w-52">
+          <label className={LABEL_CLS}>Mois</label>
+          <select className={FIELD_CLS} value={monthSel} onChange={e => setFilterMonth(e.target.value)}>
+            <option value="all">Tous les mois</option>
+            {monthsAvailable.map(m => (
+              <option key={m} value={m}>{RAPPORT_MOIS_LABELS[Number(m.slice(5, 7)) - 1] + " " + m.slice(0, 4) + " (" + baseRecords.filter(r => String(r.dateDebut).slice(0, 7) === m).length + ")"}</option>
+            ))}
+          </select>
+        </div>
+        {(filterDriverId || filterMonth !== null) && (
+          <button onClick={() => { setFilterDriverId(""); setFilterMonth(null); }} className="text-xs text-slate-400 hover:text-slate-900 underline">
+            Réinitialiser les filtres
           </button>
         )}
       </div>
