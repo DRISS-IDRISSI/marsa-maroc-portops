@@ -1646,11 +1646,46 @@ function buildRapportRH(state, month, year, teamId) {
 // dérogations "nécessité de service" du mois, avec les mouvements réalisés
 // pour chaque jour férié travaillé (cf. FerieMouvementsPanel, pages.js).
 // Libellé du type d'une ligne du rapport (férié / 3ème shift dimanche / doublage).
-function rapportFeriesTypeLabel(type) {
-  return type === "FERIE_TRAVAILLE" ? "Férié travaillé" : type === "DOUBLAGE" ? "Doublage" : "3ème shift dimanche";
+function rapportFeriesTypeLabel(type, detecte) {
+  return type === "FERIE_TRAVAILLE" ? "Férié travaillé" : type === "DOUBLAGE" ? (detecte ? "Doublage (non déclaré)" : "Doublage") : "3ème shift dimanche";
 }
 
-function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
+// Règle de l'exploitant : les mouvements réalisés HORS du shift officiel du
+// planning sont des mouvements de doublage ; strictement plus de 15 le même
+// jour = doublage. Calculé sur les mouvements TOS importés (ventilés par
+// SHIFT : le TOS ne donne pas le détail V1/V2 d'un même shift).
+const DOUBLAGE_MVT_THRESHOLD = 15;
+
+// Mouvements hors shift officiel, par conducteur et par jour ("jour|driverId").
+function detectDoublagesFromTos(state, teamId, mvtRows, planning) {
+  const official = {};
+  planning.days.forEach(d => d.assignments.forEach(a => { official[d.iso + "|" + a.driverId] = a; }));
+  const groups = {};
+  (mvtRows || []).forEach(m => {
+    if (!m.driverId || !m.shift) return;
+    const k = m.dateTravail + "|" + m.driverId;
+    (groups[k] = groups[k] || []).push(m);
+  });
+  const out = {};
+  Object.keys(groups).forEach(k => {
+    const list = groups[k];
+    const driver = state.drivers.find(d => d.id === list[0].driverId);
+    if (!driver) return;
+    if (teamId !== "all" && driver.teamId !== teamId) return;
+    const team = state.teams.find(t => t.id === driver.teamId);
+    const a = official[k];
+    const noRotation = !team || !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
+    const hasRef = !!(a && a.status === "PRESENT" && a.shift);
+    // Stagiaire/CDI sans shift affecté ce jour-là : aucune référence officielle.
+    if (!hasRef && noRotation && (!a || a.status === "PRESENT")) return;
+    let outside = 0;
+    list.forEach(m => { if (!hasRef || m.shift !== a.shift) outside += m.totalMvmt || 0; });
+    out[k] = { driverId: driver.id, date: list[0].dateTravail, outside: outside, official: hasRef ? a.shift : (a ? String(a.status || "—") : "—") };
+  });
+  return out;
+}
+
+function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning) {
   const prefix = year + "-" + String(month).padStart(2, "0");
   const records = state.heuresExceptionnelles
     .filter(r => (r.type === "FERIE_TRAVAILLE" || r.type === "DIMANCHE_S3" || r.type === "DOUBLAGE") && r.dateDebut.slice(0, 7) === prefix)
@@ -1677,7 +1712,20 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
     mvtByKey[k] = (mvtByKey[k] || 0) + (m.totalMvmt || 0);
     if (String(m.shift || "").toUpperCase() === "S3") mvtByKeyS3[k] = (mvtByKeyS3[k] || 0) + (m.totalMvmt || 0);
   });
-  const rows = records.map(r => {
+  const detection = planning ? detectDoublagesFromTos(state, teamId, mvtRows, planning) : null;
+  // Doublages réalisés (> 15 mvts hors shift officiel) mais absents d'Over Time.
+  const declaredKeys = {};
+  records.forEach(r => { if (r.type === "DOUBLAGE") declaredKeys[r.dateDebut + "|" + r.driverId] = true; });
+  const autoRecords = [];
+  if (detection) {
+    Object.keys(detection).forEach(k => {
+      const d = detection[k];
+      if (d.outside <= DOUBLAGE_MVT_THRESHOLD || declaredKeys[k] || d.date.slice(0, 7) !== prefix) return;
+      autoRecords.push({ id: "auto_" + k, driverId: d.driverId, type: "DOUBLAGE", dateDebut: d.date, heures: null, commentaire: "", detecte: true });
+    });
+  }
+  const allRecords = records.concat(autoRecords).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+  const rows = allRecords.map(r => {
     const driver = state.drivers.find(d => d.id === r.driverId);
     const team = driver ? state.teams.find(t => t.id === driver.teamId) : null;
     const mouvement = r.type === "FERIE_TRAVAILLE" ? RTGStore.getFerieMouvements(r.dateDebut, r.driverId) : null;
@@ -1691,14 +1739,20 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
     // travail comptent, et le TOS importé n'est pas ventilé par vacation
     // (V1/V2) : on n'affiche donc rien plutôt qu'un chiffre faux, sauf
     // saisie explicite.
-    const auto = r.type === "DOUBLAGE" ? undefined
+    const dbl = r.type === "DOUBLAGE" && detection ? detection[r.dateDebut + "|" + r.driverId] : null;
+    const auto = r.type === "DOUBLAGE" ? (dbl && dbl.outside > 0 ? dbl.outside : undefined)
       : r.type === "DIMANCHE_S3" && mvtByKeyS3[keyDay] !== undefined ? mvtByKeyS3[keyDay] : mvtByKey[keyDay];
     // Saisie explicite (férié) prioritaire, sinon total importé du TOS/manuel.
     const total = mouvement && mouvement.mouvements != null ? mouvement.mouvements : (auto !== undefined ? auto : null);
+    let note = mouvement ? mouvement.commentaire || "" : "";
+    if (r.type === "DOUBLAGE" && detection) {
+      if (r.detecte) note = "Détecté (non saisi dans Over Time) : " + dbl.outside + " mvts hors shift officiel (" + dbl.official + ")";
+      else if (!dbl || dbl.outside === 0) note = [r.commentaire, "Mouvements non isolables : réalisés dans le shift officiel (TOS ventilé par shift)"].filter(Boolean).join(" — ");
+    }
     return {
       record: r, driver: driver, teamNom: team ? team.nom : (driver ? driver.teamId : ""),
       mouvements: total,
-      mouvementCommentaire: mouvement ? mouvement.commentaire || "" : ""
+      mouvementCommentaire: note
     };
   });
 
@@ -1706,7 +1760,8 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows) {
     rows: rows,
     totalFerie: rows.filter(r => r.record.type === "FERIE_TRAVAILLE").length,
     totalS3: rows.filter(r => r.record.type === "DIMANCHE_S3").length,
-    totalDoublage: rows.filter(r => r.record.type === "DOUBLAGE").length,
+    totalDoublage: rows.filter(r => r.record.type === "DOUBLAGE" && !r.record.detecte).length,
+    totalDetectes: rows.filter(r => r.record.detecte).length,
     totalMouvements: rows.reduce((sum, r) => sum + (r.mouvements || 0), 0)
   };
 }
@@ -1762,7 +1817,8 @@ function RapportRHPage() {
       .finally(() => setMvtLoading(false));
   }, [tab, month, year]);
 
-  const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows), [state, month, year, effectiveTeamId, mvtRows]);
+  const doublagePlanning = useMemo(() => tab === "feries" ? PlanningEngine.generateMonthlyPlanning(month, year, state) : null, [tab, state, month, year]);
+  const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, doublagePlanning), [state, month, year, effectiveTeamId, mvtRows, doublagePlanning]);
   useEffect(() => { setDay("all"); }, [month, year]);
   // Détail jour par jour de chaque conducteur dans le rapport (activé par défaut).
   const [mvtDetail, setMvtDetail] = useState(true);
@@ -1846,7 +1902,7 @@ function RapportRHPage() {
       const headers = ["Date", "Mat", "Nom", "Prénom", "Équipe", "Type", "Heures", "Mouvements réalisés", "Commentaire"];
       const rows = feriesReport.rows.map(r => [
         r.record.dateDebut, r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", r.teamNom,
-        rapportFeriesTypeLabel(r.record.type), r.record.heures,
+        rapportFeriesTypeLabel(r.record.type, r.record.detecte), r.record.heures != null ? r.record.heures : "",
         r.mouvements != null ? r.mouvements : "",
         r.mouvementCommentaire || r.record.commentaire || ""
       ]);
@@ -2037,7 +2093,7 @@ function RapportRHPage() {
           </div>
           <div className="sm:text-right text-xs text-slate-500">
             <div>Généré le {generatedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" })} à {generatedAt.toLocaleTimeString("fr-FR", { timeZone: "UTC" })}</div>
-            <div>{feriesReport.totalFerie} jour(s) férié(s) travaillé(s) · {feriesReport.totalS3} 3ème shift dimanche · {feriesReport.totalDoublage} doublage(s)</div>
+            <div>{feriesReport.totalFerie} jour(s) férié(s) travaillé(s) · {feriesReport.totalS3} 3ème shift dimanche · {feriesReport.totalDoublage} doublage(s) déclaré(s) · {feriesReport.totalDetectes} détecté(s) non déclaré(s)</div>
           </div>
         </div>
 
@@ -2059,14 +2115,14 @@ function RapportRHPage() {
             </thead>
             <tbody>
               {feriesReport.rows.map(r => (
-                <tr key={r.record.id}>
+                <tr key={r.record.id} className={r.record.detecte ? "bg-sky-50" : ""}>
                   <td className={td}>{r.record.dateDebut}</td>
                   <td className={td}>{r.driver ? r.driver.matricule : "—"}</td>
                   <td className={td + " font-medium"}>{r.driver ? r.driver.nom : "—"}</td>
                   <td className={td}>{r.driver ? r.driver.prenom : ""}</td>
                   <td className={td}>{r.teamNom}</td>
-                  <td className={td}>{rapportFeriesTypeLabel(r.record.type)}</td>
-                  <td className={tdCenter}>{r.record.heures}h</td>
+                  <td className={td}>{rapportFeriesTypeLabel(r.record.type, r.record.detecte)}</td>
+                  <td className={tdCenter}>{r.record.heures != null ? r.record.heures + "h" : "—"}</td>
                   <td className={tdCenter}>{r.mouvements != null ? r.mouvements : "—"}</td>
                   <td className={td}>{r.mouvementCommentaire || r.record.commentaire || ""}</td>
                 </tr>
