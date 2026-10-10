@@ -2085,9 +2085,17 @@ function RapportRHPage() {
   const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows), [state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows]);
   // Bascule du rapport : tout / fériés / 3ème shift dimanche / doublages (saisis + détectés).
   const [feriesType, setFeriesType] = useState("all");
-  const feriesRows = feriesType === "all" ? feriesReport.rows : feriesReport.rows.filter(r => r.record.type === feriesType);
+  // Origine : saisi manuellement dans Over Time, ou détecté depuis les mouvements (non saisi).
+  const [feriesSource, setFeriesSource] = useState("all");
+  const matchSource = r => feriesSource === "all" || (feriesSource === "detecte" ? !!r.record.detecte : !r.record.detecte);
+  const matchType = r => feriesType === "all" || r.record.type === feriesType;
+  const feriesRows = feriesReport.rows.filter(r => matchSource(r) && matchType(r));
   const feriesMvtTotal = feriesRows.reduce((sum, r) => sum + (r.mouvements || 0), 0);
-  const FERIES_TYPE_TITLES = { all: "Jours fériés travaillés, 3ème shift dimanche & doublages", FERIE_TRAVAILLE: "Jours fériés travaillés", DIMANCHE_S3: "3ème shift dimanche", DOUBLAGE: "Doublages (saisis et détectés)" };
+  const FERIES_TYPE_BASE = { all: "Jours fériés travaillés, 3ème shift dimanche & doublages", FERIE_TRAVAILLE: "Jours fériés travaillés", DIMANCHE_S3: "3ème shift dimanche", DOUBLAGE: "Doublages" };
+  const FERIES_TYPE_TITLES = { all: "", FERIE_TRAVAILLE: "", DIMANCHE_S3: "", DOUBLAGE: "" };
+  Object.keys(FERIES_TYPE_BASE).forEach(k => {
+    FERIES_TYPE_TITLES[k] = FERIES_TYPE_BASE[k] + (feriesSource === "saisi" ? " — saisis manuellement" : feriesSource === "detecte" ? " — détectés depuis le fichier (non saisis)" : "");
+  });
   useEffect(() => { setDay("all"); }, [month, year]);
   // Détail jour par jour de chaque conducteur dans le rapport (activé par défaut).
   const [mvtDetail, setMvtDetail] = useState(true);
@@ -2350,18 +2358,34 @@ function RapportRHPage() {
       )}
 
       {tab === "feries" && (
-      <div className="flex flex-wrap gap-2 mb-3 print:hidden">
-        {[
-          ["all", "Tout", feriesReport.rows.length],
-          ["DIMANCHE_S3", "3ème shift dimanche", feriesReport.rows.filter(r => r.record.type === "DIMANCHE_S3").length],
-          ["DOUBLAGE", "Doublages (saisis + détectés)", feriesReport.rows.filter(r => r.record.type === "DOUBLAGE").length],
-          ["FERIE_TRAVAILLE", "Jours fériés", feriesReport.rows.filter(r => r.record.type === "FERIE_TRAVAILLE").length]
-        ].map(([k, label, n]) => (
-          <button key={k} type="button" onClick={() => setFeriesType(k)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${feriesType === k ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>
-            {label} <span className="opacity-80">({n})</span>
-          </button>
-        ))}
+      <div className="mb-3 print:hidden space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-slate-500 mr-1">Origine</span>
+          {[
+            ["all", "Toutes", feriesReport.rows.filter(matchType).length],
+            ["saisi", "Saisis manuellement (Over Time)", feriesReport.rows.filter(r => matchType(r) && !r.record.detecte).length],
+            ["detecte", "Détectés depuis le fichier / TOS", feriesReport.rows.filter(r => matchType(r) && r.record.detecte).length]
+          ].map(([k, label, n]) => (
+            <button key={k} type="button" onClick={() => setFeriesSource(k)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${feriesSource === k ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>
+              {label} <span className="opacity-80">({n})</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-slate-500 mr-1">Type</span>
+          {[
+            ["all", "Tous", feriesReport.rows.filter(matchSource).length],
+            ["DIMANCHE_S3", "3ème shift dimanche", feriesReport.rows.filter(r => matchSource(r) && r.record.type === "DIMANCHE_S3").length],
+            ["DOUBLAGE", "Doublages", feriesReport.rows.filter(r => matchSource(r) && r.record.type === "DOUBLAGE").length],
+            ["FERIE_TRAVAILLE", "Jours fériés", feriesReport.rows.filter(r => matchSource(r) && r.record.type === "FERIE_TRAVAILLE").length]
+          ].map(([k, label, n]) => (
+            <button key={k} type="button" onClick={() => setFeriesType(k)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${feriesType === k ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>
+              {label} <span className="opacity-80">({n})</span>
+            </button>
+          ))}
+        </div>
       </div>
       )}
       {tab === "feries" && (feriesType === "all" || feriesType === "DOUBLAGE") && (
