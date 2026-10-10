@@ -2203,14 +2203,14 @@ function RapportRHPage() {
       downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés", { title: FERIES_TYPE_TITLES[feriesType] + " — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
       return;
     }
-    const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)", "Dates Over Time", "Mouvements Over Time"];
+    const headers = ["Mat", "Nom", "Prénom", "Équipe", "Congés", "Maladies", "Absences", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)", "Dates Over Time", "Mouvements Over Time"];
     const rows = report.rows.map(r => [
-      r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.PRESENT, r.counts.REPOS, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE, r.counts.FORMATION,
+      r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE,
       r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures,
       (rhOverByDriver[r.driver.id] || []).map(g => g.label + " : " + g.dates.join(", ")).join("\n"),
       (rhOverByDriver[r.driver.id] || []).map(g => g.label + " : " + (g.mvts != null ? g.mvts : "—")).join("\n")
     ]);
-    downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH", { title: "Rapport RH — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes"), totals: true, highlightCols: [10, 11, 12, 13, 14, 15, 16, 17] });
+    downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH", { title: "Rapport RH — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes"), totals: true, highlightCols: [7, 8, 9, 10, 11, 12, 13, 14] });
   };
 
   const printRef = useRef(null);
@@ -2333,12 +2333,9 @@ function RapportRHPage() {
                 <th className={th}>Nom</th>
                 <th className={th}>Prénom</th>
                 <th className={th}>Équipe</th>
-                <th className={th}>Présents</th>
-                <th className={th}>Repos</th>
                 <th className={th}>Congés</th>
                 <th className={th}>Maladies</th>
                 <th className={th}>Absences</th>
-                <th className={th}>Formations</th>
                 <th className={th}>Doublage (h)</th>
                 <th className={th}>Férié travaillé (j/h)</th>
                 <th className={th}>Dim. 3ème shift (j/h)</th>
@@ -2354,12 +2351,9 @@ function RapportRHPage() {
                   <td className={td + " font-medium"}>{r.driver.nom}</td>
                   <td className={td}>{r.driver.prenom}</td>
                   <td className={td}>{r.teamNom}</td>
-                  <td className={tdCenter}>{r.counts.PRESENT}</td>
-                  <td className={tdCenter}>{r.counts.REPOS}</td>
                   <td className={tdCenter}>{r.counts.CONGE}</td>
                   <td className={tdCenter}>{r.counts.MALADIE}</td>
                   <td className={tdCenter}>{r.counts.ABSENCE}</td>
-                  <td className={tdCenter}>{r.counts.FORMATION}</td>
                   <td className={tdCenter}>{r.byType.DOUBLAGE.heures || "—"}</td>
                   <td className={tdCenter}>{r.byType.FERIE_TRAVAILLE.jours ? `${r.byType.FERIE_TRAVAILLE.jours} / ${r.byType.FERIE_TRAVAILLE.heures}h` : "—"}</td>
                   <td className={tdCenter}>{r.byType.DIMANCHE_S3.jours ? `${r.byType.DIMANCHE_S3.jours} / ${r.byType.DIMANCHE_S3.heures}h` : "—"}</td>
@@ -2369,7 +2363,7 @@ function RapportRHPage() {
                 </tr>
               ))}
               {report.rows.length === 0 && (
-                <tr><td colSpan="16" className="px-2 py-6 text-center text-slate-500 italic">Aucun conducteur pour cette sélection.</td></tr>
+                <tr><td colSpan="13" className="px-2 py-6 text-center text-slate-500 italic">Aucun conducteur pour cette sélection.</td></tr>
               )}
             </tbody>
           </table>
