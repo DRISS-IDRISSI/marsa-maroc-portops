@@ -2095,18 +2095,13 @@ function RapportRHPage() {
   // Rapport RH : dates et mouvements des Over Time de chaque conducteur (doublage / férié / 3ème shift dimanche).
   const rhOverByDriver = useMemo(() => {
     if (tab !== "rh") return {};
-    const rep = buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, null, []);
-    const LABELS = { DOUBLAGE: "Doublage", FERIE_TRAVAILLE: "Férié", DIMANCHE_S3: "3ème shift dim." };
+    const over = buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, null, []);
     const out = {};
-    rep.rows.forEach(r => {
-      const id = r.record.driverId;
-      const t = r.record.type;
-      const byT = (out[id] = out[id] || {});
-      const g = byT[t] = byT[t] || { label: LABELS[t] || t, dates: [], mvts: null };
-      g.dates.push(String(r.record.dateDebut).slice(8, 10) + "/" + String(r.record.dateDebut).slice(5, 7));
-      if (r.mouvements != null) g.mvts = (g.mvts || 0) + r.mouvements;
+    over.rows.forEach(r => {
+      const iso = String(r.record.dateDebut);
+      (out[r.record.driverId] = out[r.record.driverId] || []).push({ iso: iso, date: iso.slice(8, 10) + "/" + iso.slice(5, 7), mvts: r.mouvements != null ? r.mouvements : null });
     });
-    Object.keys(out).forEach(id => { out[id] = ["DOUBLAGE", "DIMANCHE_S3", "FERIE_TRAVAILLE"].filter(t => out[id][t]).map(t => out[id][t]); });
+    Object.keys(out).forEach(id => out[id].sort((a, b) => a.iso.localeCompare(b.iso)));
     return out;
   }, [tab, state, month, year, effectiveTeamId, mvtRows]);
   const FERIES_TYPE_BASE = { all: "Jours fériés travaillés, 3ème shift dimanche & doublages", FERIE_TRAVAILLE: "Jours fériés travaillés", DIMANCHE_S3: "3ème shift dimanche", DOUBLAGE: "Doublages" };
@@ -2207,8 +2202,8 @@ function RapportRHPage() {
     const rows = report.rows.map(r => [
       r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE,
       r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures,
-      (rhOverByDriver[r.driver.id] || []).map(g => g.label + " : " + g.dates.join(", ")).join("\n"),
-      (rhOverByDriver[r.driver.id] || []).map(g => g.label + " : " + (g.mvts != null ? g.mvts : "—")).join("\n")
+      (rhOverByDriver[r.driver.id] || []).map(g => g.date).join(", "),
+      (rhOverByDriver[r.driver.id] || []).map(g => g.mvts != null ? g.mvts : "—").join(", ")
     ]);
     downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH", { title: "Rapport RH — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes"), totals: true, highlightCols: [7, 8, 9, 10, 11, 12, 13, 14] });
   };
@@ -2358,8 +2353,8 @@ function RapportRHPage() {
                   <td className={tdCenter}>{r.byType.FERIE_TRAVAILLE.jours ? `${r.byType.FERIE_TRAVAILLE.jours} / ${r.byType.FERIE_TRAVAILLE.heures}h` : "—"}</td>
                   <td className={tdCenter}>{r.byType.DIMANCHE_S3.jours ? `${r.byType.DIMANCHE_S3.jours} / ${r.byType.DIMANCHE_S3.heures}h` : "—"}</td>
                   <td className={tdCenter + " font-semibold"}>{r.totalHeures || "—"}</td>
-                  <td className={td + " whitespace-normal"}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map(g => <div key={g.label}><span className="text-slate-500">{g.label} :</span> {g.dates.join(", ")}</div>) : "—"}</td>
-                  <td className={td + " whitespace-normal"}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map(g => <div key={g.label}><span className="text-slate-500">{g.label} :</span> <b>{g.mvts != null ? g.mvts : "—"}</b></div>) : "—"}</td>
+                  <td className={tdCenter}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map(g => g.date).join(", ") : "—"}</td>
+                  <td className={tdCenter}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map(g => g.mvts != null ? g.mvts : "—").join(", ") : "—"}</td>
                 </tr>
               ))}
               {report.rows.length === 0 && (
