@@ -1872,7 +1872,7 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
     // (V1/V2) : on n'affiche donc rien plutôt qu'un chiffre faux, sauf
     // saisie explicite.
     const dbl = r.type === "DOUBLAGE" && detection ? detection[r.dateDebut + "|" + r.driverId] : null;
-    const auto = r.type === "DOUBLAGE" ? (dbl && (parVacation || dbl.outside > 0) ? dbl.outside : undefined)
+    const auto = r.type === "DOUBLAGE" ? (dbl && (parVacation || dbl.outside > 0) ? dbl.outside : (r.mouvements != null ? r.mouvements : undefined))
       : r.type === "DIMANCHE_S3" && mvtByKeyS3[keyDay] !== undefined ? mvtByKeyS3[keyDay] : mvtByKey[keyDay];
     // Saisie explicite (férié) prioritaire, sinon total importé du TOS/manuel.
     const total = mouvement && mouvement.mouvements != null ? mouvement.mouvements : (auto !== undefined ? auto : null);
@@ -1885,6 +1885,8 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
     return {
       record: r, driver: driver, teamNom: team ? team.nom : (driver ? driver.teamId : ""),
       mouvements: total,
+      // Mouvements de doublage calculés (hors vacation) — null si non calculables.
+      doublageMvts: r.type === "DOUBLAGE" && !r.detecte && parVacation && dbl ? dbl.outside : null,
       mouvementCommentaire: note
     };
   });
@@ -2003,6 +2005,19 @@ function RapportRHPage() {
     } finally {
       setVacLoading(false);
     }
+  };
+  // Enregistre dans chaque doublage d'Over Time les mouvements calculés hors vacation.
+  const [dblSaving, setDblSaving] = useState(false);
+  const saveDoublageMvts = async (pending) => {
+    if (!window.confirm("Enregistrer les mouvements calculés dans " + pending.length + " doublage(s) d'Over Time ? Les valeurs déjà saisies seront remplacées.")) return;
+    setDblSaving(true);
+    let ok = 0, ko = 0;
+    for (const r of pending) {
+      try { await RTGStore.updateHeureExceptionnelle(r.record.id, { mouvements: r.doublageMvts }); ok++; }
+      catch (e) { ko++; }
+    }
+    setDblSaving(false);
+    setVacMsg(ok + " doublage(s) mis à jour dans Over Time" + (ko ? " — " + ko + " refusé(s) (conducteur d'une autre équipe que la vôtre : demandez à un Responsable/Admin)." : "."));
   };
   const doublagePlanning = useMemo(() => tab === "feries" ? PlanningEngine.generateMonthlyPlanning(month, year, state) : null, [tab, state, month, year]);
   const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows), [state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows]);
@@ -2281,6 +2296,18 @@ function RapportRHPage() {
               {vacLoading && <span className="text-slate-500">Import en cours…</span>}
             </label>
           : <span className="italic text-slate-500">Import réservé aux comptes Admin / Responsable.</span>}
+        {(() => {
+          const pending = feriesReport.parVacation && canManageHrRecords(currentUser)
+            ? feriesReport.rows.filter(r => r.doublageMvts != null && r.record.mouvements !== r.doublageMvts) : [];
+          return pending.length > 0 ? (
+            <div className="mt-3">
+              <button type="button" disabled={dblSaving} onClick={() => saveDoublageMvts(pending)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">
+                <i className="fas fa-floppy-disk mr-1.5"></i>{dblSaving ? "Enregistrement…" : "Enregistrer les mouvements des doublages dans Over Time (" + pending.length + ")"}
+              </button>
+              <span className="ml-2 text-slate-500">Écrit le champ « Mouvements » de chaque doublage déclaré (hors vacation officielle).</span>
+            </div>
+          ) : null;
+        })()}
         {vacMsg && <p className="mt-2 text-slate-800">{vacMsg}</p>}
       </div>
       )}
