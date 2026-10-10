@@ -2202,8 +2202,8 @@ function RapportRHPage() {
     const rows = report.rows.map(r => [
       r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE,
       r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures,
-      (rhOverByDriver[r.driver.id] || []).map(g => g.date).join(", "),
-      (rhOverByDriver[r.driver.id] || []).map(g => g.mvts != null ? g.mvts : "—").join(", ")
+      (rhOverByDriver[r.driver.id] || []).map(g => g.date).join("\n"),
+      (rhOverByDriver[r.driver.id] || []).map(g => g.mvts != null ? g.mvts : "—").join("\n")
     ]);
     downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH", { title: "Rapport RH — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes"), totals: true, highlightCols: [7, 8, 9, 10, 11, 12, 13, 14] });
   };
@@ -2353,8 +2353,8 @@ function RapportRHPage() {
                   <td className={tdCenter}>{r.byType.FERIE_TRAVAILLE.jours ? `${r.byType.FERIE_TRAVAILLE.jours} / ${r.byType.FERIE_TRAVAILLE.heures}h` : "—"}</td>
                   <td className={tdCenter}>{r.byType.DIMANCHE_S3.jours ? `${r.byType.DIMANCHE_S3.jours} / ${r.byType.DIMANCHE_S3.heures}h` : "—"}</td>
                   <td className={tdCenter + " font-semibold"}>{r.totalHeures || "—"}</td>
-                  <td className={tdCenter}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map(g => g.date).join(", ") : "—"}</td>
-                  <td className={tdCenter}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map(g => g.mvts != null ? g.mvts : "—").join(", ") : "—"}</td>
+                  <td className={tdCenter + " whitespace-normal"}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map((g, i) => <div key={i}>{g.date}</div>) : "—"}</td>
+                  <td className={tdCenter + " whitespace-normal"}>{(rhOverByDriver[r.driver.id] || []).length ? (rhOverByDriver[r.driver.id] || []).map((g, i) => <div key={i}>{g.mvts != null ? g.mvts : "—"}</div>) : "—"}</td>
                 </tr>
               ))}
               {report.rows.length === 0 && (
