@@ -2076,15 +2076,14 @@ function RapportRHPage() {
 
   const exportExcel = () => {
     if (tab === "mouvements" && mvtDetail) {
-      const headers = ["Mat", "Nom", "Prénom", "Équipe", "Date", "Shift", "Engin", "Provenance"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
+      const headers = ["Mat", "Nom", "Prénom", "Date", "Shift"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
       const rows = [];
       mvtReport.rows.forEach(g => {
         const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
-        const teamNom = d ? ((state.teams.find(t => t.id === d.teamId) || {}).nom || "") : "";
         g.days.forEach(day => {
           const disp = withMouvementsDisplay(day);
-          rows.push([d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"), teamNom,
-            RTGDate.formatFr(RTGDate.parseISO(day.dateTravail)), day.dominantShift || "", day.engins.join(", "), day.sourceRows.some(sr => sr.source === "MANUEL") ? "Manuel" : "TOS"]
+          rows.push([d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"),
+            RTGDate.formatFr(RTGDate.parseISO(day.dateTravail)), day.dominantShift || ""]
             .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key])).concat([day.totalMvmt]));
         });
       });
@@ -3644,17 +3643,18 @@ const MOUVEMENTS_TOS_COLUMNS = [
 // valeurs détaillées restent stockées séparément en base (utilisées par le
 // formulaire de saisie manuelle et les totaux ci-dessous) — seul l'AFFICHAGE
 // les combine, via withMouvementsDisplay ci-dessous.
+// MOVE regroupe MOVE + Autre (décision de l'exploitant) : plus de colonne « Autre ».
 const MOUVEMENTS_DISPLAY_COLUMNS = [
   { key: "inDisplay", label: "IN" },
   { key: "outDisplay", label: "OUT" },
-  { key: "nombreMove", label: "MOVE" },
-  { key: "nombreShifting", label: "Shifting" },
-  { key: "nombreAutre", label: "Autre" }
+  { key: "moveDisplay", label: "MOVE" },
+  { key: "nombreShifting", label: "Shifting" }
 ];
 function withMouvementsDisplay(r) {
   return Object.assign({}, r, {
     inDisplay: (r.nombreIn || 0) + (r.nombreDisch || 0),
-    outDisplay: (r.nombreOut || 0) + (r.nombreLoad || 0)
+    outDisplay: (r.nombreOut || 0) + (r.nombreLoad || 0),
+    moveDisplay: (r.nombreMove || 0) + (r.nombreAutre || 0)
   });
 }
 
@@ -4256,17 +4256,15 @@ function MouvementsRtgPage() {
     setExpandedTotal(next);
   };
   const exportTotalDetailExcel = () => {
-    const headers = ["Matricule", "Nom", "Prénom", "Équipe", "Date", "Shift", "Engin", "Provenance"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
+    const headers = ["Matricule", "Nom", "Prénom", "Date", "Shift"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
     const dataRows = [];
     totalByDriver.forEach(g => {
       const key = g.driverId || ("_" + g.loginTos);
       const d = g.driverId ? state.drivers.find(dr => dr.id === g.driverId) : null;
-      const team = d ? state.teams.find(t => t.id === d.teamId) : null;
       (dailyByDriver[key] || []).forEach(day => {
         const disp = withMouvementsDisplay(day);
-        const isManuel = day.sourceRows.some(sr => sr.source === "MANUEL");
-        dataRows.push([d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"), team ? team.nom : "",
-          RTGDate.formatFr(RTGDate.parseISO(day.dateTravail)), day.dominantShift || "", day.engins.join(", "), isManuel ? "Manuel" : "TOS"]
+        dataRows.push([d ? d.matricule : "", d ? d.nom : "", d ? d.prenom : (g.loginTos + " (non rattaché)"),
+          RTGDate.formatFr(RTGDate.parseISO(day.dateTravail)), day.dominantShift || ""]
           .concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => disp[c.key])).concat([day.totalMvmt]));
       });
     });
