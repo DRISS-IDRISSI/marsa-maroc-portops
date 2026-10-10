@@ -2083,6 +2083,11 @@ function RapportRHPage() {
   };
   const doublagePlanning = useMemo(() => tab === "feries" ? PlanningEngine.generateMonthlyPlanning(month, year, state) : null, [tab, state, month, year]);
   const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows), [state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows]);
+  // Bascule du rapport : tout / fériés / 3ème shift dimanche / doublages (saisis + détectés).
+  const [feriesType, setFeriesType] = useState("all");
+  const feriesRows = feriesType === "all" ? feriesReport.rows : feriesReport.rows.filter(r => r.record.type === feriesType);
+  const feriesMvtTotal = feriesRows.reduce((sum, r) => sum + (r.mouvements || 0), 0);
+  const FERIES_TYPE_TITLES = { all: "Jours fériés travaillés, 3ème shift dimanche & doublages", FERIE_TRAVAILLE: "Jours fériés travaillés", DIMANCHE_S3: "3ème shift dimanche", DOUBLAGE: "Doublages (saisis et détectés)" };
   useEffect(() => { setDay("all"); }, [month, year]);
   // Détail jour par jour de chaque conducteur dans le rapport (activé par défaut).
   const [mvtDetail, setMvtDetail] = useState(true);
@@ -2163,13 +2168,13 @@ function RapportRHPage() {
     }
     if (tab === "feries") {
       const headers = ["Date", "Mat", "Nom", "Prénom", "Équipe", "Type", "Heures", "Mouvements réalisés", "Commentaire"];
-      const rows = feriesReport.rows.map(r => [
+      const rows = feriesRows.map(r => [
         r.record.dateDebut, r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", r.teamNom,
         rapportFeriesTypeLabel(r.record.type, r.record.detecte), r.record.heures != null ? r.record.heures : "",
         r.mouvements != null ? r.mouvements : "",
         r.mouvementCommentaire || r.record.commentaire || ""
       ]);
-      downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés", { title: "Jours fériés, 3ème shift dimanche & doublages — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
+      downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés", { title: FERIES_TYPE_TITLES[feriesType] + " — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
       return;
     }
     const headers = ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)"];
@@ -2345,6 +2350,21 @@ function RapportRHPage() {
       )}
 
       {tab === "feries" && (
+      <div className="flex flex-wrap gap-2 mb-3 print:hidden">
+        {[
+          ["all", "Tout", feriesReport.rows.length],
+          ["DIMANCHE_S3", "3ème shift dimanche", feriesReport.rows.filter(r => r.record.type === "DIMANCHE_S3").length],
+          ["DOUBLAGE", "Doublages (saisis + détectés)", feriesReport.rows.filter(r => r.record.type === "DOUBLAGE").length],
+          ["FERIE_TRAVAILLE", "Jours fériés", feriesReport.rows.filter(r => r.record.type === "FERIE_TRAVAILLE").length]
+        ].map(([k, label, n]) => (
+          <button key={k} type="button" onClick={() => setFeriesType(k)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${feriesType === k ? "bg-orange-500 text-white" : "bg-marine-800 text-slate-400 hover:text-white"}`}>
+            {label} <span className="opacity-80">({n})</span>
+          </button>
+        ))}
+      </div>
+      )}
+      {tab === "feries" && (feriesType === "all" || feriesType === "DOUBLAGE") && (
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-3 print:hidden text-xs text-slate-700">
         <div className="font-semibold text-slate-900 mb-1"><i className="fas fa-layer-group mr-1.5 text-amber-600"></i>Doublages — mouvements par vacation</div>
         <p className="mb-2">Règle : mouvements des autres shifts du jour + la <b>vacation la plus faible</b> du shift officiel (le planning peut avoir V1/V2 inversées) ; plus de {DOUBLAGE_MVT_THRESHOLD} le même jour = doublage. {vacRows.length > 0
@@ -2379,7 +2399,7 @@ function RapportRHPage() {
             <img src={rawState.currentFleet === "CC" ? "icons/marsa-maroc-logo.png" : "icons/tc3pc-logo.jpg"} alt={rawState.currentFleet === "CC" ? "Marsa Maroc" : "TC3PC"} className="h-9 w-auto shrink-0" />
             <div>
               <div className="text-base sm:text-lg font-bold">TC3PC — Terminal à Conteneurs 3 du Port de Casablanca <span className="font-normal text-slate-500">(filiale de Marsa Maroc)</span></div>
-              <div className="text-xs sm:text-sm text-slate-600">Jours fériés travaillés, 3ème shift dimanche &amp; doublages — {rawState.currentFleet} — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
+              <div className="text-xs sm:text-sm text-slate-600">{FERIES_TYPE_TITLES[feriesType]} — {rawState.currentFleet} — {RAPPORT_MOIS_LABELS[month - 1]} {year}{effectiveTeamId !== "all" ? " — " + (state.teams.find(t => t.id === effectiveTeamId) || {}).nom : ""}</div>
             </div>
           </div>
           <div className="sm:text-right text-xs text-slate-500">
@@ -2405,7 +2425,7 @@ function RapportRHPage() {
               </tr>
             </thead>
             <tbody>
-              {feriesReport.rows.map(r => (
+              {feriesRows.map(r => (
                 <tr key={r.record.id} className={r.record.detecte ? "bg-sky-50" : ""}>
                   <td className={td}>{r.record.dateDebut}</td>
                   <td className={td}>{r.driver ? r.driver.matricule : "—"}</td>
@@ -2418,15 +2438,15 @@ function RapportRHPage() {
                   <td className={td}>{r.mouvementCommentaire || r.record.commentaire || ""}</td>
                 </tr>
               ))}
-              {feriesReport.rows.length === 0 && (
+              {feriesRows.length === 0 && (
                 <tr><td colSpan="9" className="px-2 py-6 text-center text-slate-500 italic">Aucun jour férié travaillé, 3ème shift dimanche ni doublage pour cette sélection.</td></tr>
               )}
             </tbody>
-            {feriesReport.rows.length > 0 && (
+            {feriesRows.length > 0 && (
               <tfoot>
                 <tr>
                   <td colSpan="6" className={td + " text-right font-semibold"}>Total mouvements réalisés :</td>
-                  <td colSpan="3" className={td + " font-semibold"}>{feriesReport.totalMouvements}</td>
+                  <td colSpan="3" className={td + " font-semibold"}>{feriesMvtTotal}</td>
                 </tr>
               </tfoot>
             )}
