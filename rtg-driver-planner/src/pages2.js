@@ -1766,11 +1766,12 @@ function detectDoublagesFromVacations(state, teamId, vacRows, planning) {
     const driver = state.drivers.find(d => d.id === list[0].driverId);
     if (!driver) return;
     if (teamId !== "all" && driver.teamId !== teamId) return;
-    const team = state.teams.find(t => t.id === driver.teamId);
     const a = official[k];
-    const noRotation = !team || !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
     const hasRef = !!(a && a.status === "PRESENT" && a.shift);
-    if (!hasRef && noRotation && (!a || a.status === "PRESENT")) return;
+    // Pas de shift officiel ce jour-là (repos, congé, absence, stagiaire/CDI non
+    // affecté) : jamais un doublage — un repos travaillé pour nécessité de
+    // service est annulé puis récupéré, ce n'est pas un doublage.
+    if (!hasRef) return;
     let outside = 0;
     list.forEach(v => {
       const inOfficial = hasRef && v.shift === a.shift && (!a.vacation || a.vacation === "V1+V2" || a.vacation === v.vacation);
@@ -1800,12 +1801,12 @@ function detectDoublagesFromTos(state, teamId, mvtRows, planning) {
     const driver = state.drivers.find(d => d.id === list[0].driverId);
     if (!driver) return;
     if (teamId !== "all" && driver.teamId !== teamId) return;
-    const team = state.teams.find(t => t.id === driver.teamId);
     const a = official[k];
-    const noRotation = !team || !team.shiftCycle || team.shiftCycle.length === 0 || /stagiaire|\bcdi\b/i.test(team.nom || "");
     const hasRef = !!(a && a.status === "PRESENT" && a.shift);
-    // Stagiaire/CDI sans shift affecté ce jour-là : aucune référence officielle.
-    if (!hasRef && noRotation && (!a || a.status === "PRESENT")) return;
+    // Pas de shift officiel ce jour-là (repos, congé, absence, stagiaire/CDI non
+    // affecté) : jamais un doublage — un repos travaillé pour nécessité de
+    // service est annulé puis récupéré, ce n'est pas un doublage.
+    if (!hasRef) return;
     let outside = 0;
     list.forEach(m => { if (!hasRef || m.shift !== a.shift) outside += m.totalMvmt || 0; });
     out[k] = { driverId: driver.id, date: list[0].dateTravail, outside: outside, official: hasRef ? a.shift : (a ? String(a.status || "—") : "—") };
@@ -1879,7 +1880,8 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
     let note = mouvement ? mouvement.commentaire || "" : "";
     if (r.type === "DOUBLAGE" && detection) {
       if (r.detecte) note = "Détecté (non saisi dans Over Time) : " + dbl.outside + " mvts hors " + horsLabel + " officiel" + (parVacation ? "le" : "") + " (" + dbl.official + ")";
-      else if (parVacation && (!dbl || dbl.outside <= DOUBLAGE_MVT_THRESHOLD)) note = [r.commentaire, "À vérifier : " + (dbl ? dbl.outside : 0) + " mvts seulement hors vacation officielle (seuil > " + DOUBLAGE_MVT_THRESHOLD + ")"].filter(Boolean).join(" — ");
+      else if (parVacation && !dbl) note = [r.commentaire, "Mouvements non calculés : pas de shift officiel au planning ce jour-là (repos, congé ou sans affectation)"].filter(Boolean).join(" — ");
+      else if (parVacation && dbl.outside <= DOUBLAGE_MVT_THRESHOLD) note = [r.commentaire, "À vérifier : " + (dbl ? dbl.outside : 0) + " mvts seulement hors vacation officielle (seuil > " + DOUBLAGE_MVT_THRESHOLD + ")"].filter(Boolean).join(" — ");
       else if (!parVacation && (!dbl || dbl.outside === 0)) note = [r.commentaire, "Mouvements non isolables : réalisés dans le shift officiel (TOS ventilé par shift)"].filter(Boolean).join(" — ");
     }
     return {
