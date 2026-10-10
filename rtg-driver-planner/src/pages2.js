@@ -1749,8 +1749,12 @@ function parseMouvementsVacationsLong(grid, headerIdx, year, month) {
   return { year: year, month: month, rows: rows };
 }
 
-// Mouvements hors VACATION officielle (shift + V1/V2 du planning), par
-// conducteur et par jour ("jour|driverId") — à partir du fichier par vacation.
+// Mouvements de doublage, par conducteur et par jour ("jour|driverId"), à
+// partir du fichier par vacation. Le planning peut avoir V1/V2 inversées
+// par rapport à la réalité : on ne s'appuie donc que sur le SHIFT officiel.
+// Doublage = mouvements des AUTRES shifts du jour + la vacation la plus faible
+// du shift officiel (ex. 65 mvts en V1 et 13 en V2 -> 13 de doublage ; une seule
+// vacation travaillée -> 0).
 function detectDoublagesFromVacations(state, teamId, vacRows, planning) {
   const official = {};
   planning.days.forEach(d => d.assignments.forEach(a => { official[d.iso + "|" + a.driverId] = a; }));
@@ -1772,15 +1776,14 @@ function detectDoublagesFromVacations(state, teamId, vacRows, planning) {
     // affecté) : jamais un doublage — un repos travaillé pour nécessité de
     // service est annulé puis récupéré, ce n'est pas un doublage.
     if (!hasRef) return;
-    let outside = 0;
+    let autresShifts = 0;
+    const inShift = { V1: 0, V2: 0 };
     list.forEach(v => {
-      const inOfficial = hasRef && v.shift === a.shift && (!a.vacation || a.vacation === "V1+V2" || a.vacation === v.vacation);
-      if (!inOfficial) outside += v.mouvements;
+      if (v.shift === a.shift) inShift[v.vacation] = (inShift[v.vacation] || 0) + v.mouvements;
+      else autresShifts += v.mouvements;
     });
-    out[k] = {
-      driverId: driver.id, date: list[0].dateTravail, outside: outside,
-      official: hasRef ? a.shift + (a.vacation && a.vacation !== "V1+V2" ? " " + a.vacation : "") : (a ? String(a.status || "—") : "—")
-    };
+    const vacFaible = Math.min(inShift.V1, inShift.V2);
+    out[k] = { driverId: driver.id, date: list[0].dateTravail, outside: autresShifts + vacFaible, official: a.shift };
   });
   return out;
 }
@@ -1844,7 +1847,6 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
   // Fichier par vacation importé pour ce mois : calcul précis (hors vacation
   // officielle) ; sinon repli sur les mouvements TOS par shift (hors shift).
   const parVacation = !!(planning && vacRows && vacRows.length > 0);
-  const horsLabel = parVacation ? "vacation" : "shift";
   const detection = !planning ? null : parVacation ? detectDoublagesFromVacations(state, teamId, vacRows, planning) : detectDoublagesFromTos(state, teamId, mvtRows, planning);
   // Doublages réalisés (> 15 mvts hors shift officiel) mais absents d'Over Time.
   const declaredKeys = {};
@@ -1879,9 +1881,9 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
     const total = mouvement && mouvement.mouvements != null ? mouvement.mouvements : (auto !== undefined ? auto : null);
     let note = mouvement ? mouvement.commentaire || "" : "";
     if (r.type === "DOUBLAGE" && detection) {
-      if (r.detecte) note = "Détecté (non saisi dans Over Time) : " + dbl.outside + " mvts hors " + horsLabel + " officiel" + (parVacation ? "le" : "") + " (" + dbl.official + ")";
+      if (r.detecte) note = "Détecté (non saisi dans Over Time) : " + dbl.outside + " mvts de doublage (" + (parVacation ? "autres shifts + vacation la plus faible du " : "hors ") + "shift " + dbl.official + ")";
       else if (parVacation && !dbl) note = [r.commentaire, "Mouvements non calculés : pas de shift officiel au planning ce jour-là (repos, congé ou sans affectation)"].filter(Boolean).join(" — ");
-      else if (parVacation && dbl.outside <= DOUBLAGE_MVT_THRESHOLD) note = [r.commentaire, "À vérifier : " + (dbl ? dbl.outside : 0) + " mvts seulement hors vacation officielle (seuil > " + DOUBLAGE_MVT_THRESHOLD + ")"].filter(Boolean).join(" — ");
+      else if (parVacation && dbl.outside <= DOUBLAGE_MVT_THRESHOLD) note = [r.commentaire, "À vérifier : " + (dbl ? dbl.outside : 0) + " mvts de doublage seulement (seuil > " + DOUBLAGE_MVT_THRESHOLD + ")"].filter(Boolean).join(" — ");
       else if (!parVacation && (!dbl || dbl.outside === 0)) note = [r.commentaire, "Mouvements non isolables : réalisés dans le shift officiel (TOS ventilé par shift)"].filter(Boolean).join(" — ");
     }
     return {
@@ -2288,7 +2290,7 @@ function RapportRHPage() {
       {tab === "feries" && (
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-3 print:hidden text-xs text-slate-700">
         <div className="font-semibold text-slate-900 mb-1"><i className="fas fa-layer-group mr-1.5 text-amber-600"></i>Doublages — mouvements par vacation</div>
-        <p className="mb-2">Règle : mouvements réalisés <b>hors de la vacation officielle</b> du planning ; plus de {DOUBLAGE_MVT_THRESHOLD} le même jour = doublage. {vacRows.length > 0
+        <p className="mb-2">Règle : mouvements des autres shifts du jour + la <b>vacation la plus faible</b> du shift officiel (le planning peut avoir V1/V2 inversées) ; plus de {DOUBLAGE_MVT_THRESHOLD} le même jour = doublage. {vacRows.length > 0
           ? <span className="text-emerald-700 font-medium">{vacRows.length} ligne(s) par vacation chargées pour {RAPPORT_MOIS_LABELS[month - 1]} {year}.</span>
           : <span className="text-amber-700 font-medium">Aucun fichier importé pour ce mois : calcul approché par shift (le détail V1/V2 d'un même shift n'est pas mesurable).</span>}</p>
         {canImportVac
