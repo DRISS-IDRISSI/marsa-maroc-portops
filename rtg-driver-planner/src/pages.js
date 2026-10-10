@@ -1551,17 +1551,10 @@ const PRINT_TD_XS_CENTER = PRINT_TD_XS + " text-center";
 const PRINT_TD_XS_WRAP = "border border-slate-300 px-1 py-1 break-words align-middle";
 const RAPPORT_MOIS_LABELS_P = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
-// Export Excel des rapports — vrai classeur .xlsx (pas un CSV renommé) via
-// SheetJS, déjà chargée à la demande ailleurs dans l'appli (import planning) —
-// même bibliothèque, réutilisée ici pour l'écriture. Largeurs de colonnes
-// ajustées au contenu le plus long de chaque colonne pour rester lisible à
-// l'ouverture, sans réglage manuel côté utilisateur.
-async function downloadXLSX(filename, headers, rows, sheetName, opts) {
-  const o = opts || {};
-  try {
-    const ExcelJS = await loadExcelJsLib();
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "TC3PC — CES Driver Planner";
+// Construit une feuille "charte TC3PC" (bandeau, en-tête figé, lignes alternées, total, filtre)
+// dans le classeur `wb` — partagé par downloadXLSX (1 feuille) et downloadWorkbookXLSX (plusieurs).
+// opts.banner : texte complet du bandeau (sinon "MARSA MAROC — TC3PC  |  " + title).
+function buildStyledSheet(wb, headers, rows, sheetName, o) {
     const ws = wb.addWorksheet((sheetName || "Feuille1").slice(0, 31), {
       views: [{ state: "frozen", ySplit: 5, showGridLines: false }],
       pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } }
@@ -1579,7 +1572,7 @@ async function downloadXLSX(filename, headers, rows, sheetName, opts) {
     const gen = typeof rtgNowInCasablanca === "function" ? rtgNowInCasablanca() : new Date();
     const genTxt = (() => { try { return new Date(gen).toLocaleString("fr-FR", { timeZone: "UTC", dateStyle: "short", timeStyle: "short" }); } catch (e) { return ""; } })();
     ws.mergeCells(1, 1, 1, nCols);
-    ws.getCell(1, 1).value = "MARSA MAROC — TC3PC  |  " + (o.title || sheetName || "Rapport");
+    ws.getCell(1, 1).value = o.banner || ("MARSA MAROC — TC3PC  |  " + (o.title || sheetName || "Rapport"));
     ws.getCell(1, 1).font = { name: "Calibri", size: 16, bold: true, color: { argb: "FFFFFFFF" } };
     ws.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
     ws.getCell(1, 1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
@@ -1663,6 +1656,21 @@ async function downloadXLSX(filename, headers, rows, sheetName, opts) {
     ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5 + rows.length, column: nCols } };
     ws.pageSetup.printTitlesRow = "5:5";
     ws.headerFooter.oddFooter = "&LMarsa Maroc — TC3PC&CPage &P / &N&R&D";
+    return ws;
+}
+
+// Export Excel des rapports — vrai classeur .xlsx (pas un CSV renommé) via
+// SheetJS, déjà chargée à la demande ailleurs dans l'appli (import planning) —
+// même bibliothèque, réutilisée ici pour l'écriture. Largeurs de colonnes
+// ajustées au contenu le plus long de chaque colonne pour rester lisible à
+// l'ouverture, sans réglage manuel côté utilisateur.
+async function downloadXLSX(filename, headers, rows, sheetName, opts) {
+  const o = opts || {};
+  try {
+    const ExcelJS = await loadExcelJsLib();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "TC3PC — CES Driver Planner";
+    buildStyledSheet(wb, headers, rows, sheetName, o);
     const buf = await wb.xlsx.writeBuffer();
     downloadArrayBuffer(buf, filename);
   } catch (e) {
@@ -1683,121 +1691,13 @@ async function downloadXLSX(filename, headers, rows, sheetName, opts) {
   }
 }
 
-// Classeur Excel multi-onglets (Rapport RH de fin de mois) : un onglet par flotte,
-// chaque onglet empile plusieurs tableaux ("blocs"), même charte que downloadXLSX.
-// sheets = [{ name, title, subtitle, blocks: [{ heading, headers, rows, totals, note }] }]
+// Classeur multi-onglets (même charte que downloadXLSX) : sheets = [{ name, headers, rows, opts }].
 async function downloadWorkbookXLSX(filename, sheets) {
   try {
     const ExcelJS = await loadExcelJsLib();
     const wb = new ExcelJS.Workbook();
     wb.creator = "TC3PC — CES Driver Planner";
-    const NAVY = "FF0B3B6B", SKY = "FF1E90D6", ZEBRA = "FFF5F9FD", GRID = "FFC9D8E6";
-    const border = { top: { style: "thin", color: { argb: GRID } }, left: { style: "thin", color: { argb: GRID } }, bottom: { style: "thin", color: { argb: GRID } }, right: { style: "thin", color: { argb: GRID } } };
-    const gen = typeof rtgNowInCasablanca === "function" ? rtgNowInCasablanca() : new Date();
-    const genTxt = (() => { try { return new Date(gen).toLocaleString("fr-FR", { timeZone: "UTC", dateStyle: "short", timeStyle: "short" }); } catch (e) { return ""; } })();
-    sheets.forEach(sh => {
-      const ws = wb.addWorksheet(String(sh.name).slice(0, 31), {
-        views: [{ showGridLines: false }],
-        pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } }
-      });
-      const nCols = Math.max(4, ...sh.blocks.map(b => b.headers.length));
-      const widths = new Array(nCols).fill(10);
-      ws.mergeCells(1, 1, 1, nCols);
-      ws.getCell(1, 1).value = "MARSA MAROC — TC3PC  |  " + sh.title;
-      ws.getCell(1, 1).font = { name: "Calibri", size: 16, bold: true, color: { argb: "FFFFFFFF" } };
-      ws.getCell(1, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
-      ws.getCell(1, 1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
-      ws.getRow(1).height = 32;
-      ws.mergeCells(2, 1, 2, nCols);
-      ws.getCell(2, 1).value = sh.subtitle || "";
-      ws.getCell(2, 1).font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
-      ws.getCell(2, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: SKY } };
-      ws.getCell(2, 1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
-      ws.getRow(2).height = 22;
-      ws.mergeCells(3, 1, 3, nCols);
-      ws.getCell(3, 1).value = "Généré le " + genTxt;
-      ws.getCell(3, 1).font = { name: "Calibri", size: 9, italic: true, color: { argb: "FF64748B" } };
-      ws.getCell(3, 1).alignment = { vertical: "middle", horizontal: "right", indent: 1 };
-      let r = 5;
-      sh.blocks.forEach(b => {
-        const nc = b.headers.length;
-        // Titre du tableau
-        ws.mergeCells(r, 1, r, nCols);
-        const hc = ws.getCell(r, 1);
-        hc.value = b.heading + (b.rows.length ? "  —  " + b.rows.length + " ligne" + (b.rows.length > 1 ? "s" : "") : "");
-        hc.font = { name: "Calibri", size: 12, bold: true, color: { argb: NAVY } };
-        hc.alignment = { vertical: "middle", horizontal: "left" };
-        ws.getRow(r).height = 24;
-        r++;
-        const isNumCol = b.headers.map((h, i) => {
-          let any = false;
-          for (const row of b.rows) { const v = row[i]; if (v === "" || v == null) continue; if (typeof v !== "number") return false; any = true; }
-          return any;
-        });
-        const headRow = ws.getRow(r);
-        b.headers.forEach((h, i) => {
-          const c = headRow.getCell(i + 1);
-          c.value = h;
-          c.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
-          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
-          c.alignment = { vertical: "middle", horizontal: isNumCol[i] ? "center" : "left", wrapText: true };
-          c.border = border;
-          widths[i] = Math.max(widths[i], Math.min(String(h).length + 2, 42));
-        });
-        headRow.height = 28;
-        r++;
-        if (b.rows.length === 0) {
-          ws.mergeCells(r, 1, r, nCols);
-          ws.getCell(r, 1).value = b.note || "Aucune donnée pour ce mois.";
-          ws.getCell(r, 1).font = { name: "Calibri", size: 10, italic: true, color: { argb: "FF64748B" } };
-          r++;
-        }
-        b.rows.forEach((row, ri) => {
-          const xr = ws.getRow(r);
-          b.headers.forEach((h, i) => {
-            const c = xr.getCell(i + 1);
-            const v = row[i] == null ? "" : row[i];
-            c.value = v;
-            c.border = border;
-            c.font = { name: "Calibri", size: 10, color: { argb: "FF1E293B" } };
-            c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ri % 2 ? ZEBRA : "FFFFFFFF" } };
-            if (isNumCol[i]) {
-              c.alignment = { vertical: "middle", horizontal: "center" };
-              if (typeof v === "number") {
-                c.numFmt = Number.isInteger(v) ? '0;-0;"–"' : '0.0#;-0.0#;"–"';
-                if (v === 0) c.font = { name: "Calibri", size: 10, color: { argb: "FF94A3B8" } };
-              }
-            } else {
-              c.alignment = { vertical: "middle", horizontal: "left", wrapText: false };
-            }
-            widths[i] = Math.max(widths[i], Math.min(String(v).length + 3, 42));
-          });
-          xr.height = 18;
-          r++;
-        });
-        if (b.totals && b.rows.length > 0) {
-          const tr = ws.getRow(r);
-          b.headers.forEach((h, i) => {
-            const c = tr.getCell(i + 1);
-            if (i === 0) c.value = "TOTAL";
-            else if (isNumCol[i]) {
-              const sum = b.rows.reduce((a, row) => a + (typeof row[i] === "number" ? row[i] : 0), 0);
-              c.value = Math.round(sum * 100) / 100;
-              c.numFmt = Number.isInteger(c.value) ? '0;-0;"–"' : '0.0#;-0.0#;"–"';
-            }
-            c.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
-            c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SKY } };
-            c.border = border;
-            c.alignment = { vertical: "middle", horizontal: isNumCol[i] ? "center" : "left" };
-          });
-          tr.height = 22;
-          r++;
-        }
-        r += 2; // espace avant le tableau suivant
-      });
-      widths.forEach((w, i) => { ws.getColumn(i + 1).width = Math.max(w, 9); });
-      ws.headerFooter.oddFooter = "&LMarsa Maroc — TC3PC&CPage &P / &N&R&D";
-    });
+    sheets.forEach(sh => buildStyledSheet(wb, sh.headers, sh.rows, sh.name, sh.opts || {}));
     const buf = await wb.xlsx.writeBuffer();
     downloadArrayBuffer(buf, filename);
   } catch (e) {
