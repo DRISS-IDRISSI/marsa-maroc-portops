@@ -2159,8 +2159,9 @@ function RapportRHPage() {
   const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
   const tdCenter = td + " text-center";
 
-  // Rapport RH de fin de mois : UN classeur, 3 onglets (RTG, CC, CER) ; chaque onglet =
-  // « Mouvements mensuels » (par conducteur) + « Over Time » avec mouvements (CER : sans mouvements).
+  // Rapport RH de fin de mois : UN classeur de 5 onglets (canevas de l'exploitant) —
+  // Rapport RH RTG (TC3PC) / CC (MARSA MAROC), puis Over Time avec mouvements RTG / CC,
+  // et Over Time CER (sans mouvements).
   const exportRhWorkbook = async () => {
     if (rhBusyRef.current) return;
     rhBusyRef.current = true;
@@ -2173,41 +2174,51 @@ function RapportRHPage() {
         RTGStore.fetchMouvementsVacations(dateFrom, dateTo).catch(() => [])
       ]);
       const moisLabel = RAPPORT_MOIS_LABELS[month - 1] + " " + year;
-      const sheets = ["RTG", "CC", "CER"].map(fleet => {
+      const perimetre = shiftRestricted ? "vos équipes" : "Toutes les équipes";
+      const fleetState = fleet => {
         const teams = rawState.teams.filter(t => (t.typeEngin || "RTG") === fleet && (!shiftRestricted || restrictedIds.indexOf(t.id) !== -1));
         const ids = new Set(teams.map(t => t.id));
-        const fs = Object.assign({}, rawState, { teams: teams, drivers: rawState.drivers.filter(d => ids.has(d.teamId)) });
-        const withMvts = fleet !== "CER";
-        const blocks = [];
-        const byName = (a, b) => (a.nom + " " + a.prenom).localeCompare(b.nom + " " + b.prenom, "fr");
-        if (withMvts) {
-          const driverIds = new Set(fs.drivers.map(d => d.id));
-          const sums = {};
-          tosRows.forEach(m => {
-            if (!m.driverId || !driverIds.has(m.driverId)) return;
-            const d = withMouvementsDisplay(m);
-            const g = sums[m.driverId] = sums[m.driverId] || { inn: 0, out: 0, move: 0, shifting: 0, total: 0 };
-            g.inn += d.inDisplay; g.out += d.outDisplay; g.move += d.moveDisplay; g.shifting += d.nombreShifting || 0; g.total += m.totalMvmt || 0;
-          });
-          const rows = fs.drivers.filter(d => sums[d.id]).slice().sort(byName).map(d => {
-            const g = sums[d.id];
-            return [d.matricule, d.nom, d.prenom, g.inn, g.out, g.move, g.shifting, g.total];
-          });
-          blocks.push({ heading: "Mouvements mensuels — " + moisLabel, headers: ["Mat", "Nom", "Prénom", "IN", "OUT", "MOVE", "Shifting", "Total"], rows: rows, totals: true, note: "Aucun mouvement importé pour ce mois." });
-        }
-        const planning = withMvts && fs.teams.length ? PlanningEngine.generateMonthlyPlanning(month, year, fs) : null;
-        const rep = buildRapportFeriesS3(fs, month, year, "all", withMvts ? tosRows : [], planning, withMvts ? vacAll : []);
-        const orows = rep.rows.filter(r => !r.record.detecte).map(r => {
-          const base = [RTGDate.formatFr(RTGDate.parseISO(r.record.dateDebut)), r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", rapportFeriesTypeLabel(r.record.type, false), r.record.heures != null ? Number(r.record.heures) : ""];
-          return withMvts ? base.concat([r.mouvements != null ? r.mouvements : ""]) : base;
-        });
-        blocks.push({
-          heading: withMvts ? "Over Time avec mouvements — " + moisLabel : "Over Time — " + moisLabel,
-          headers: ["Date", "Mat", "Nom", "Prénom", "Type", "Heures"].concat(withMvts ? ["Mouvements"] : []),
-          rows: orows, totals: true, note: "Aucun Over Time pour ce mois."
-        });
-        return { name: fleet, title: "Rapport RH — " + moisLabel + " — " + fleet, subtitle: "Terminal à Conteneurs 3 du Port de Casablanca" + (shiftRestricted ? " — vos équipes" : " — Toutes les équipes"), blocks: blocks };
-      });
+        return Object.assign({}, rawState, { teams: teams, drivers: rawState.drivers.filter(d => ids.has(d.teamId)) });
+      };
+      const rhSheet = (fleet, name, brand) => {
+        const rep = buildRapportRH(fleetState(fleet), month, year, "all");
+        const rows = rep.rows.map(r => [
+          r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.PRESENT, r.counts.REPOS, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE, r.counts.FORMATION,
+          r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures
+        ]);
+        return {
+          name: name,
+          headers: ["Mat", "Nom", "Prénom", "Équipe", "Présents", "Repos", "Congés", "Maladies", "Absences", "Formations", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)"],
+          rows: rows,
+          opts: { banner: brand + "  |  Rapport RH — " + moisLabel, subtitle: "Conducteurs " + fleet + " — " + perimetre, totals: true, highlightCols: [10, 11, 12, 13, 14, 15] }
+        };
+      };
+      // Over Time saisis (doublages, fériés, 3ème shift dimanche) ; les mouvements des doublages sont
+      // calculés avec le fichier par vacation s'il est importé pour le mois, sinon valeur enregistrée.
+      const otSheet = (fleet, name, brand, withMvts) => {
+        const fs = fleetState(fleet);
+        const planning = withMvts && vacAll.length > 0 && fs.teams.length ? PlanningEngine.generateMonthlyPlanning(month, year, fs) : null;
+        const rep = buildRapportFeriesS3(fs, month, year, "all", withMvts ? tosRows : [], planning, withMvts && planning ? vacAll : []);
+        const rows = rep.rows.filter(r => !r.record.detecte).map(r => [
+          r.record.dateDebut, r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", r.teamNom,
+          rapportFeriesTypeLabel(r.record.type, false), r.record.heures != null ? Number(r.record.heures) : "",
+          withMvts && r.mouvements != null ? r.mouvements : "",
+          r.record.commentaire || (r.record.type === "FERIE_TRAVAILLE" ? r.mouvementCommentaire : "") || ""
+        ]);
+        return {
+          name: name,
+          headers: ["Date", "Mat", "Nom", "Prénom", "Équipe", "Type", "Heures", "Mouvements réalisés", "Commentaire"],
+          rows: rows,
+          opts: { banner: brand + "  |  " + (withMvts && brand !== "MARSA MAROC — TC3PC" ? "MOUVEMENT " : "") + "Jours fériés, 3ème shift dimanche & doublages — " + moisLabel, subtitle: "Conducteurs " + fleet + " — " + perimetre }
+        };
+      };
+      const sheets = [
+        rhSheet("RTG", "Rapport RH TC3PC", "TC3PC"),
+        rhSheet("CC", "Rapport RH MARSA MAROC", "MARSA MAROC"),
+        otSheet("RTG", "MOUVEMENT OVER TIME TC3PC", "TC3PC", true),
+        otSheet("CC", "MOUVEMENT OVER TIME MARSA MAROC", "MARSA MAROC", true),
+        otSheet("CER", "OVER TIME CONDUCTEUR CER MOIS " + month, "MARSA MAROC — TC3PC", false)
+      ];
       await downloadWorkbookXLSX("rapport-rh-" + RAPPORT_MOIS_LABELS[month - 1] + "-" + year + ".xlsx", sheets);
     } catch (e) {
       alert("Export impossible : " + (e && e.message ? e.message : "réessayez."));
@@ -2355,7 +2366,7 @@ function RapportRHPage() {
 
       {/* Contenu imprimable : style "papier" clair, indépendant du thème sombre de l'appli. */}
       {tab === "rh" && (
-      <p className="print:hidden text-xs text-slate-500 mb-2"><i className="fas fa-file-excel mr-1.5 text-emerald-600"></i>Le bouton <b>Excel</b> génère le classeur du mois : onglets <b>RTG</b>, <b>CC</b> et <b>CER</b>, chacun avec les mouvements mensuels et les Over Time avec leurs mouvements (CER sans mouvements).</p>
+      <p className="print:hidden text-xs text-slate-500 mb-2"><i className="fas fa-file-excel mr-1.5 text-emerald-600"></i>Le bouton <b>Excel</b> génère le classeur du mois (5 onglets) : <b>Rapport RH</b> RTG et CC, <b>Over Time avec mouvements</b> RTG et CC, et <b>Over Time CER</b> (sans mouvements).</p>
       )}
       {tab === "rh" && (
       <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
