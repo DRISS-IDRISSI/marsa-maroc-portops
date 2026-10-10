@@ -1,0 +1,34 @@
+const { HashRouter, Routes, Route } = ReactRouterDOM;
+
+function App() {
+  return (
+    <HashRouter>
+      <AuthGate>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/planning" element={<PlanningMensuel />} />
+            <Route path="/affectation" element={<AffectationDuJour />} />
+            <Route path="/conducteurs" element={<DriversPage />} />
+            <Route path="/conges" element={<CongesPage />} />
+            <Route path="/maladies" element={<MaladiesPage />} />
+            <Route path="/absences" element={<AbsencesPage />} />
+            <Route path="/heures-exceptionnelles" element={<HeuresExceptionnellesPage />} />
+            <Route path="/remplacement" element={<RemplacementPage />} />
+            <Route path="/rapport-rh" element={<RapportRHPage />} />
+            <Route path="/assistant" element={<AssistantIntelligentPage />} />
+            <Route path="/mon-planning" element={<MonPlanningPage />} />
+            <Route path="/mes-conges" element={<MesCongesPage />} />
+            <Route path="/mes-mouvements" element={<MesMouvementsPage />} />
+            <Route path="/mes-overtime" element={<MesOverTimePage />} />
+            <Route path="/mouvements-rtg" element={<MouvementsRtgPage />} />
+            <Route path="/utilisateurs" element={<UsersPage />} />
+            <Route path="/mon-compte" element={<ChangePasswordPage />} />
+          </Routes>
+        </Layout>
+      </AuthGate>
+    </HashRouter>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
