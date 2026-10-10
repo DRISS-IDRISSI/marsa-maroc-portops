@@ -2083,6 +2083,7 @@ function RapportRHPage() {
   };
   const doublagePlanning = useMemo(() => tab === "feries" ? PlanningEngine.generateMonthlyPlanning(month, year, state) : null, [tab, state, month, year]);
   const feriesReport = useMemo(() => buildRapportFeriesS3(state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows), [state, month, year, effectiveTeamId, mvtRows, doublagePlanning, vacRows]);
+  const rhBusyRef = useRef(false);
   // Bascule du rapport : tout / fériés / 3ème shift dimanche / doublages (saisis + détectés).
   // Deux vues seulement : saisis manuellement dans Over Time (par défaut) ou détectés
   // depuis les mouvements (non saisis) — chacune avec 3ème shift dimanche + doublages (+ fériés).
@@ -2158,6 +2159,63 @@ function RapportRHPage() {
   const td = "px-2 py-1.5 border-b border-slate-200 whitespace-nowrap";
   const tdCenter = td + " text-center";
 
+  // Rapport RH de fin de mois : UN classeur, 3 onglets (RTG, CC, CER) ; chaque onglet =
+  // « Mouvements mensuels » (par conducteur) + « Over Time » avec mouvements (CER : sans mouvements).
+  const exportRhWorkbook = async () => {
+    if (rhBusyRef.current) return;
+    rhBusyRef.current = true;
+    try {
+      const dim = RTGDate.daysInMonth(month, year);
+      const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
+      const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
+      const [tosRows, vacAll] = await Promise.all([
+        RTGStore.fetchMouvementsTos({ dateFrom, dateTo }),
+        RTGStore.fetchMouvementsVacations(dateFrom, dateTo).catch(() => [])
+      ]);
+      const moisLabel = RAPPORT_MOIS_LABELS[month - 1] + " " + year;
+      const sheets = ["RTG", "CC", "CER"].map(fleet => {
+        const teams = rawState.teams.filter(t => (t.typeEngin || "RTG") === fleet && (!shiftRestricted || restrictedIds.indexOf(t.id) !== -1));
+        const ids = new Set(teams.map(t => t.id));
+        const fs = Object.assign({}, rawState, { teams: teams, drivers: rawState.drivers.filter(d => ids.has(d.teamId)) });
+        const withMvts = fleet !== "CER";
+        const blocks = [];
+        const byName = (a, b) => (a.nom + " " + a.prenom).localeCompare(b.nom + " " + b.prenom, "fr");
+        if (withMvts) {
+          const driverIds = new Set(fs.drivers.map(d => d.id));
+          const sums = {};
+          tosRows.forEach(m => {
+            if (!m.driverId || !driverIds.has(m.driverId)) return;
+            const d = withMouvementsDisplay(m);
+            const g = sums[m.driverId] = sums[m.driverId] || { inn: 0, out: 0, move: 0, shifting: 0, total: 0 };
+            g.inn += d.inDisplay; g.out += d.outDisplay; g.move += d.moveDisplay; g.shifting += d.nombreShifting || 0; g.total += m.totalMvmt || 0;
+          });
+          const rows = fs.drivers.filter(d => sums[d.id]).slice().sort(byName).map(d => {
+            const g = sums[d.id];
+            return [d.matricule, d.nom, d.prenom, g.inn, g.out, g.move, g.shifting, g.total];
+          });
+          blocks.push({ heading: "Mouvements mensuels — " + moisLabel, headers: ["Mat", "Nom", "Prénom", "IN", "OUT", "MOVE", "Shifting", "Total"], rows: rows, totals: true, note: "Aucun mouvement importé pour ce mois." });
+        }
+        const planning = withMvts && fs.teams.length ? PlanningEngine.generateMonthlyPlanning(month, year, fs) : null;
+        const rep = buildRapportFeriesS3(fs, month, year, "all", withMvts ? tosRows : [], planning, withMvts ? vacAll : []);
+        const orows = rep.rows.filter(r => !r.record.detecte).map(r => {
+          const base = [RTGDate.formatFr(RTGDate.parseISO(r.record.dateDebut)), r.driver ? r.driver.matricule : "", r.driver ? r.driver.nom : "", r.driver ? r.driver.prenom : "", rapportFeriesTypeLabel(r.record.type, false), r.record.heures != null ? Number(r.record.heures) : ""];
+          return withMvts ? base.concat([r.mouvements != null ? r.mouvements : ""]) : base;
+        });
+        blocks.push({
+          heading: withMvts ? "Over Time avec mouvements — " + moisLabel : "Over Time — " + moisLabel,
+          headers: ["Date", "Mat", "Nom", "Prénom", "Type", "Heures"].concat(withMvts ? ["Mouvements"] : []),
+          rows: orows, totals: true, note: "Aucun Over Time pour ce mois."
+        });
+        return { name: fleet, title: "Rapport RH — " + moisLabel + " — " + fleet, subtitle: "Terminal à Conteneurs 3 du Port de Casablanca" + (shiftRestricted ? " — vos équipes" : " — Toutes les équipes"), blocks: blocks };
+      });
+      await downloadWorkbookXLSX("rapport-rh-" + RAPPORT_MOIS_LABELS[month - 1] + "-" + year + ".xlsx", sheets);
+    } catch (e) {
+      alert("Export impossible : " + (e && e.message ? e.message : "réessayez."));
+    } finally {
+      rhBusyRef.current = false;
+    }
+  };
+
   const exportExcel = () => {
     if (tab === "mouvements" && mvtDetail) {
       const headers = ["Mat", "Nom", "Prénom", "Date", "Shift"].concat(MOUVEMENTS_DISPLAY_COLUMNS.map(c => c.label)).concat(["Total"]);
@@ -2198,14 +2256,7 @@ function RapportRHPage() {
       downloadXLSX(`jours-feries-3eme-shift-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Fériés", { title: FERIES_TYPE_TITLES[feriesType] + " — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes") });
       return;
     }
-    const headers = ["Mat", "Nom", "Prénom", "Équipe", "Congés", "Maladies", "Absences", "Doublage (h)", "Férié travaillé (j)", "Férié travaillé (h)", "Dim. 3ème shift (j)", "Dim. 3ème shift (h)", "Total Over Time (h)", "Dates Over Time", "Mouvements Over Time"];
-    const rows = report.rows.map(r => [
-      r.driver.matricule, r.driver.nom, r.driver.prenom, r.teamNom, r.counts.CONGE, r.counts.MALADIE, r.counts.ABSENCE,
-      r.byType.DOUBLAGE.heures, r.byType.FERIE_TRAVAILLE.jours, r.byType.FERIE_TRAVAILLE.heures, r.byType.DIMANCHE_S3.jours, r.byType.DIMANCHE_S3.heures, r.totalHeures,
-      (rhOverByDriver[r.driver.id] || []).map(g => g.date).join("\n"),
-      (rhOverByDriver[r.driver.id] || []).map(g => g.mvts != null ? g.mvts : "—").join("\n")
-    ]);
-    downloadXLSX(`rapport-rh-${RAPPORT_MOIS_LABELS[month - 1]}-${year}.xlsx`, headers, rows, "Rapport RH", { title: "Rapport RH — " + RAPPORT_MOIS_LABELS[month - 1] + " " + year, subtitle: "Conducteurs " + rawState.currentFleet + (effectiveTeamId !== "all" ? " — " + ((state.teams.find(t => t.id === effectiveTeamId) || {}).nom || "") : " — Toutes les équipes"), totals: true, highlightCols: [7, 8, 9, 10, 11, 12, 13, 14] });
+    exportRhWorkbook();
   };
 
   const printRef = useRef(null);
@@ -2303,6 +2354,9 @@ function RapportRHPage() {
       </div>
 
       {/* Contenu imprimable : style "papier" clair, indépendant du thème sombre de l'appli. */}
+      {tab === "rh" && (
+      <p className="print:hidden text-xs text-slate-500 mb-2"><i className="fas fa-file-excel mr-1.5 text-emerald-600"></i>Le bouton <b>Excel</b> génère le classeur du mois : onglets <b>RTG</b>, <b>CC</b> et <b>CER</b>, chacun avec les mouvements mensuels et les Over Time avec leurs mouvements (CER sans mouvements).</p>
+      )}
       {tab === "rh" && (
       <div ref={printRef} className="bg-white text-slate-900 rounded-xl border border-slate-300 p-4 sm:p-6 print:rounded-none print:border-0 print:p-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b-2 border-slate-800">
