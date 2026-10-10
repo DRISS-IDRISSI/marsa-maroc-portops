@@ -1286,12 +1286,29 @@ function HeuresExceptionnellesPage() {
             {records.length === 0 && (
               <tr><td colSpan="8" className="px-3 py-6 text-center text-slate-500 italic">Aucun enregistrement.</td></tr>
             )}
-            {records.map(r => {
+            {records.map((r, idx) => {
               const meta = HEURE_EXCEPTIONNELLE_TYPES[r.type] || { label: r.type, className: "bg-slate-200 text-slate-600" };
+              // Séparateur par mois : en-tête avant le 1er enregistrement de chaque mois.
+              const monthKey = String(r.dateDebut).slice(0, 7);
+              const monthHeader = (idx === 0 || String(records[idx - 1].dateDebut).slice(0, 7) !== monthKey) ? (() => {
+                const inMonth = records.filter(x => String(x.dateDebut).slice(0, 7) === monthKey);
+                const heures = inMonth.reduce((sum, x) => sum + (Number(x.heures) || 0), 0);
+                const label = RAPPORT_MOIS_LABELS[Number(monthKey.slice(5, 7)) - 1] + " " + monthKey.slice(0, 4);
+                return (
+                  <tr className="bg-slate-800 text-white">
+                    <td colSpan="8" className="px-3 py-2 text-xs font-semibold tracking-wide">
+                      {label}
+                      <span className="ml-3 font-normal text-slate-300">{inMonth.length} enregistrement{inMonth.length > 1 ? "s" : ""} · {heures} h</span>
+                    </td>
+                  </tr>
+                );
+              })() : null;
               if (canManage && editId === r.id && editForm) {
                 const upd = patch => setEditForm(f => Object.assign({}, f, patch));
                 return (
-                  <tr key={r.id} className="border-t border-slate-200 bg-orange-50/60">
+                  <React.Fragment key={r.id}>
+                  {monthHeader}
+                  <tr className="border-t border-slate-200 bg-orange-50/60">
                     <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
                     <td className="px-2 py-2"><input type="date" className={FIELD_CLS} value={editForm.date} onChange={e => upd({ date: e.target.value })} /></td>
                     <td className="px-2 py-2">
@@ -1308,10 +1325,13 @@ function HeuresExceptionnellesPage() {
                       <button disabled={editBusy} onClick={() => { setEditId(null); setEditForm(null); setError(""); }} className="text-slate-500 hover:text-slate-900 text-xs">Annuler</button>
                     </td>
                   </tr>
+                  </React.Fragment>
                 );
               }
               return (
-                <tr key={r.id} className="border-t border-slate-200 hover:bg-marine-600/10">
+                <React.Fragment key={r.id}>
+                {monthHeader}
+                <tr className="border-t border-slate-200 hover:bg-marine-600/10">
                   <td className="px-3 py-2 text-slate-900">{driverLabel(state, r.driverId)}</td>
                   <td className="px-3 py-2 text-slate-600">{r.dateDebut}</td>
                   <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded ${meta.className}`}>{meta.label}</span></td>
@@ -1321,6 +1341,7 @@ function HeuresExceptionnellesPage() {
                   <td className="px-3 py-2 text-slate-500">{r.utilisateur}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{canEditRow(r) ? <span className="inline-flex items-center gap-3"><button onClick={() => startEdit(r)} className="text-sky-600 hover:text-sky-800 text-xs font-semibold">Modifier</button><ConfirmButton label="Supprimer" confirmLabel="Supprimer ?" onConfirm={() => RTGStore.deleteHeureExceptionnelle(r.id)} className="text-red-400 hover:text-red-700 text-xs" /></span> : <span className="text-slate-400 text-[11px] italic">Lecture seule</span>}</td>
                 </tr>
+                </React.Fragment>
               );
             })}
           </tbody>
