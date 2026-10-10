@@ -1668,7 +1668,7 @@ function buildRapportRH(state, month, year, teamId) {
 // pour chaque jour férié travaillé (cf. FerieMouvementsPanel, pages.js).
 // Libellé du type d'une ligne du rapport (férié / 3ème shift dimanche / doublage).
 function rapportFeriesTypeLabel(type, detecte) {
-  return type === "FERIE_TRAVAILLE" ? "Férié travaillé" : type === "DOUBLAGE" ? (detecte ? "Doublage (non déclaré)" : "Doublage") : "3ème shift dimanche";
+  return type === "FERIE_TRAVAILLE" ? "Férié travaillé" : type === "DOUBLAGE" ? (detecte ? "Doublage (non déclaré)" : "Doublage") : (detecte ? "3ème shift dimanche (non déclaré)" : "3ème shift dimanche");
 }
 
 // Règle de l'exploitant : les mouvements réalisés HORS du shift officiel du
@@ -1676,6 +1676,10 @@ function rapportFeriesTypeLabel(type, detecte) {
 // jour = doublage. Calculé sur les mouvements TOS importés (ventilés par
 // SHIFT : le TOS ne donne pas le détail V1/V2 d'un même shift).
 const DOUBLAGE_MVT_THRESHOLD = 15;
+
+// Un dimanche, les mouvements réalisés en S3 hors shift officiel sont un
+// « 3ème shift dimanche » (nécessité de service), jamais un doublage.
+function isSundayIso(iso) { return new Date(iso + "T00:00:00Z").getUTCDay() === 0; }
 
 function normalizeLoginPart(s) {
   return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
@@ -1797,14 +1801,16 @@ function detectDoublagesFromVacations(state, teamId, vacRows, planning) {
     // affecté) : jamais un doublage — un repos travaillé pour nécessité de
     // service est annulé puis récupéré, ce n'est pas un doublage.
     if (!hasRef) return;
-    let autresShifts = 0;
+    let autresShifts = 0, dimancheS3 = 0;
     const inShift = { V1: 0, V2: 0 };
+    const dimanche = isSundayIso(list[0].dateTravail);
     list.forEach(v => {
       if (v.shift === a.shift) inShift[v.vacation] = (inShift[v.vacation] || 0) + v.mouvements;
+      else if (dimanche && v.shift === "S3") dimancheS3 += v.mouvements;
       else autresShifts += v.mouvements;
     });
     const vacFaible = Math.min(inShift.V1, inShift.V2);
-    out[k] = { driverId: driver.id, date: list[0].dateTravail, outside: autresShifts + vacFaible, official: a.shift };
+    out[k] = { driverId: driver.id, date: list[0].dateTravail, outside: autresShifts + vacFaible, dimancheS3: dimancheS3, official: a.shift };
   });
   return out;
 }
@@ -1831,9 +1837,14 @@ function detectDoublagesFromTos(state, teamId, mvtRows, planning) {
     // affecté) : jamais un doublage — un repos travaillé pour nécessité de
     // service est annulé puis récupéré, ce n'est pas un doublage.
     if (!hasRef) return;
-    let outside = 0;
-    list.forEach(m => { if (!hasRef || m.shift !== a.shift) outside += m.totalMvmt || 0; });
-    out[k] = { driverId: driver.id, date: list[0].dateTravail, outside: outside, official: hasRef ? a.shift : (a ? String(a.status || "—") : "—") };
+    let outside = 0, dimancheS3 = 0;
+    const dimanche = isSundayIso(list[0].dateTravail);
+    list.forEach(m => {
+      if (m.shift === a.shift) return;
+      if (dimanche && m.shift === "S3") dimancheS3 += m.totalMvmt || 0;
+      else outside += m.totalMvmt || 0;
+    });
+    out[k] = { driverId: driver.id, date: list[0].dateTravail, outside: outside, dimancheS3: dimancheS3, official: a.shift };
   });
   return out;
 }
@@ -1870,14 +1881,18 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
   const parVacation = !!(planning && vacRows && vacRows.length > 0);
   const detection = !planning ? null : parVacation ? detectDoublagesFromVacations(state, teamId, vacRows, planning) : detectDoublagesFromTos(state, teamId, mvtRows, planning);
   // Doublages réalisés (> 15 mvts hors shift officiel) mais absents d'Over Time.
+  // Un jour déjà couvert par un enregistrement Over Time (doublage, férié ou
+  // 3ème shift dimanche) n'est jamais re-détecté.
   const declaredKeys = {};
-  records.forEach(r => { if (r.type === "DOUBLAGE") declaredKeys[r.dateDebut + "|" + r.driverId] = true; });
+  records.forEach(r => { declaredKeys[r.dateDebut + "|" + r.driverId] = true; });
   const autoRecords = [];
   if (detection) {
     Object.keys(detection).forEach(k => {
       const d = detection[k];
-      if (d.outside <= DOUBLAGE_MVT_THRESHOLD || declaredKeys[k] || d.date.slice(0, 7) !== prefix) return;
-      autoRecords.push({ id: "auto_" + k, driverId: d.driverId, type: "DOUBLAGE", dateDebut: d.date, heures: null, commentaire: "", detecte: true });
+      if (declaredKeys[k] || d.date.slice(0, 7) !== prefix) return;
+      if (d.outside > DOUBLAGE_MVT_THRESHOLD) autoRecords.push({ id: "auto_" + k, driverId: d.driverId, type: "DOUBLAGE", dateDebut: d.date, heures: null, commentaire: "", detecte: true });
+      // Dimanche : mouvements en S3 hors shift officiel = 3ème shift dimanche non déclaré.
+      if (d.dimancheS3 > DOUBLAGE_MVT_THRESHOLD) autoRecords.push({ id: "autoS3_" + k, driverId: d.driverId, type: "DIMANCHE_S3", dateDebut: d.date, heures: null, commentaire: "", detecte: true, mvtsDetectes: d.dimancheS3 });
     });
   }
   const allRecords = records.concat(autoRecords).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
@@ -1890,6 +1905,13 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
     // mouvements de S1/S2 ne sont pas ceux du 3ème shift dimanche). À défaut
     // de mouvements étiquetés S3, retombe sur le total de la journée.
     const keyDay = r.driverId + "_" + r.dateDebut;
+    if (r.detecte && r.type === "DIMANCHE_S3") {
+      return {
+        record: r, driver: driver, teamNom: team ? team.nom : (driver ? driver.teamId : ""),
+        mouvements: r.mvtsDetectes, doublageMvts: null,
+        mouvementCommentaire: "Détecté (non saisi dans Over Time) : " + r.mvtsDetectes + " mvts en S3 un dimanche (3ème shift dimanche)"
+      };
+    }
     // Doublage : le total du jour inclut les mouvements de la vacation
     // OFFICIELLE du conducteur — seuls ceux réalisés HORS de ses heures de
     // travail comptent, et le TOS importé n'est pas ventilé par vacation
@@ -1919,7 +1941,7 @@ function buildRapportFeriesS3(state, month, year, teamId, mvtRows, planning, vac
   return {
     rows: rows,
     totalFerie: rows.filter(r => r.record.type === "FERIE_TRAVAILLE").length,
-    totalS3: rows.filter(r => r.record.type === "DIMANCHE_S3").length,
+    totalS3: rows.filter(r => r.record.type === "DIMANCHE_S3" && !r.record.detecte).length,
     totalDoublage: rows.filter(r => r.record.type === "DOUBLAGE" && !r.record.detecte).length,
     totalDetectes: rows.filter(r => r.record.detecte).length,
     parVacation: parVacation,
