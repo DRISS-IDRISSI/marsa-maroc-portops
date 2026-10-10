@@ -1676,12 +1676,17 @@ function parseMouvementsVacations(XLSX, buf) {
   const wb = XLSX.read(buf, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const grid = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-  const title = String((grid[0] && grid[0][0]) || "");
-  const tm = title.match(/(\d{4})-(\d{2})/);
+  // Titre « MOUVEMENTS MENSUELS - RTG / SC - AAAA-MM » : cherché dans les premières lignes (toutes colonnes).
+  const title = grid.slice(0, 6).map(r => (r || []).filter(c => c != null).join(" ")).join(" ");
+  const tm = title.match(/MENSUELS[^\n]*?(\d{4})-(\d{2})/i) || title.match(/(\d{4})-(\d{2})/);
   if (!tm) throw new Error("Titre du fichier illisible (attendu : « MOUVEMENTS MENSUELS - … - AAAA-MM »).");
   const year = Number(tm[1]), month = Number(tm[2]);
+  // Format du rapport mensuel exporté (.xls) : une ligne par conducteur x
+  // shift x vacation, colonnes TYPE/MATRICULE/NOM/PRENOM/LOGIN/SHIFT/VAC puis 01..31.
+  const longIdx = grid.findIndex(r => r && r.some(c => String(c || "").trim().toUpperCase() === "MATRICULE") && r.some(c => String(c || "").trim().toUpperCase() === "VAC"));
+  if (longIdx !== -1) return parseMouvementsVacationsLong(grid, longIdx, year, month);
   const headerIdx = grid.findIndex(r => r && String(r[0] || "").trim().toLowerCase() === "conductor");
-  if (headerIdx === -1) throw new Error("Ligne d'en-tête « Conductor » introuvable.");
+  if (headerIdx === -1) throw new Error("Ligne d'en-tête introuvable (attendu : colonnes MATRICULE / SHIFT / VAC, ou « Conductor »).");
   const dayRow = grid[headerIdx];
   const FIRST = 6;
   const dayStarts = [];
@@ -1705,6 +1710,35 @@ function parseMouvementsVacations(XLSX, buf) {
         if (!n || n < 0) continue;
         rows.push({ loginTos: loginTos, dateTravail: iso, shift: "S" + (1 + Math.floor(j / 2)), vacation: "V" + (1 + (j % 2)), mouvements: Math.round(n) });
       }
+    });
+  }
+  return { year: year, month: month, rows: rows };
+}
+
+function parseMouvementsVacationsLong(grid, headerIdx, year, month) {
+  const head = grid[headerIdx].map(c => String(c == null ? "" : c).trim().toUpperCase());
+  const col = name => head.indexOf(name);
+  const cMat = col("MATRICULE"), cLogin = col("LOGIN"), cShift = col("SHIFT"), cVac = col("VAC");
+  const dayCols = [];
+  head.forEach((h, c) => { if (/^\d{1,2}$/.test(h)) dayCols.push({ col: c, day: Number(h) }); });
+  if (cShift === -1 || dayCols.length === 0) throw new Error("Colonnes SHIFT / jours introuvables.");
+  const rows = [];
+  let cur = null;
+  for (let i = headerIdx + 1; i < grid.length; i++) {
+    const r = grid[i];
+    if (!r) continue;
+    if (r[cMat] != null && String(r[cMat]).trim() !== "") {
+      const login = cLogin !== -1 && r[cLogin] ? String(r[cLogin]).trim().toLowerCase() : "";
+      cur = { matricule: String(r[cMat]).trim().toUpperCase(), loginTos: login || String(r[cMat]).trim().toLowerCase() };
+    }
+    const shift = String(r[cShift] == null ? "" : r[cShift]).trim().toUpperCase();
+    const vacation = String(r[cVac] == null ? "" : r[cVac]).trim().toUpperCase();
+    if (!cur || ["S1", "S2", "S3"].indexOf(shift) === -1 || ["V1", "V2"].indexOf(vacation) === -1) continue;
+    dayCols.forEach(dc => {
+      const n = Number(r[dc.col]);
+      if (!n || n < 0) return;
+      const iso = year + "-" + String(month).padStart(2, "0") + "-" + String(dc.day).padStart(2, "0");
+      rows.push({ matricule: cur.matricule, loginTos: cur.loginTos, dateTravail: iso, shift: shift, vacation: vacation, mouvements: Math.round(n) });
     });
   }
   return { year: year, month: month, rows: rows };
@@ -1939,6 +1973,8 @@ function RapportRHPage() {
         throw new Error("Ce fichier concerne " + RAPPORT_MOIS_LABELS[parsed.month - 1] + " " + parsed.year + " : sélectionnez ce mois dans la liste avant d'importer.");
       }
       // Rattachement conducteur par login TOS (saisie manuelle, sinon convention prénom+nom+suffixe).
+      const byMatricule = {};
+      rawState.drivers.forEach(d => { if (d.matricule) byMatricule[String(d.matricule).trim().toUpperCase()] = d.id; });
       const byLogin = {};
       rawState.drivers.forEach(d => {
         const team = rawState.teams.find(t => t.id === d.teamId);
@@ -1946,8 +1982,8 @@ function RapportRHPage() {
         if (!login) return;
         byLogin[login] = byLogin[login] === undefined ? d.id : null; // ambigu -> non rattaché
       });
-      const rows = parsed.rows.map(r => Object.assign({}, r, { driverId: byLogin[r.loginTos] || null }));
-      const unmatched = Array.from(new Set(rows.filter(r => !r.driverId).map(r => r.loginTos)));
+      const rows = parsed.rows.map(r => Object.assign({}, r, { driverId: (r.matricule && byMatricule[r.matricule]) || byLogin[r.loginTos] || null }));
+      const unmatched = Array.from(new Set(rows.filter(r => !r.driverId).map(r => (r.matricule ? r.matricule + " " : "") + r.loginTos)));
       const dim = RTGDate.daysInMonth(month, year);
       const dateFrom = RTGDate.toISO(RTGDate.makeDate(year, month, 1));
       const dateTo = RTGDate.toISO(RTGDate.makeDate(year, month, dim));
@@ -2232,8 +2268,8 @@ function RapportRHPage() {
           : <span className="text-amber-700 font-medium">Aucun fichier importé pour ce mois : calcul approché par shift (le détail V1/V2 d'un même shift n'est pas mesurable).</span>}</p>
         {canImportVac
           ? <label className="inline-flex items-center gap-2 flex-wrap">
-              <span className="text-slate-600">Fichier mensuel « DRIVER MOVE » (.xlsx) :</span>
-              <input type="file" accept=".xlsx" disabled={vacLoading} onChange={e => { const f = e.target.files[0]; e.target.value = ""; if (f) handleVacFile(f); }} className="text-xs" />
+              <span className="text-slate-600">Rapport mensuel « DRIVER MOVE » (.xls / .xlsx) :</span>
+              <input type="file" accept=".xls,.xlsx" disabled={vacLoading} onChange={e => { const f = e.target.files[0]; e.target.value = ""; if (f) handleVacFile(f); }} className="text-xs" />
               {vacLoading && <span className="text-slate-500">Import en cours…</span>}
             </label>
           : <span className="italic text-slate-500">Import réservé aux comptes Admin / Responsable.</span>}
